@@ -250,29 +250,29 @@ local _defaultTokens = {
 		SidebarFooterHeight = 56,
 	},
 	Section = {
-		HeaderTextSize = 13,
-		DescriptionTextSize = 12,
-		TitleSpacing = 8,
+		HeaderTextSize = 12,
+		DescriptionTextSize = 11,
+		TitleSpacing = 6,
 		BoxRadius = 6,
 		InnerPadding = 0,
-		RowSpacing = 6,
-		RowPaddingX = 12,
-		RowPaddingY = 8,
+		RowSpacing = 5,
+		RowPaddingX = 10,
+		RowPaddingY = 6,
 		RowStrokeTransparency = 0.93,
 	},
 	Control = {
 		DefaultRadius = 6,
 		TogglePill = true,
-		LabelTextSize = 14,
-		SecondaryTextSize = 13,
-		ButtonHeight = 36,
-		ToggleRowHeight = 38,
-		SliderBlockHeight = 46,
-		SliderTrackThickness = 6,
-		InputRowHeight = 56,
-		InputHeight = 30,
-		KeybindRowHeight = 30,
-		DropdownRowOpen = 32,
+		LabelTextSize = 13,
+		SecondaryTextSize = 12,
+		ButtonHeight = 32,
+		ToggleRowHeight = 34,
+		SliderBlockHeight = 40,
+		SliderTrackThickness = 5,
+		InputRowHeight = 50,
+		InputHeight = 28,
+		KeybindRowHeight = 28,
+		DropdownRowOpen = 28,
 	},
 	Animation = {
 		WindowOpenDuration = 0.25,
@@ -1737,16 +1737,57 @@ function Core.CreateWindow(opts)
 			Parent = page,
 		})
 		Utils.Create("UIPadding", {
-			PaddingTop = UDim.new(0, 8),
-			PaddingBottom = UDim.new(0, 12),
-			PaddingLeft = UDim.new(0, 8),
-			PaddingRight = UDim.new(0, 10),
+			PaddingTop = UDim.new(0, 6),
+			PaddingBottom = UDim.new(0, 10),
+			PaddingLeft = UDim.new(0, 6),
+			PaddingRight = UDim.new(0, 8),
 			Parent = pageContent,
 		})
-		local pageList = Utils.Create("UIListLayout", {
+		local splitRow = Utils.Create("Frame", {
+			Name = "TwoColumnSplit",
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Parent = pageContent,
+		})
+		Utils.Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			VerticalAlignment = Enum.VerticalAlignment.Top,
 			Padding = UDim.new(0, 10),
 			SortOrder = Enum.SortOrder.LayoutOrder,
-			Parent = pageContent,
+			Parent = splitRow,
+		})
+		local colGap = 10
+		local colW = UDim2.new(0.5, -math.floor(colGap / 2), 0, 0)
+		local leftCol = Utils.Create("Frame", {
+			Name = "ColumnLeft",
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = colW,
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = 0,
+			Parent = splitRow,
+		})
+		Utils.Create("UIListLayout", {
+			Padding = UDim.new(0, 8),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = leftCol,
+		})
+		local rightCol = Utils.Create("Frame", {
+			Name = "ColumnRight",
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = colW,
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = 1,
+			Parent = splitRow,
+		})
+		Utils.Create("UIListLayout", {
+			Padding = UDim.new(0, 8),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = rightCol,
 		})
 
 		local tabObj = {
@@ -1754,21 +1795,54 @@ function Core.CreateWindow(opts)
 			_button = btn,
 			_label = tabLbl,
 			_page = page,
-			_content = pageContent,
-			_layout = pageList,
+			_content = leftCol,
+			_contentLeft = leftCol,
+			_contentRight = rightCol,
 			_searchText = string.lower(tostring(tabName)),
 		}
 
 		function tabObj:CreateSection(a, b)
 			if type(a) == "table" then
-				return Elements.CreateSection(self, a.Name or a.Title, a.Description)
+				return Elements.CreateSection(self, a)
 			end
-			return Elements.CreateSection(self, a, b)
+			return Elements.CreateSection(self, { Name = a, Description = b })
 		end
 
 		function tabObj:NewSection(opts)
 			opts = opts or {}
-			return Elements.CreateSection(self, opts.Name or opts.Title, opts.Description)
+			return Elements.CreateSection(self, opts)
+		end
+
+		-- Opret flere sektioner pr. kolonne på én gang (fx 2 venstre + 2 højre = 2×2 layout).
+		-- Returnerer { Left = { Section, ... }, Right = { Section, ... } }.
+		function tabObj:CreateSectionBundle(bundle)
+			bundle = bundle or {}
+			local out = { Left = {}, Right = {} }
+			for _, def in ipairs(bundle.Left or {}) do
+				if type(def) == "table" then
+					local o = {}
+					Utils.DeepMerge(o, def)
+					o.Column = "Left"
+					table.insert(out.Left, Elements.CreateSection(self, o))
+				else
+					table.insert(out.Left, Elements.CreateSection(self, { Name = tostring(def), Column = "Left" }))
+				end
+			end
+			for _, def in ipairs(bundle.Right or {}) do
+				if type(def) == "table" then
+					local o = {}
+					Utils.DeepMerge(o, def)
+					o.Column = "Right"
+					table.insert(out.Right, Elements.CreateSection(self, o))
+				else
+					table.insert(out.Right, Elements.CreateSection(self, { Name = tostring(def), Column = "Right" }))
+				end
+			end
+			return out
+		end
+
+		function tabObj:NewSectionBundle(bundle)
+			return self:CreateSectionBundle(bundle)
 		end
 
 		local function selectTab()
@@ -1896,10 +1970,29 @@ local function createControlRowCard(rowsParent, theme, etok, win)
 	return card
 end
 
-function Elements.CreateSection(tab, titleText, descriptionText)
+function Elements.CreateSection(tab, arg1, arg2)
 	local win = tab._window
 	local theme, etok = ElemCtx(win)
-	local host = tab._content or tab._page
+	local titleText, descriptionText, columnKey
+	if type(arg1) == "table" then
+		titleText = arg1.Name or arg1.Title or arg1[1]
+		descriptionText = arg1.Description or arg1[2]
+		columnKey = arg1.Column or arg1.Side
+	else
+		titleText = arg1
+		descriptionText = arg2
+		columnKey = nil
+	end
+	titleText = titleText or "Section"
+
+	local useRight = false
+	if columnKey ~= nil then
+		local ck = string.lower(tostring(columnKey))
+		if ck == "right" or ck == "r" or columnKey == 2 then
+			useRight = true
+		end
+	end
+	local host = (useRight and tab._contentRight) or tab._contentLeft or tab._content or tab._page
 	local wrap = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, 0),
@@ -1913,14 +2006,15 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 	})
 
 	local lo = 0
+	local headerH = math.max(14, math.floor((etok.Section.HeaderTextSize or 12) + 4))
 	local header = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBold,
 		TextSize = etok.Section.HeaderTextSize,
 		TextColor3 = theme.TextDim,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		Size = UDim2.new(1, 0, 0, 18),
-		Text = titleText or "Section",
+		Size = UDim2.new(1, 0, 0, headerH),
+		Text = titleText,
 		LayoutOrder = lo,
 		Parent = wrap,
 	})
