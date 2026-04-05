@@ -6,8 +6,8 @@
     ██████╔╝███████╗╚██████╔╝╚██████╗██║  ██╗╚██████╔╝██║
     ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝
 
-    BlockUI v1.2.0 — Hub “grunge metal” (monokrom, skarp kant, metal-gradient)
-    Valgfrit logo: CreateWindow{ LogoImage = "rbxassetid://…" } (upload dit emblem til Roblox)
+    BlockUI v2.0.0 — Custom hub (monokrom “stjerne/metal” efter logo, sølv-accent)
+    CreateWindow → LogoImage, ShowProfile (default true), DeveloperUserIds, DevBadgeImage (rbxasset ved DEV)
 
     Usage:
         local BlockUI = require(pathToModule)  -- eller dit loadstring-setup
@@ -17,7 +17,7 @@
         Tab     → CreateButton, CreateToggle, CreateSlider,
                   CreateInput, CreateDropdown, CreateLabel
         BlockUI → Notify, LoadConfiguration, SaveConfiguration
-        CreateWindow → ToggleKey (Enum/liste/false), LogoImage ("rbxassetid://…")
+        CreateWindow → ToggleKey, LogoImage, ShowProfile, DeveloperUserIds, DevBadgeImage, ProfileTag
         VIGTIG: Kun én ToggleKey-linje i tabellen — gentagne nøgler overskrives (sidste vinder).
 --]]
 
@@ -34,39 +34,48 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer    = Players.LocalPlayer
 local PlayerGui      = LocalPlayer:WaitForChild("PlayerGui")
 
--- ── 9-slice panel (Zypher-asset; tones med ImageColor3 = metal/grunge) ──
+-- ── 9-slice panel (Zypher-asset) ──
 local SLICE_ASSET = "rbxassetid://3570695787"
 local SLICE_RECT = Rect.new(100, 100, 100, 100)
-local SLICE_SCALE = 0.028
+local SLICE_SCALE = 0.042
 
+-- Palette: kul/stål som dit stjerne-logo — sølv/hvid som “mejslet” accent (ikke lilla UI)
 local S = {
-    -- Monokrom “slagmetall / kul” hub
-    bg             = Color3.fromRGB(22, 22, 24),
-    grayContrast   = Color3.fromRGB(30, 30, 33),
-    darkContrast   = Color3.fromRGB(26, 26, 29),
-    charcoal       = Color3.fromRGB(12, 12, 14),
-    sectionTone    = Color3.fromRGB(36, 36, 40),
-    panelRaised    = Color3.fromRGB(44, 44, 48),
+    bg             = Color3.fromRGB(12, 12, 14),
+    bgLift         = Color3.fromRGB(22, 22, 26),
+    grayContrast   = Color3.fromRGB(20, 20, 24),
+    darkContrast   = Color3.fromRGB(28, 28, 32),
+    charcoal       = Color3.fromRGB(8, 8, 10),
+    sectionTone    = Color3.fromRGB(30, 30, 34),
+    panelRaised    = Color3.fromRGB(38, 38, 44),
+    sidebarFooter  = Color3.fromRGB(16, 16, 19),
+    glass          = Color3.fromRGB(255, 255, 255),
     text           = Color3.fromRGB(248, 248, 250),
-    muted          = Color3.fromRGB(130, 130, 138),
-    metalHighlight = Color3.fromRGB(210, 210, 216),
-    metalMid       = Color3.fromRGB(110, 110, 118),
-    accentCyan     = Color3.fromRGB(210, 210, 216),
-    accentPurple   = Color3.fromRGB(95, 95, 102),
-    toggleOn       = Color3.fromRGB(92, 92, 98),
-    toggleThumb    = Color3.fromRGB(250, 250, 252),
-    sliderFill     = Color3.fromRGB(188, 188, 196),
-    danger         = Color3.fromRGB(200, 140, 140),
-    warning        = Color3.fromRGB(200, 185, 150),
-    success        = Color3.fromRGB(150, 185, 155),
+    muted          = Color3.fromRGB(130, 132, 140),
+    accent         = Color3.fromRGB(198, 202, 212),
+    accentSoft     = Color3.fromRGB(120, 124, 136),
+    accentGlow     = Color3.fromRGB(235, 236, 240),
+    metalHighlight = Color3.fromRGB(220, 222, 228),
+    metalMid       = Color3.fromRGB(88, 90, 98),
+    accentCyan     = Color3.fromRGB(198, 202, 212),
+    accentPurple   = Color3.fromRGB(160, 165, 180),
+    toggleOn       = Color3.fromRGB(210, 212, 220),
+    toggleThumb    = Color3.fromRGB(255, 255, 255),
+    sliderFill     = Color3.fromRGB(200, 202, 210),
+    tagMember      = Color3.fromRGB(65, 72, 88),
+    tagPremium     = Color3.fromRGB(200, 160, 70),
+    tagDev         = Color3.fromRGB(95, 88, 120),
+    danger         = Color3.fromRGB(210, 95, 105),
+    warning        = Color3.fromRGB(210, 175, 85),
+    success        = Color3.fromRGB(95, 190, 130),
     font           = Enum.Font.GothamBold,
     fontMono       = Enum.Font.Code,
     fontBody       = Enum.Font.Gotham,
-    fontTitle      = Enum.Font.GothamBlack,
-    radiusS        = UDim.new(0, 2),
-    radiusM        = UDim.new(0, 3),
-    border         = Color3.fromRGB(58, 58, 64),
-    strokeEtch     = Color3.fromRGB(78, 78, 86),
+    fontTitle      = Enum.Font.GothamBold,
+    radiusS        = UDim.new(0, 10),
+    radiusM        = UDim.new(0, 14),
+    border         = Color3.fromRGB(48, 50, 56),
+    strokeEtch     = Color3.fromRGB(90, 92, 100),
     black          = Color3.fromRGB(6, 6, 8),
 }
 -- Bagudkompatibilitet for resten af filen
@@ -75,17 +84,18 @@ S.surface = S.darkContrast
 S.surface2 = S.charcoal
 S.surface3 = S.grayContrast
 S.sidebarSel = S.panelRaised
-S.fluentBlue = S.metalHighlight
-S.toggleOnGlow = S.metalMid
-S.accent2 = S.metalMid
-S.accent = S.metalHighlight
-S.accentBar = S.metalHighlight
+S.fluentBlue = S.accent
+S.toggleOnGlow = S.accentGlow
+S.accent2 = S.accentSoft
+S.accentBar = S.accent
 
-local MAIN_W, MAIN_H = 700, 460
-local SIDEBAR_W = 152
+local MAIN_W, MAIN_H = 736, 492
+local SIDEBAR_W = 178
+local PROFILE_H = 100
 local TOP_STRIP = 4
-local HEADER_H = 44
-local CORNER_MAIN = UDim.new(0, 2)
+local HEADER_H = 52
+local CORNER_MAIN = UDim.new(0, 16)
+local INNER_PAD = 10
 local function corner(inst, r)
     local c = inst:FindFirstChildOfClass("UICorner")
     if not c then
@@ -93,6 +103,33 @@ local function corner(inst, r)
         c.Parent = inst
     end
     c.CornerRadius = r or CORNER_MAIN
+end
+
+local function resolveUserProfileTag(cfg)
+    cfg = cfg or {}
+    if type(cfg.ProfileTag) == "string" and cfg.ProfileTag ~= "" then
+        local c = cfg.ProfileTagColor
+        if typeof(c) == "Color3" then
+            return cfg.ProfileTag, c
+        end
+        return cfg.ProfileTag, S.tagMember
+    end
+    local lp = LocalPlayer
+    local devIds = cfg.DeveloperUserIds
+    if type(devIds) == "table" then
+        for _, id in ipairs(devIds) do
+            if id == lp.UserId then
+                return "Dev", S.tagDev
+            end
+        end
+    end
+    if game.CreatorType == Enum.CreatorType.User and lp.UserId == game.CreatorId then
+        return "Dev", S.tagDev
+    end
+    if lp.MembershipType == Enum.MembershipType.Premium then
+        return "Premium", S.tagPremium
+    end
+    return "Member", S.tagMember
 end
 
 -- ── Utility ─────────────────────────────────────────────────
@@ -367,6 +404,10 @@ function BlockUI:CreateWindow(cfg)
     if type(logoImage) == "number" then
         logoImage = "rbxassetid://" .. tostring(logoImage)
     end
+    local devBadgeImage = cfg.DevBadgeImage
+    if type(devBadgeImage) == "number" then
+        devBadgeImage = "rbxassetid://" .. tostring(devBadgeImage)
+    end
     local saveConfig = cfg.ConfigurationSaving
 
     if saveConfig and saveConfig.Enabled and saveConfig.FileName then
@@ -393,45 +434,46 @@ function BlockUI:CreateWindow(cfg)
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
     }, PlayerGui)
 
-    local headerH = (winSub ~= "") and 52 or HEADER_H
+    local headerH = (winSub ~= "") and 58 or HEADER_H
     local bodyTop = TOP_STRIP + headerH
+    local showProfile = cfg.ShowProfile ~= false
 
     local main = new("Frame", {
         Size             = UDim2.new(0, MAIN_W, 0, MAIN_H),
         Position         = UDim2.new(0.5, -MAIN_W / 2, 0.5, -MAIN_H / 2),
         BackgroundColor3 = S.bg,
         BorderSizePixel  = 0,
-        ClipsDescendants = true,
+        -- false: ellers klipper UICorner profilfooteren i venstre bund
+        ClipsDescendants = false,
     }, gui)
     corner(main, CORNER_MAIN)
     new("UIGradient", {
         Rotation = 90,
         Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(16, 16, 18)),
-            ColorSequenceKeypoint.new(0.45, Color3.fromRGB(28, 28, 32)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 20, 23)),
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(18, 18, 20)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(10, 10, 12)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(14, 14, 16)),
         }),
     }, main)
     new("UIStroke", {
         Color            = S.strokeEtch,
         Thickness        = 1,
-        Transparency     = 0.12,
+        Transparency     = 0.35,
         ApplyStrokeMode  = Enum.ApplyStrokeMode.Border,
     }, main)
 
     local upline = new("Frame", {
         Name             = "Upline",
         Size             = UDim2.new(1, 0, 0, TOP_STRIP),
-        BackgroundColor3 = Color3.fromRGB(60, 60, 65),
+        BackgroundColor3 = S.accent,
         BorderSizePixel  = 0,
         ZIndex           = 10,
     }, main)
     new("UIGradient", {
         Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(38, 38, 42)),
-            ColorSequenceKeypoint.new(0.35, Color3.fromRGB(95, 95, 102)),
-            ColorSequenceKeypoint.new(0.7, Color3.fromRGB(72, 72, 78)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(32, 32, 36)),
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(70, 72, 78)),
+            ColorSequenceKeypoint.new(0.5, S.accentGlow),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(90, 92, 100)),
         }),
     }, upline)
 
@@ -445,10 +487,32 @@ function BlockUI:CreateWindow(cfg)
     new("UIGradient", {
         Rotation = 90,
         Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(36, 36, 40)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(24, 24, 28)),
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(28, 28, 32)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(16, 16, 19)),
         }),
     }, titlebar)
+
+    new("TextLabel", {
+        Size             = UDim2.fromOffset(22, 22),
+        Position         = UDim2.new(1, -56, 0, 10),
+        BackgroundTransparency = 1,
+        Text             = "✦",
+        TextColor3       = S.accentSoft,
+        TextTransparency = 0.45,
+        FontFace         = Font.fromEnum(Enum.Font.GothamBold),
+        TextSize         = 14,
+        ZIndex           = 7,
+    }, titlebar)
+
+    local headerGlow = new("Frame", {
+        Size             = UDim2.new(1, -28, 0, 2),
+        Position         = UDim2.new(0, 14, 1, -3),
+        BackgroundColor3 = S.accentGlow,
+        BackgroundTransparency = 0.55,
+        BorderSizePixel  = 0,
+        ZIndex           = 6,
+    }, titlebar)
+    corner(headerGlow, UDim.new(1, 0))
 
     local hasLogo = type(logoImage) == "string" and logoImage ~= ""
     local titleLeft = 14
@@ -461,11 +525,11 @@ function BlockUI:CreateWindow(cfg)
             BorderSizePixel  = 0,
             ZIndex           = 6,
         }, titlebar)
-        corner(logoHolder, UDim.new(0, 2))
+        corner(logoHolder, UDim.new(0, 10))
         new("UIStroke", {
-            Color = S.border,
+            Color = S.strokeEtch,
             Thickness = 1,
-            Transparency = 0.35,
+            Transparency = 0.4,
         }, logoHolder)
         new("ImageLabel", {
             Size             = UDim2.new(1, -6, 1, -6),
@@ -492,18 +556,23 @@ function BlockUI:CreateWindow(cfg)
         Padding            = UDim.new(0, 2),
     }, titleStack)
 
-    new("TextLabel", {
+    local titleLbl = new("TextLabel", {
         Size             = UDim2.new(1, 0, 0, 0),
         AutomaticSize    = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1,
         Text             = winName,
         TextColor3       = S.text,
-        FontFace         = Font.fromEnum(S.fontTitle),
-        TextSize         = 17,
+        FontFace         = Font.fromEnum(Enum.Font.GothamBold),
+        TextSize         = 19,
         TextXAlignment   = Enum.TextXAlignment.Left,
         TextYAlignment   = Enum.TextYAlignment.Center,
         LayoutOrder      = 1,
     }, titleStack)
+    new("UIStroke", {
+        Color            = S.accentSoft,
+        Thickness        = 1,
+        Transparency     = 0.9,
+    }, titleLbl)
 
     if winSub ~= "" then
         new("TextLabel", {
@@ -520,22 +589,36 @@ function BlockUI:CreateWindow(cfg)
     end
 
     local closeBtn = new("TextButton", {
-        Size             = UDim2.new(0, 32, 0, 28),
-        Position         = UDim2.new(1, -40, 0.5, -14),
-        BackgroundColor3 = S.charcoal,
-        BackgroundTransparency = 1,
+        Size             = UDim2.new(0, 34, 0, 34),
+        Position         = UDim2.new(1, -42, 0.5, -17),
+        BackgroundColor3 = S.darkContrast,
+        BackgroundTransparency = 0.35,
         Text             = "×",
         TextColor3       = S.muted,
         FontFace         = Font.fromEnum(Enum.Font.GothamMedium),
-        TextSize         = 20,
+        TextSize         = 18,
         AutoButtonColor  = false,
+        ZIndex           = 8,
     }, titlebar)
-    corner(closeBtn, UDim.new(0, 2))
+    corner(closeBtn, UDim.new(0, 10))
+    new("UIStroke", {
+        Color = S.border,
+        Thickness = 1,
+        Transparency = 0.5,
+    }, closeBtn)
     closeBtn.MouseEnter:Connect(function()
-        tween(closeBtn, TweenInfo.new(0.1), { BackgroundTransparency = 0, TextColor3 = S.text })
+        tween(closeBtn, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0,
+            BackgroundColor3 = S.panelRaised,
+            TextColor3 = S.accentGlow,
+        })
     end)
     closeBtn.MouseLeave:Connect(function()
-        tween(closeBtn, TweenInfo.new(0.1), { BackgroundTransparency = 1, TextColor3 = S.muted })
+        tween(closeBtn, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0.35,
+            BackgroundColor3 = S.darkContrast,
+            TextColor3 = S.muted,
+        })
     end)
     local toggleKeyConn = nil
     if #toggleKeys > 0 then
@@ -565,22 +648,33 @@ function BlockUI:CreateWindow(cfg)
 
     makeDraggable(main, titlebar)
 
-    local nextTabY = 15
+    local bodyBottomPad = bodyTop + INNER_PAD
+    local sidebarCol = new("Frame", {
+        Name             = "SidebarColumn",
+        BackgroundTransparency = 1,
+        BorderSizePixel  = 0,
+        Position         = UDim2.fromOffset(INNER_PAD, bodyTop),
+        Size             = UDim2.new(0, SIDEBAR_W, 1, -bodyBottomPad),
+        ZIndex           = 5,
+        ClipsDescendants = false,
+    }, main)
+
+    local nextTabY = 14
     local sidebar = new("ScrollingFrame", {
         Name             = "Sidebar",
         BackgroundColor3 = S.grayContrast,
         BorderSizePixel  = 0,
-        Position         = UDim2.fromOffset(0, bodyTop),
-        Size             = UDim2.new(0, SIDEBAR_W, 1, -bodyTop),
+        Position         = UDim2.new(0, 0, 0, 0),
+        Size             = showProfile and UDim2.new(1, 0, 1, -PROFILE_H) or UDim2.new(1, 0, 1, 0),
         CanvasSize       = UDim2.new(0, 0, 0, 200),
         ScrollBarThickness = 0,
         ScrollingDirection = Enum.ScrollingDirection.Y,
         AutomaticCanvasSize = Enum.AutomaticSize.None,
         ZIndex           = 2,
-    }, main)
+    }, sidebarCol)
 
     new("UIPadding", {
-        PaddingTop  = UDim.new(0, 0),
+        PaddingTop  = UDim.new(0, 4),
         PaddingLeft = UDim.new(0, 0),
     }, sidebar)
 
@@ -588,7 +682,7 @@ function BlockUI:CreateWindow(cfg)
         Name             = "Categoriesselector",
         BackgroundTransparency = 1,
         Position         = UDim2.fromOffset(8, nextTabY),
-        Size             = UDim2.new(1, -16, 0, 30),
+        Size             = UDim2.new(1, -16, 0, 32),
         Image            = SLICE_ASSET,
         ImageColor3      = S.panelRaised,
         ScaleType        = Enum.ScaleType.Slice,
@@ -597,27 +691,172 @@ function BlockUI:CreateWindow(cfg)
         ZIndex           = 1,
     }, sidebar)
     new("UIStroke", {
-        Color = S.border,
+        Color = S.strokeEtch,
         Thickness = 1,
-        Transparency = 0.55,
+        Transparency = 0.45,
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
     }, tabSelector)
 
+    if showProfile then
+        local tagText, tagColor = resolveUserProfileTag(cfg)
+        local profilePanel = new("Frame", {
+            Name             = "ProfileFooter",
+            Position         = UDim2.new(0, 0, 1, -PROFILE_H),
+            Size             = UDim2.new(1, 0, 0, PROFILE_H),
+            BackgroundColor3 = S.sidebarFooter,
+            BackgroundTransparency = 0,
+            BorderSizePixel  = 0,
+            ZIndex           = 20,
+        }, sidebarCol)
+        corner(profilePanel, UDim.new(0, 12))
+        new("UIStroke", {
+            Color = S.border,
+            Thickness = 1,
+            Transparency = 0.35,
+        }, profilePanel)
+        new("UIGradient", {
+            Rotation = 90,
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(26, 26, 30)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(12, 12, 14)),
+            }),
+        }, profilePanel)
+        new("Frame", {
+            Size             = UDim2.new(1, 0, 0, 1),
+            BackgroundColor3 = S.accentSoft,
+            BackgroundTransparency = 0.5,
+            BorderSizePixel  = 0,
+            ZIndex           = 1,
+        }, profilePanel)
+
+        local avWrap = new("Frame", {
+            Size             = UDim2.fromOffset(54, 54),
+            Position         = UDim2.new(0, 10, 0.5, -27),
+            BackgroundColor3 = S.border,
+            BorderSizePixel  = 0,
+            ZIndex           = 3,
+        }, profilePanel)
+        corner(avWrap, UDim.new(1, 0))
+        new("UIStroke", {
+            Color = S.accentGlow,
+            Thickness = 1,
+            Transparency = 0.55,
+        }, avWrap)
+
+        local avImg = new("ImageLabel", {
+            Name             = "Avatar",
+            Size             = UDim2.new(1, -4, 1, -4),
+            Position         = UDim2.fromScale(0.5, 0.5),
+            AnchorPoint      = Vector2.new(0.5, 0.5),
+            BackgroundColor3 = S.charcoal,
+            BorderSizePixel  = 0,
+            BackgroundTransparency = 0,
+            Image            = "",
+            ScaleType        = Enum.ScaleType.Fit,
+            ZIndex           = 4,
+        }, avWrap)
+        corner(avImg, UDim.new(1, 0))
+
+        new("TextLabel", {
+            Size             = UDim2.new(1, -82, 0, 18),
+            Position         = UDim2.fromOffset(72, 12),
+            BackgroundTransparency = 1,
+            Text             = LocalPlayer.DisplayName,
+            TextColor3       = S.text,
+            FontFace         = Font.fromEnum(Enum.Font.GothamBold),
+            TextSize         = 15,
+            TextXAlignment   = Enum.TextXAlignment.Left,
+            TextTruncate     = Enum.TextTruncate.AtEnd,
+            ZIndex           = 3,
+        }, profilePanel)
+        new("TextLabel", {
+            Size             = UDim2.new(1, -82, 0, 14),
+            Position         = UDim2.fromOffset(72, 30),
+            BackgroundTransparency = 1,
+            Text             = "@" .. LocalPlayer.Name,
+            TextColor3       = S.muted,
+            FontFace         = Font.fromEnum(S.fontBody),
+            TextSize         = 11,
+            TextXAlignment   = Enum.TextXAlignment.Left,
+            TextTruncate     = Enum.TextTruncate.AtEnd,
+            ZIndex           = 3,
+        }, profilePanel)
+
+        local badgeRow = new("Frame", {
+            AutomaticSize    = Enum.AutomaticSize.XY,
+            Position         = UDim2.fromOffset(72, 50),
+            BackgroundTransparency = 1,
+            BorderSizePixel  = 0,
+            ZIndex           = 4,
+        }, profilePanel)
+        new("UIListLayout", {
+            FillDirection     = Enum.FillDirection.Horizontal,
+            VerticalAlignment = Enum.VerticalAlignment.Center,
+            Padding           = UDim.new(0, 6),
+            SortOrder         = Enum.SortOrder.LayoutOrder,
+        }, badgeRow)
+
+        if string.upper(tagText) == "DEV" and type(devBadgeImage) == "string" and devBadgeImage ~= "" then
+            local devIcon = new("ImageLabel", {
+                Size             = UDim2.fromOffset(18, 18),
+                BackgroundTransparency = 1,
+                Image            = devBadgeImage,
+                ScaleType        = Enum.ScaleType.Fit,
+                LayoutOrder      = 1,
+                ZIndex           = 5,
+            }, badgeRow)
+            corner(devIcon, UDim.new(0, 4))
+        end
+
+        local badgeLbl = new("TextLabel", {
+            AutomaticSize    = Enum.AutomaticSize.XY,
+            BackgroundColor3 = tagColor,
+            BorderSizePixel  = 0,
+            Text             = string.upper(tagText),
+            TextColor3       = S.text,
+            FontFace         = Font.fromEnum(Enum.Font.GothamBold),
+            TextSize         = 10,
+            LayoutOrder      = 2,
+            ZIndex           = 5,
+        }, badgeRow)
+        corner(badgeLbl, UDim.new(0, 8))
+        new("UIPadding", {
+            PaddingLeft   = UDim.new(0, 8),
+            PaddingRight  = UDim.new(0, 8),
+            PaddingTop    = UDim.new(0, 3),
+            PaddingBottom = UDim.new(0, 3),
+        }, badgeLbl)
+
+        task.defer(function()
+            local ok, url = pcall(function()
+                return Players:GetUserThumbnailAsync(
+                    LocalPlayer.UserId,
+                    Enum.ThumbnailType.HeadShot,
+                    Enum.ThumbnailSize.Size180x180
+                )
+            end)
+            if ok and type(url) == "string" and url ~= "" and avImg.Parent then
+                avImg.Image = url
+            end
+        end)
+    end
+
+    local splitX = INNER_PAD + SIDEBAR_W
     new("Frame", {
-        Size             = UDim2.new(0, 1, 1, -bodyTop),
-        Position         = UDim2.fromOffset(SIDEBAR_W, bodyTop),
+        Size             = UDim2.new(0, 1, 1, -bodyBottomPad),
+        Position         = UDim2.fromOffset(splitX, bodyTop),
         BackgroundColor3 = S.border,
         BorderSizePixel  = 0,
-        ZIndex           = 3,
+        ZIndex           = 4,
     }, main)
 
     local contentArea = new("Frame", {
-        Size             = UDim2.new(1, -SIDEBAR_W, 1, -bodyTop),
-        Position         = UDim2.fromOffset(SIDEBAR_W, bodyTop),
+        Size             = UDim2.new(1, -(splitX + 1 + INNER_PAD), 1, -bodyBottomPad),
+        Position         = UDim2.fromOffset(splitX + 1, bodyTop),
         BackgroundColor3 = S.bg,
         BorderSizePixel  = 0,
         ClipsDescendants = true,
-        ZIndex           = 1,
+        ZIndex           = 3,
     }, main)
 
     local tabs      = {}
@@ -631,9 +870,21 @@ function BlockUI:CreateWindow(cfg)
         for n, entry in pairs(tabs) do
             local isOn = (n == name)
             if type(entry) == "table" and entry.btn then
-                entry.btn.TextColor3 = isOn and S.metalHighlight or S.muted
+                entry.btn.TextColor3 = isOn and S.accentGlow or S.muted
+                if entry.wrap then
+                    if isOn then
+                        tween(entry.wrap, TweenInfo.new(0.16, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                            BackgroundTransparency = 0.25,
+                            BackgroundColor3 = S.panelRaised,
+                        })
+                    else
+                        tween(entry.wrap, TweenInfo.new(0.16, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                            BackgroundTransparency = 1,
+                        })
+                    end
+                end
                 if isOn and tabSelector and entry.tabY ~= nil then
-                    tween(tabSelector, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    tween(tabSelector, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
                         Position = UDim2.fromOffset(8, entry.tabY),
                     })
                 end
@@ -655,16 +906,18 @@ function BlockUI:CreateWindow(cfg)
         end
 
         local tabY = nextTabY
-        nextTabY = nextTabY + 34
+        nextTabY = nextTabY + 38
         sidebar.CanvasSize = UDim2.new(0, 0, 0, nextTabY + 16)
 
         local rowWrap = new("Frame", {
-            Size             = UDim2.new(1, -16, 0, 30),
+            Size             = UDim2.new(1, -16, 0, 32),
             Position         = UDim2.fromOffset(8, tabY),
             BackgroundTransparency = 1,
+            BackgroundColor3 = S.panelRaised,
             BorderSizePixel  = 0,
             ZIndex           = 3,
         }, sidebar)
+        corner(rowWrap, UDim.new(0, 10))
 
         local btn = new("TextButton", {
             Size             = UDim2.new(1, 0, 1, 0),
@@ -674,7 +927,7 @@ function BlockUI:CreateWindow(cfg)
             Text             = tabText,
             TextColor3       = S.muted,
             FontFace         = Font.fromEnum(S.fontTitle),
-            TextSize         = 15,
+            TextSize         = 14,
             TextXAlignment   = Enum.TextXAlignment.Left,
             TextYAlignment   = Enum.TextYAlignment.Center,
             AutoButtonColor  = false,
@@ -682,11 +935,26 @@ function BlockUI:CreateWindow(cfg)
         }, rowWrap)
 
         new("UIPadding", {
-            PaddingLeft  = UDim.new(0, 6),
-            PaddingRight = UDim.new(0, 6),
+            PaddingLeft  = UDim.new(0, 8),
+            PaddingRight = UDim.new(0, 8),
         }, btn)
 
         tabs[tabName] = { wrap = rowWrap, btn = btn, tabY = tabY }
+
+        rowWrap.MouseEnter:Connect(function()
+            tween(rowWrap, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundTransparency = 0.5,
+                BackgroundColor3 = S.panelRaised,
+            })
+        end)
+        rowWrap.MouseLeave:Connect(function()
+            if activeTab == tabName then
+                return
+            end
+            tween(rowWrap, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                BackgroundTransparency = 1,
+            })
+        end)
 
         -- Tab content frame with scrolling
         local tabFrame = new("ScrollingFrame", {
@@ -694,7 +962,7 @@ function BlockUI:CreateWindow(cfg)
             BackgroundTransparency = 1,
             BorderSizePixel  = 0,
             ScrollBarThickness = 3,
-            ScrollBarImageColor3 = S.metalMid,
+            ScrollBarImageColor3 = S.accent,
             CanvasSize       = UDim2.new(0, 0, 0, 0),
             AutomaticCanvasSize = Enum.AutomaticSize.Y,
             Visible          = false,
@@ -745,7 +1013,7 @@ function BlockUI:CreateWindow(cfg)
             end
 
             local imgBtn = new("ImageButton", {
-                Size             = UDim2.new(1, 0, 0, 32),
+                Size             = UDim2.new(1, 0, 0, 38),
                 BackgroundTransparency = 1,
                 BorderSizePixel  = 0,
                 Image            = SLICE_ASSET,
@@ -756,10 +1024,11 @@ function BlockUI:CreateWindow(cfg)
                 AutoButtonColor  = false,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
+            corner(imgBtn, S.radiusS)
             new("UIStroke", {
-                Color = S.border,
+                Color = S.accent,
                 Thickness = 1,
-                Transparency = 0.5,
+                Transparency = 0.68,
                 ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
             }, imgBtn)
 
@@ -770,11 +1039,22 @@ function BlockUI:CreateWindow(cfg)
                 Text             = labelText,
                 TextColor3       = S.text,
                 FontFace         = Font.fromEnum(S.fontTitle),
-                TextSize         = 15,
+                TextSize         = 14,
                 TextXAlignment   = Enum.TextXAlignment.Left,
                 TextYAlignment   = Enum.TextYAlignment.Center,
                 Active           = false,
             }, imgBtn)
+
+            imgBtn.MouseEnter:Connect(function()
+                tween(imgBtn, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    ImageColor3 = S.sectionTone,
+                })
+            end)
+            imgBtn.MouseLeave:Connect(function()
+                tween(imgBtn, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    ImageColor3 = S.darkContrast,
+                })
+            end)
 
             imgBtn.MouseButton1Click:Connect(function()
                 runCallback(elCfg.Callback)
@@ -807,10 +1087,11 @@ function BlockUI:CreateWindow(cfg)
                 AutoButtonColor  = false,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
+            corner(toggleBtn, S.radiusS)
             new("UIStroke", {
-                Color = S.border,
+                Color = S.accent,
                 Thickness = 1,
-                Transparency = 0.55,
+                Transparency = 0.72,
                 ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
             }, toggleBtn)
 
@@ -926,10 +1207,11 @@ function BlockUI:CreateWindow(cfg)
                 SliceScale       = SLICE_SCALE,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
+            corner(row, S.radiusS)
             new("UIStroke", {
-                Color = S.border,
+                Color = S.accent,
                 Thickness = 1,
-                Transparency = 0.55,
+                Transparency = 0.72,
                 ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
             }, row)
 
@@ -981,7 +1263,7 @@ function BlockUI:CreateWindow(cfg)
                 BorderSizePixel  = 0,
             }, trackBg)
             corner(sliderThumb, UDim.new(1, 0))
-            new("UIStroke", { Color = S.metalMid, Thickness = 1, Transparency = 0.25 }, sliderThumb)
+            new("UIStroke", { Color = S.accent, Thickness = 1, Transparency = 0.35 }, sliderThumb)
 
             local function updateSlider(val, skipCallback)
                 val = math.clamp(math.round(val / inc) * inc, range[1], range[2])
@@ -1282,39 +1564,51 @@ function BlockUI:CreateWindow(cfg)
             return Label
         end
 
-        -- ── Section (Zypher-lignende slice-header) ─────────────
+        -- ── Section (moderne: accent-stribe + små caps) ───────
         function Tab:CreateSection(elCfg)
             elCfg = elCfg or {}
-            local wrap = new("ImageLabel", {
-                Size             = UDim2.new(1, 0, 0, 36),
+            local row = new("Frame", {
+                Size             = UDim2.new(1, 0, 0, 28),
                 BackgroundTransparency = 1,
                 BorderSizePixel  = 0,
-                Image            = SLICE_ASSET,
-                ImageColor3      = S.sectionTone,
-                ScaleType        = Enum.ScaleType.Slice,
-                SliceCenter      = SLICE_RECT,
-                SliceScale       = SLICE_SCALE,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
-            new("UIStroke", {
-                Color = S.border,
-                Thickness = 1,
-                Transparency = 0.6,
-                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-            }, wrap)
+
+            local accentBar = new("Frame", {
+                Size             = UDim2.new(0, 3, 0, 13),
+                Position         = UDim2.fromOffset(0, 5),
+                BackgroundColor3 = S.accent,
+                BorderSizePixel  = 0,
+            }, row)
+            corner(accentBar, UDim.new(0, 2))
+            new("UIGradient", {
+                Rotation = 90,
+                Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, S.accentSoft),
+                    ColorSequenceKeypoint.new(1, S.accentGlow),
+                }),
+            }, accentBar)
 
             new("TextLabel", {
-                Size             = UDim2.new(0.55, 0, 0, 22),
-                Position         = UDim2.fromOffset(6, -6),
+                Size             = UDim2.new(1, -14, 1, 0),
+                Position         = UDim2.fromOffset(12, 0),
                 BackgroundTransparency = 1,
                 Text             = string.upper(elCfg.Name or "SECTION"),
-                TextColor3       = S.metalHighlight,
-                FontFace         = Font.fromEnum(S.fontTitle),
-                TextSize         = 14,
+                TextColor3       = S.muted,
+                FontFace         = Font.fromEnum(Enum.Font.GothamBold),
+                TextSize         = 11,
                 TextXAlignment   = Enum.TextXAlignment.Left,
-                TextYAlignment   = Enum.TextYAlignment.Bottom,
+                TextYAlignment   = Enum.TextYAlignment.Center,
                 Active           = false,
-            }, wrap)
+            }, row)
+
+            new("Frame", {
+                Size             = UDim2.new(1, -12, 0, 1),
+                Position         = UDim2.new(0, 12, 1, -1),
+                BackgroundColor3 = S.border,
+                BackgroundTransparency = 0.4,
+                BorderSizePixel  = 0,
+            }, row)
         end
 
         return Tab
@@ -1326,6 +1620,14 @@ function BlockUI:CreateWindow(cfg)
 
     function Window:Toggle()
         gui.Enabled = not gui.Enabled
+    end
+
+    do
+        local tp = main.Position
+        main.Position = UDim2.new(tp.X.Scale, tp.X.Offset, tp.Y.Scale, tp.Y.Offset + 32)
+        tween(main, TweenInfo.new(0.48, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+            Position = tp,
+        })
     end
 
     table.insert(BlockUI._windows, Window)
@@ -1356,10 +1658,13 @@ end
 
 local Window = BlockUI:CreateWindow({
     Name     = "Mit Script",
-    Subtitle = "Hub · grunge metal",
-    ToggleKey = Enum.KeyCode.Insert,
-    -- Upload dit stjerne/crescent-logo til Roblox → brug rbxassetid her:
-    -- LogoImage = "rbxassetid://1234567890",
+    Subtitle = "Powered by BlockUI",
+    ToggleKey = Enum.KeyCode.RightControl,
+    LogoImage = 74523675899900,
+    -- Dit Roblox UserId (tal) — ikke det samme som et billede-id
+    DeveloperUserIds = { 10770498428 },
+    -- Lille ikon ved siden af “DEV” (rbxasset / tal)
+    DevBadgeImage = 10770498428,
 })
 
 local Main = Window:CreateTab({ Name = "Main" })
