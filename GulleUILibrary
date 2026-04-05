@@ -1,6 +1,6 @@
 --[[
 	GulleUI — Single-file Roblox executor UI library
-	One built-in dark theme (hub-style). Built from Instances only. No external UI libs.
+	Default theme: deep charcoal + orange accent. Built from Instances only. No external UI libs.
 ]]
 
 local Library = {}
@@ -160,7 +160,6 @@ function Utils.Ripple(button, color, duration, screenPos)
 		Parent = layer,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = circle })
-	-- Lille, diskret bølge (under knappens største kant).
 	local rippleSide = math.max(4, math.floor(maxDim * 0.52 + 0.5))
 	Utils.Tween(circle, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		Size = UDim2.fromOffset(rippleSide, rippleSide),
@@ -209,27 +208,27 @@ function Services.StateService:OnFlagChanged(flag, fn)
 end
 -- #endregion
 
--- #region ThemeService (single fixed palette — hub-style dark + blue accent)
+-- #region ThemeService (default: deep charcoal + orange accent)
 local _defaultTheme = {
-	Background = Color3.fromRGB(26, 26, 26),
-	BackgroundElevated = Color3.fromRGB(30, 30, 30),
-	Surface = Color3.fromRGB(38, 38, 38),
-	SurfaceMuted = Color3.fromRGB(34, 34, 34),
-	SurfaceHover = Color3.fromRGB(42, 42, 42),
-	RowBackground = Color3.fromRGB(33, 33, 33),
-	Accent = Color3.fromRGB(59, 130, 246),
-	AccentHover = Color3.fromRGB(96, 165, 250),
-	AccentMuted = Color3.fromRGB(37, 99, 235),
-	Text = Color3.fromRGB(255, 255, 255),
-	TextDim = Color3.fromRGB(170, 170, 178),
-	Border = Color3.fromRGB(55, 55, 55),
-	BorderLight = Color3.fromRGB(65, 65, 65),
+	Background = Color3.fromRGB(16, 16, 18),
+	BackgroundElevated = Color3.fromRGB(22, 22, 26),
+	Surface = Color3.fromRGB(30, 30, 34),
+	SurfaceMuted = Color3.fromRGB(26, 26, 30),
+	SurfaceHover = Color3.fromRGB(40, 40, 46),
+	RowBackground = Color3.fromRGB(28, 28, 32),
+	Accent = Color3.fromRGB(234, 118, 42),
+	AccentHover = Color3.fromRGB(251, 156, 74),
+	AccentMuted = Color3.fromRGB(180, 82, 28),
+	Text = Color3.fromRGB(246, 246, 244),
+	TextDim = Color3.fromRGB(148, 146, 138),
+	Border = Color3.fromRGB(48, 46, 44),
+	BorderLight = Color3.fromRGB(62, 58, 54),
 	Success = Color3.fromRGB(52, 211, 153),
 	Error = Color3.fromRGB(248, 113, 113),
 	Warning = Color3.fromRGB(251, 191, 36),
-	TabInactive = Color3.fromRGB(160, 160, 170),
+	TabInactive = Color3.fromRGB(118, 116, 108),
 	-- Sidebar rank: "Developer" uses this; "User" uses TextDim.
-	DeveloperRank = Color3.fromRGB(125, 220, 255),
+	DeveloperRank = Color3.fromRGB(255, 186, 120),
 }
 
 -- Hardcoded dev IDs (merged with opts.DeveloperUserIds). Add your UserId here or pass DeveloperUserIds on CreateWindow.
@@ -307,21 +306,16 @@ local _defaultTokens = {
 	Animation = {
 		WindowOpenDuration = 0.32,
 		WindowOpenScale = 1,
-		-- < 1 = pop-in via UIScale; sæt til 1 eller nil for at slå fra
 		WindowOpenScaleStart = 0.94,
-		WindowStrokeFadeIn = true,
 		LoadingBarDuration = 0.35,
-		-- Hub: CanvasGroup-fade (kræver CanvasGroup; ellers springes over)
 		WindowContentFadeIn = true,
 		WindowContentFadeOut = true,
 		WindowCloseFadeDuration = 0.28,
-		-- Key gate (CreateWindowAfterKey): nil = fallback til WindowOpen*
 		KeyGateOpenDuration = 0.3,
 		KeyGateOpenScaleStart = 0.92,
 		KeyGateCloseDuration = 0.22,
 		KeyGateCloseScaleEnd = 0.86,
 		KeyGateContentFadeIn = true,
-		-- Tom pause efter key-ScreenGui er væk, før hub oprettes (mere rolig overgang)
 		KeyGatePauseBeforeHub = 0.2,
 	},
 	Notification = {
@@ -331,6 +325,8 @@ local _defaultTokens = {
 		BodySize = 13,
 		PaddingX = 12,
 		PaddingY = 10,
+		FadeInDuration = 0.22,
+		FadeOutDuration = 0.2,
 	},
 }
 
@@ -557,7 +553,6 @@ end
 function Services.NotificationService:_spawnToast(item)
 	local theme = Services.ThemeService.Current
 	local nt = Services.ThemeService.Tokens.Notification
-	local slidePx = 44
 	self._toastOrder = self._toastOrder + 1
 	if self._stack then
 		self._stack.Size = UDim2.new(0, nt.Width + 24, 1, -40)
@@ -577,13 +572,21 @@ function Services.NotificationService:_spawnToast(item)
 		Parent = self._stack or self._container,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, nt.CornerRadius), Parent = card })
+	local toastFade = Utils.TryCreateCanvasGroup({
+		Name = "ToastFade",
+		GroupTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Position = UDim2.fromScale(0, 0),
+		Parent = card,
+	})
+	local contentRoot = toastFade or card
 	local mover = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Size = UDim2.new(1, 0, 1, 0),
-		Position = UDim2.new(0, slidePx, 0, 0),
+		Position = UDim2.new(0, 0, 0, 0),
 		ClipsDescendants = true,
-		Parent = card,
+		Parent = contentRoot,
 	})
 	local pad = Utils.Create("UIPadding", {
 		PaddingTop = UDim.new(0, padY),
@@ -637,35 +640,38 @@ function Services.NotificationService:_spawnToast(item)
 		LayoutOrder = 1,
 		Parent = inner,
 	})
-	card.BackgroundTransparency = 1
-	title.TextTransparency = 1
-	body.TextTransparency = 1
-	Utils.Tween(mover, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-		Position = UDim2.new(0, 0, 0, 0),
-	})
-	Utils.Tween(card, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-		BackgroundTransparency = 0,
-	})
-	Utils.Tween(title, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { TextTransparency = 0 })
-	Utils.Tween(body, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { TextTransparency = 0 })
 	task.defer(refreshCardHeight)
+	local fadeIn = nt.FadeInDuration or 0.22
+	if toastFade then
+		Utils.Tween(
+			toastFade,
+			TweenInfo.new(fadeIn, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ GroupTransparency = 0 }
+		)
+	end
 	task.delay(item.Duration or 3.5, function()
 		if not card.Parent then
 			return
 		end
-		Utils.Tween(mover, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
-			Position = UDim2.new(0, slidePx, 0, 0),
-		})
-		Utils.Tween(card, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
-			BackgroundTransparency = 1,
-		})
-		Utils.Tween(title, TweenInfo.new(0.3), { TextTransparency = 1 })
-		Utils.Tween(body, TweenInfo.new(0.3), { TextTransparency = 1 })
-		task.delay(0.32, function()
+		local function removeCard()
 			if card.Parent then
 				card:Destroy()
 			end
-		end)
+		end
+		if toastFade then
+			local fadeOut = nt.FadeOutDuration or 0.2
+			local tw = Utils.Tween(
+				toastFade,
+				TweenInfo.new(fadeOut, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+				{ GroupTransparency = 1 }
+			)
+			task.spawn(function()
+				tw.Completed:Wait()
+				removeCard()
+			end)
+		else
+			removeCard()
+		end
 	end)
 end
 
@@ -990,14 +996,6 @@ function Core.CreateWindow(opts)
 		Parent = mainParent,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = main })
-	local mainStroke = Utils.Create("UIStroke", {
-		Color = colors.Border,
-		Thickness = 1,
-		Transparency = (tok.Animation.WindowStrokeFadeIn == false) and 0.82 or 1,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-		Parent = main,
-	})
-
 	local mainUIScale = Utils.Create("UIScale", {
 		Name = "_GulleWindowScale",
 		Scale = 1,
@@ -1007,6 +1005,13 @@ function Core.CreateWindow(opts)
 	if type(wScaleStart) == "number" and wScaleStart > 0 and wScaleStart < 0.999 then
 		mainUIScale.Scale = wScaleStart
 	end
+	local mainStroke = Utils.Create("UIStroke", {
+		Color = colors.Border,
+		Thickness = 1,
+		Transparency = 0.82,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Parent = main,
+	})
 
 	local accent = nil
 	if (tok.Window.AccentBarHeight or 0) > 0 then
@@ -2004,25 +2009,14 @@ function Core.CreateWindow(opts)
 				{ Scale = tok.Animation.WindowOpenScale or 1 }
 			)
 		end
-		if tok.Animation.WindowStrokeFadeIn ~= false and mainStroke and mainStroke.Transparency > 0.9 then
-			Utils.Tween(
-				mainStroke,
-				TweenInfo.new(math.min(openDur + 0.05, 0.4), Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ Transparency = 0.82 }
-			)
-		end
-		Utils.Tween(
-			loadBarFill,
-			TweenInfo.new(tok.Animation.LoadingBarDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ Size = UDim2.new(1, 0, 1, 0) }
-		)
-		task.wait(0.28)
-		Utils.Tween(loading, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 })
-		Utils.Tween(loadTitle, TweenInfo.new(0.25), { TextTransparency = 1 })
-		Utils.Tween(loadSub, TweenInfo.new(0.25), { TextTransparency = 1 })
-		Utils.Tween(loadBarBg, TweenInfo.new(0.25), { BackgroundTransparency = 1 })
-		Utils.Tween(loadBarFill, TweenInfo.new(0.25), { BackgroundTransparency = 1 })
-		task.wait(0.32)
+		loadBarFill.Size = UDim2.new(1, 0, 1, 0)
+		local hold = math.max(openDur, tok.Animation.LoadingBarDuration or 0.35, 0.2)
+		task.wait(hold)
+		loading.BackgroundTransparency = 1
+		loadTitle.TextTransparency = 1
+		loadSub.TextTransparency = 1
+		loadBarBg.BackgroundTransparency = 1
+		loadBarFill.BackgroundTransparency = 1
 		loading.Visible = false
 	end)
 
@@ -2253,45 +2247,34 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
 
-		local function setState(v, animate)
+		local function setState(v)
 			value = v
 			if flag then
 				Services.StateService:SetFlag(flag, v)
 			end
 			local th = select(1, ElemCtx(win))
-			if animate then
-				Utils.Tween(track, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-					BackgroundColor3 = v and th.Accent or th.Surface,
-				})
-				Utils.Tween(
-					knob,
-					TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
-					{ Position = v and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9) }
-				)
-			else
-				track.BackgroundColor3 = v and th.Accent or th.Surface
-				knob.Position = v and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
-			end
+			track.BackgroundColor3 = v and th.Accent or th.Surface
+			knob.Position = v and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
 			if opts.Callback then
 				task.spawn(opts.Callback, v)
 			end
 		end
 
 		switch.MouseButton1Click:Connect(function()
-			setState(not value, true)
+			setState(not value)
 		end)
 
 		if flag then
 			Services.StateService:OnFlagChanged(flag, function(v)
 				if type(v) == "boolean" and v ~= value then
-					setState(v, true)
+					setState(v)
 				end
 			end)
 		end
 
 		return elementApi(card, {
 			Set = function(_, v)
-				setState(v, true)
+				setState(v)
 			end,
 			Get = function()
 				return value
@@ -2342,11 +2325,11 @@ function Elements.CreateSection(tab, arg1, arg2)
 		end)
 		btn.MouseEnter:Connect(function()
 			local th = select(1, ElemCtx(win))
-			Utils.Tween(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = th.Accent })
+			btn.BackgroundColor3 = th.Accent
 		end)
 		btn.MouseLeave:Connect(function()
 			local th = select(1, ElemCtx(win))
-			Utils.Tween(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = th.Surface })
+			btn.BackgroundColor3 = th.Surface
 		end)
 
 		return elementApi(card, {
@@ -2610,7 +2593,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			listFrame.Visible = open
 			if open then
 				listFrame.Size = UDim2.new(1, 0, 0, 0)
-				Utils.Tween(listFrame, TweenInfo.new(0.2), { BackgroundTransparency = 0 })
+				listFrame.BackgroundTransparency = 0
 			end
 		end)
 
@@ -3289,6 +3272,7 @@ function Library:Init()
 		local tok = Core.GetTokens(themeStub)
 		local animTok = tok.Animation or {}
 		local keyOpenDur = animTok.KeyGateOpenDuration or animTok.WindowOpenDuration or 0.32
+		local keyCloseDur = animTok.KeyGateCloseDuration or (animTok.WindowOpenDuration or 0.32) * 0.85
 		local keyOpenStart = animTok.KeyGateOpenScaleStart
 		if keyOpenStart == nil then
 			keyOpenStart = animTok.WindowOpenScaleStart
@@ -3296,7 +3280,6 @@ function Library:Init()
 		if keyOpenStart == nil then
 			keyOpenStart = 0.92
 		end
-		local keyCloseDur = animTok.KeyGateCloseDuration or (animTok.WindowOpenDuration or 0.32) * 0.85
 		local keyCloseEndScale = animTok.KeyGateCloseScaleEnd
 		if keyCloseEndScale == nil then
 			keyCloseEndScale = animTok.WindowOpenScaleStart
@@ -3573,8 +3556,9 @@ function Library:Init()
 			end
 		end
 
-		local function runKeyExitAnimations(ti, afterTween)
-			local twClose = Utils.Tween(cardUIScale, ti, { Scale = keyCloseEndScale })
+		local function runKeyExitAnimations(afterDone)
+			local ti = TweenInfo.new(keyCloseDur, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+			local twScale = Utils.Tween(cardUIScale, ti, { Scale = keyCloseEndScale })
 			if cardStroke then
 				Utils.Tween(cardStroke, ti, { Transparency = 1 })
 			end
@@ -3582,11 +3566,8 @@ function Library:Init()
 				Utils.Tween(keyFadeRoot, ti, { GroupTransparency = 1 })
 			end
 			task.spawn(function()
-				local state = twClose.Completed:Wait()
-				if state ~= Enum.PlaybackState.Completed then
-					return
-				end
-				afterTween()
+				twScale.Completed:Wait()
+				afterDone()
 			end)
 		end
 
@@ -3600,8 +3581,7 @@ function Library:Init()
 				closeBtn.Active = false
 			end
 			submitBtn.Active = false
-			local tiClose = TweenInfo.new(keyCloseDur, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-			runKeyExitAnimations(tiClose, function()
+			runKeyExitAnimations(function()
 				destroyKeyScreen()
 				if keyPauseBeforeHub > 0 then
 					task.wait(keyPauseBeforeHub)
@@ -3659,8 +3639,7 @@ function Library:Init()
 				end
 				exiting = true
 				setBusy(true)
-				local tiCancel = TweenInfo.new(keyCloseDur * 0.92, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-				runKeyExitAnimations(tiCancel, function()
+				runKeyExitAnimations(function()
 					destroyKeyScreen()
 					if type(opts.OnCancel) == "function" then
 						pcall(opts.OnCancel)
@@ -3711,8 +3690,7 @@ function Library:Init()
 				end
 				exiting = true
 				setBusy(true)
-				local tiKill = TweenInfo.new(keyCloseDur * 0.85, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-				runKeyExitAnimations(tiKill, function()
+				runKeyExitAnimations(function()
 					destroyKeyScreen()
 				end)
 			end,
@@ -3759,8 +3737,8 @@ Library.BlockyTheme = {
 		Notification = { CornerRadius = 0 },
 	},
 	Colors = {
-		Border = Color3.fromRGB(78, 78, 86),
-		BorderLight = Color3.fromRGB(98, 98, 108),
+		Border = Color3.fromRGB(72, 64, 58),
+		BorderLight = Color3.fromRGB(92, 82, 74),
 	},
 }
 
