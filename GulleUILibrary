@@ -253,7 +253,7 @@ local _defaultTokens = {
 		PagePaddingBottom = 10,
 		PagePaddingLeft = 6,
 		PagePaddingRight = 8,
-		ColumnGap = 32,
+		ColumnGap = 48,
 		SectionStackPadding = 8,
 	},
 	Section = {
