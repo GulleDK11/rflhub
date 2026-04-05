@@ -41,6 +41,28 @@ function Utils.DeepCopy(t)
 	return c
 end
 
+local function _isThemeMetaKey(k)
+	return k == "ApplyGlobally" or k == "Globally" or k == "Colors" or k == "Tokens"
+end
+
+function Utils.DeepMerge(target, source)
+	if type(target) ~= "table" or type(source) ~= "table" then
+		return target
+	end
+	for k, v in pairs(source) do
+		if not _isThemeMetaKey(k) then
+		if typeof(v) == "Color3" or typeof(v) == "EnumItem" or typeof(v) == "UDim" or typeof(v) == "UDim2" then
+			target[k] = v
+		elseif type(v) == "table" and type(target[k]) == "table" and not (v[1] and type(v[1]) == "number" and v[2] and type(v[2]) == "number" and v[3]) then
+			Utils.DeepMerge(target[k], v)
+		else
+			target[k] = v
+		end
+		end
+	end
+	return target
+end
+
 function Utils.Create(class, props, children)
 	local inst = Instance.new(class)
 	for k, v in pairs(props or {}) do
@@ -108,6 +130,9 @@ function Services.StateService:SetFlag(flag, value)
 				task.spawn(fn, value, old)
 			end
 		end
+		if Services.ConfigService._onFlagChanged then
+			Services.ConfigService:_onFlagChanged(flag, value, old)
+		end
 	end
 end
 
@@ -121,29 +146,222 @@ function Services.StateService:OnFlagChanged(flag, fn)
 end
 -- #endregion
 
--- #region ThemeService
-Services.ThemeService = {
-	Current = {
-		Background = Color3.fromRGB(18, 18, 22),
-		Surface = Color3.fromRGB(28, 28, 34),
-		SurfaceHover = Color3.fromRGB(36, 36, 44),
-		Accent = Color3.fromRGB(88, 101, 242),
-		AccentMuted = Color3.fromRGB(68, 78, 200),
-		Text = Color3.fromRGB(240, 240, 245),
-		TextDim = Color3.fromRGB(160, 160, 175),
-		Border = Color3.fromRGB(45, 45, 55),
-		Success = Color3.fromRGB(67, 181, 129),
-		Error = Color3.fromRGB(237, 66, 69),
-		Warning = Color3.fromRGB(250, 166, 26),
+-- #region ThemeService (WindUI-style: Colors + Tokens, deep merge, per-window overrides)
+local _defaultTheme = {
+	Background = Color3.fromRGB(14, 14, 18),
+	BackgroundElevated = Color3.fromRGB(20, 20, 26),
+	Surface = Color3.fromRGB(26, 26, 32),
+	SurfaceMuted = Color3.fromRGB(22, 22, 28),
+	SurfaceHover = Color3.fromRGB(38, 38, 48),
+	Accent = Color3.fromRGB(99, 102, 241),
+	AccentHover = Color3.fromRGB(129, 140, 248),
+	AccentMuted = Color3.fromRGB(67, 72, 200),
+	Text = Color3.fromRGB(244, 244, 248),
+	TextDim = Color3.fromRGB(148, 148, 165),
+	Border = Color3.fromRGB(48, 48, 58),
+	BorderLight = Color3.fromRGB(56, 56, 68),
+	Success = Color3.fromRGB(52, 211, 153),
+	Error = Color3.fromRGB(248, 113, 113),
+	Warning = Color3.fromRGB(251, 191, 36),
+	TabInactive = Color3.fromRGB(120, 120, 138),
+}
+
+local _defaultTokens = {
+	Window = {
+		Width = 600,
+		Height = 468,
+		CornerRadius = 0,
+		PaddingX = 16,
+		TitleBarHeight = 52,
+		TitleBarTop = 22,
+		BodyTop = 84,
+		TitleSize = 20,
+		SubtitleSize = 13,
+		AccentBarHeight = 2,
+		AccentBarTop = 14,
+	},
+	Tab = {
+		SidebarWidth = 158,
+		ContentGap = 16,
+		ItemHeight = 36,
+		ItemRadius = 0,
+		SidebarPadding = 10,
+		ItemSpacing = 4,
+		ScrollBarThickness = 2,
+		PageScrollBarThickness = 3,
+	},
+	Section = {
+		HeaderTextSize = 12,
+		TitleSpacing = 4,
+		BoxRadius = 0,
+		InnerPadding = 12,
+		RowSpacing = 6,
+	},
+	Control = {
+		DefaultRadius = 0,
+		LabelTextSize = 14,
+		SecondaryTextSize = 13,
+		ButtonHeight = 34,
+		ToggleRowHeight = 28,
+		SliderBlockHeight = 46,
+		SliderTrackThickness = 8,
+		InputRowHeight = 58,
+		InputHeight = 30,
+		KeybindRowHeight = 32,
+		DropdownRowOpen = 32,
+	},
+	Animation = {
+		WindowOpenDuration = 0.25,
+		WindowOpenScale = 1,
+		TabTween = 0.15,
+		LoadingBarDuration = 0.35,
+	},
+	Notification = {
+		Width = 280,
+		CornerRadius = 0,
+		TitleSize = 15,
+		BodySize = 13,
+		PaddingX = 12,
+		PaddingY = 10,
 	},
 }
 
+local _tokenGroupKeys = {
+	Window = true,
+	Tab = true,
+	Section = true,
+	Control = true,
+	Toggle = true,
+	Button = true,
+	Slider = true,
+	Input = true,
+	Dropdown = true,
+	ColorPicker = true,
+	Keybind = true,
+	Label = true,
+	Paragraph = true,
+	Animation = true,
+	Notification = true,
+}
+
+Services.ThemeService = {
+	Current = Utils.DeepCopy(_defaultTheme),
+	Tokens = Utils.DeepCopy(_defaultTokens),
+	_defaultColors = _defaultTheme,
+	_defaultTokens = _defaultTokens,
+	Presets = {
+		Default = { Colors = Utils.DeepCopy(_defaultTheme), Tokens = Utils.DeepCopy(_defaultTokens) },
+		Ocean = {
+			Colors = {
+				Accent = Color3.fromRGB(56, 189, 248),
+				AccentHover = Color3.fromRGB(125, 211, 252),
+				AccentMuted = Color3.fromRGB(14, 116, 144),
+			},
+		},
+		Rose = {
+			Colors = {
+				Accent = Color3.fromRGB(244, 114, 182),
+				AccentHover = Color3.fromRGB(251, 207, 232),
+				AccentMuted = Color3.fromRGB(190, 24, 93),
+			},
+		},
+		Midnight = {
+			Colors = {
+				Background = Color3.fromRGB(10, 12, 22),
+				BackgroundElevated = Color3.fromRGB(16, 18, 30),
+				Surface = Color3.fromRGB(22, 24, 40),
+				SurfaceMuted = Color3.fromRGB(18, 20, 34),
+				SurfaceHover = Color3.fromRGB(36, 40, 62),
+				Border = Color3.fromRGB(40, 44, 70),
+			},
+		},
+	},
+	_windowCallbacks = {},
+}
+
+Services.ThemeService.TokenGroupKeys = _tokenGroupKeys
+
+function Services.ThemeService:_applyPresetTable(preset)
+	if not preset then
+		return
+	end
+	self.Current = Utils.DeepCopy(self._defaultColors)
+	self.Tokens = Utils.DeepCopy(self._defaultTokens)
+	if type(preset.Colors) == "table" then
+		Utils.DeepMerge(self.Current, preset.Colors)
+	end
+	if type(preset.Tokens) == "table" then
+		Utils.DeepMerge(self.Tokens, preset.Tokens)
+	end
+	for k, v in pairs(preset) do
+		if k ~= "Colors" and k ~= "Tokens" and typeof(v) == "Color3" then
+			self.Current[k] = v
+		end
+		if _tokenGroupKeys[k] and type(v) == "table" then
+			self.Tokens[k] = self.Tokens[k] or {}
+			Utils.DeepMerge(self.Tokens[k], v)
+		end
+	end
+end
+
+function Services.ThemeService:_mergeThemeTable(partial)
+	if type(partial) ~= "table" then
+		return
+	end
+	if type(partial.Colors) == "table" then
+		Utils.DeepMerge(self.Current, partial.Colors)
+	end
+	if type(partial.Tokens) == "table" then
+		Utils.DeepMerge(self.Tokens, partial.Tokens)
+	end
+	for k, v in pairs(partial) do
+		if _isThemeMetaKey(k) then
+			-- skip
+		elseif k == "Colors" or k == "Tokens" then
+			-- handled
+		elseif _tokenGroupKeys[k] and type(v) == "table" then
+			self.Tokens[k] = self.Tokens[k] or {}
+			Utils.DeepMerge(self.Tokens[k], v)
+		elseif typeof(v) == "Color3" then
+			self.Current[k] = v
+		elseif type(v) ~= "table" then
+			self.Current[k] = v
+		end
+	end
+end
+
 function Services.ThemeService:ModifyTheme(partial)
-	for k, v in pairs(partial or {}) do
-		self.Current[k] = v
+	if type(partial) == "string" then
+		local preset = self.Presets[partial]
+		self:_applyPresetTable(preset or self.Presets.Default)
+	elseif type(partial) == "table" then
+		self:_mergeThemeTable(partial)
+	end
+	for _, fn in ipairs(self._windowCallbacks) do
+		pcall(fn)
 	end
 	if self._apply then
-		self._apply()
+		pcall(self._apply)
+	end
+end
+
+function Services.ThemeService:GetColors()
+	return Utils.DeepCopy(self.Current)
+end
+
+function Services.ThemeService:GetTokens()
+	return Utils.DeepCopy(self.Tokens)
+end
+
+function Services.ThemeService:RegisterWindowTheme(fn)
+	table.insert(self._windowCallbacks, fn)
+	return function()
+		for i, f in ipairs(self._windowCallbacks) do
+			if f == fn then
+				table.remove(self._windowCallbacks, i)
+				break
+			end
+		end
 	end
 end
 
@@ -247,26 +465,28 @@ function Services.NotificationService:_next()
 	self._processing = true
 	local item = table.remove(self._queue, 1)
 	local theme = Services.ThemeService.Current
+	local nt = Services.ThemeService.Tokens.Notification
 	local card = Utils.Create("Frame", {
 		BackgroundColor3 = theme.Surface,
-		BackgroundTransparency = 0.05,
-		Size = UDim2.new(0, 280, 0, 0),
+		BackgroundTransparency = 0,
+		BorderSizePixel = 1,
+		BorderColor3 = theme.Border,
+		Size = UDim2.new(0, nt.Width, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = self._container,
 	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = card })
-	Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.4, Parent = card })
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, nt.CornerRadius), Parent = card })
 	local pad = Utils.Create("UIPadding", {
-		PaddingTop = UDim.new(0, 12),
-		PaddingBottom = UDim.new(0, 12),
-		PaddingLeft = UDim.new(0, 14),
-		PaddingRight = UDim.new(0, 14),
+		PaddingTop = UDim.new(0, nt.PaddingY),
+		PaddingBottom = UDim.new(0, nt.PaddingY),
+		PaddingLeft = UDim.new(0, nt.PaddingX),
+		PaddingRight = UDim.new(0, nt.PaddingX),
 		Parent = card,
 	})
 	local title = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBold,
-		TextSize = 15,
+		TextSize = nt.TitleSize,
 		TextColor3 = theme.Text,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextWrapped = true,
@@ -278,13 +498,13 @@ function Services.NotificationService:_next()
 	local body = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
-		TextSize = 13,
+		TextSize = nt.BodySize,
 		TextColor3 = theme.TextDim,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextWrapped = true,
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Size = UDim2.new(1, 0, 0, 0),
-		Text = item.Message or "",
+		Text = item.Message or item.Content or "",
 		Parent = card,
 		LayoutOrder = 1,
 	})
@@ -294,7 +514,7 @@ function Services.NotificationService:_next()
 	body.TextTransparency = 1
 	Utils.Tween(card, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 		Position = UDim2.new(1, -20, 1, 0),
-		BackgroundTransparency = 0.05,
+		BackgroundTransparency = 0,
 	})
 	Utils.Tween(title, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { TextTransparency = 0 })
 	Utils.Tween(body, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { TextTransparency = 0 })
@@ -325,14 +545,30 @@ function Services.NotificationService:Notify(data)
 end
 -- #endregion
 
--- #region ConfigService
+-- #region ConfigService (Rayfield-style paths + autosave)
 Services.ConfigService = {
 	Profile = "default",
 	Folder = "GulleUI",
+	_autoWindows = {},
 }
 
 local function configPath(profile)
 	return Services.ConfigService.Folder .. "/" .. (profile or Services.ConfigService.Profile) .. ".json"
+end
+
+function Services.ConfigService:_onFlagChanged()
+	for _, w in ipairs(self._autoWindows) do
+		if not w._destroyed and w._configEnabled and w._scheduleAutosave then
+			w:_scheduleAutosave()
+		end
+	end
+end
+
+function Services.ConfigService:NormalizeLoadedValue(v)
+	if type(v) == "table" and v.R and v.G and v.B then
+		return { math.floor(v.R), math.floor(v.G), math.floor(v.B) }
+	end
+	return v
 end
 
 function Services.ConfigService:Save(profile)
@@ -375,13 +611,53 @@ function Services.ConfigService:Load(profile)
 		return false
 	end
 	for k, v in pairs(data) do
-		Services.StateService:SetFlag(k, v)
+		Services.StateService:SetFlag(k, self:NormalizeLoadedValue(v))
 	end
 	return true
 end
 
 function Services.ConfigService:SetProfile(name)
 	self.Profile = name or "default"
+end
+
+function Services.ConfigService:SaveToPath(folder, fileName)
+	local path = folder .. "/" .. fileName .. ".json"
+	local ok, json = pcall(function()
+		return HttpService:JSONEncode(Services.StateService.Flags)
+	end)
+	if not ok or not writefile then
+		return false
+	end
+	local ok = pcall(function()
+		if isfolder and not isfolder(folder) and makefolder then
+			makefolder(folder)
+		end
+		writefile(path, json)
+	end)
+	return ok
+end
+
+function Services.ConfigService:LoadFromPath(folder, fileName)
+	local path = folder .. "/" .. fileName .. ".json"
+	if not readfile or not isfile or not isfile(path) then
+		return false
+	end
+	local ok, json = pcall(function()
+		return readfile(path)
+	end)
+	if not ok or not json then
+		return false
+	end
+	local ok2, data = pcall(function()
+		return HttpService:JSONDecode(json)
+	end)
+	if not ok2 or type(data) ~= "table" then
+		return false
+	end
+	for k, v in pairs(data) do
+		Services.StateService:SetFlag(k, self:NormalizeLoadedValue(v))
+	end
+	return true
 end
 -- #endregion
 
@@ -400,126 +676,236 @@ function Services.DependencyService:Link(flagA, flagB, mapFn)
 		end
 	end)
 end
+
+function Services.DependencyService:RegisterDependency(flagA, flagB, mapFn)
+	self:Link(flagA, flagB, mapFn)
+end
+
+function Services.DependencyService:Watch(flag, callback)
+	Services.StateService:OnFlagChanged(flag, callback)
+end
+
+function Services.DependencyService:When(flag, predicate, callback)
+	Services.StateService:OnFlagChanged(flag, function(v, old)
+		if predicate(v, old) then
+			callback(v, old)
+		end
+	end)
+end
+
+function Services.DependencyService:BindElements(sourceFlag, targetFlag, mapper)
+	self:Link(sourceFlag, targetFlag, mapper)
+end
 -- #endregion
 
 -- #region Core internal UI builders
-function Core._ApplyThemeToWindow(window)
-	local theme = Services.ThemeService.Current
-	if window._root then
-		window._root.BackgroundColor3 = theme.Background
+function Core.GetColors(window)
+	local C = Utils.DeepCopy(Services.ThemeService.Current)
+	if window and window._themeOverride then
+		local o = window._themeOverride
+		if type(o.Colors) == "table" then
+			Utils.DeepMerge(C, o.Colors)
+		end
+		local groups = Services.ThemeService.TokenGroupKeys
+		for k, v in pairs(o) do
+			if k ~= "Colors" and k ~= "Tokens" and (not groups or not groups[k]) and typeof(v) == "Color3" then
+				C[k] = v
+			end
+		end
 	end
-	if window._surface then
-		window._surface.BackgroundColor3 = theme.Surface
+	return C
+end
+
+function Core.GetTokens(window)
+	local T = Utils.DeepCopy(Services.ThemeService.Tokens)
+	if window and window._themeOverride then
+		local o = window._themeOverride
+		if type(o.Tokens) == "table" then
+			Utils.DeepMerge(T, o.Tokens)
+		end
+		local groups = Services.ThemeService.TokenGroupKeys
+		if groups then
+			for k, v in pairs(o) do
+				if groups[k] and type(v) == "table" then
+					T[k] = T[k] or {}
+					Utils.DeepMerge(T[k], v)
+				end
+			end
+		end
 	end
-	if window._title then
-		window._title.TextColor3 = theme.Text
+	return T
+end
+
+function Core.AddThemeRef(window, inst, propertyName, themeKey)
+	if not inst then
+		return
 	end
-	if window._accentBar then
-		window._accentBar.BackgroundColor3 = theme.Accent
+	window._themeRefs = window._themeRefs or {}
+	table.insert(window._themeRefs, { inst, propertyName, themeKey })
+	local T = Core.GetColors(window)
+	if T[themeKey] ~= nil then
+		inst[propertyName] = T[themeKey]
+	end
+end
+
+function Core.ApplyThemeRefs(window)
+	local T = Core.GetColors(window)
+	for _, r in ipairs(window._themeRefs or {}) do
+		local inst, prop, key = r[1], r[2], r[3]
+		if inst.Parent and T[key] ~= nil then
+			inst[prop] = T[key]
+		end
 	end
 end
 
 function Core.CreateWindow(opts)
 	opts = opts or {}
-	local theme = Services.ThemeService.Current
+	local displayName = opts.Name or opts.Title or "GulleUI"
+	local subtitle = opts.Subtitle or "Clean interface"
+	local loadingTitle = opts.LoadingTitle or displayName
+	local loadingSub = opts.LoadingSubtitle or subtitle
+
+	local configSaving = opts.ConfigurationSaving or {}
+	local configEnabled = configSaving.Enabled == true
+	local configFolder = configSaving.FolderName or "GulleUI"
+	local configFileName = configSaving.FileName or tostring(game.PlaceId)
+
+	if configEnabled then
+		Services.ConfigService:LoadFromPath(configFolder, configFileName)
+	end
+
+	local windowThemeOverride = nil
+	if type(opts.Theme) == "string" then
+		Services.ThemeService:ModifyTheme(opts.Theme)
+	elseif type(opts.Theme) == "table" then
+		if opts.Theme.ApplyGlobally or opts.Theme.Globally then
+			Services.ThemeService:ModifyTheme(opts.Theme)
+		else
+			windowThemeOverride = opts.Theme
+		end
+	end
+
+	local themeStub = { _themeOverride = windowThemeOverride }
+	local colors = Core.GetColors(themeStub)
+	local tok = Core.GetTokens(themeStub)
+
 	local screen = Utils.Create("ScreenGui", {
-		Name = opts.Name or "GulleUI",
+		Name = displayName:gsub("%s+", "") .. "_GulleUI",
 		ResetOnSpawn = false,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		Parent = getGuiParent(),
 	})
 
-	local scale = Utils.Create("UIScale", { Scale = 0.94, Parent = screen })
-
 	local main = Utils.Create("Frame", {
 		Name = "Main",
-		BackgroundColor3 = theme.Background,
-		Size = UDim2.fromOffset(560, 420),
+		BackgroundColor3 = colors.Background,
+		Size = UDim2.fromOffset(tok.Window.Width, tok.Window.Height),
 		Position = UDim2.fromScale(0.5, 0.5),
 		AnchorPoint = Vector2.new(0.5, 0.5),
+		ZIndex = 1,
 		Parent = screen,
 	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, 14), Parent = main })
-	Utils.Create("UIStroke", {
-		Color = theme.Border,
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = main })
+	local mainStroke = Utils.Create("UIStroke", {
+		Color = colors.Border,
 		Thickness = 1,
-		Transparency = 0.35,
+		Transparency = 0.82,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		Parent = main,
 	})
 
 	local accent = Utils.Create("Frame", {
-		Size = UDim2.new(1, 0, 0, 3),
-		Position = UDim2.fromOffset(0, 0),
-		BackgroundColor3 = theme.Accent,
+		Size = UDim2.new(1, -tok.Window.PaddingX * 2, 0, tok.Window.AccentBarHeight),
+		Position = UDim2.fromOffset(tok.Window.PaddingX, tok.Window.AccentBarTop),
+		BackgroundColor3 = colors.Accent,
+		BackgroundTransparency = 0,
 		BorderSizePixel = 0,
+		ZIndex = 2,
 		Parent = main,
 	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, 14), Parent = accent })
 
 	local titleBar = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -24, 0, 44),
-		Position = UDim2.fromOffset(12, 10),
+		Size = UDim2.new(1, -tok.Window.PaddingX * 2, 0, tok.Window.TitleBarHeight),
+		Position = UDim2.fromOffset(tok.Window.PaddingX, tok.Window.TitleBarTop),
+		ZIndex = 2,
 		Parent = main,
+	})
+
+	local titleStack = Utils.Create("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 1, 0),
+		Parent = titleBar,
+	})
+	Utils.Create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Vertical,
+		Padding = UDim.new(0, 2),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = titleStack,
 	})
 
 	local title = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBold,
-		TextSize = 18,
+		TextSize = tok.Window.TitleSize,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		TextColor3 = theme.Text,
-		Size = UDim2.new(1, -80, 1, 0),
-		Position = UDim2.fromOffset(0, 0),
-		Text = opts.Title or "GulleUI",
-		Parent = titleBar,
+		TextColor3 = colors.Text,
+		Size = UDim2.new(1, 0, 0, 24),
+		Text = displayName,
+		LayoutOrder = 0,
+		Parent = titleStack,
 	})
 
-	local lockBtn = Utils.Create("TextButton", {
-		Text = "",
-		AutoButtonColor = false,
-		BackgroundColor3 = theme.Surface,
-		Size = UDim2.fromOffset(36, 36),
-		Position = UDim2.new(1, -36, 0.5, -18),
-		Parent = titleBar,
-	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = lockBtn })
-	Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.5, Parent = lockBtn })
-	local lockIcon = Utils.Create("TextLabel", {
+	local subTitle = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Font = Enum.Font.GothamBold,
-		TextSize = 16,
-		TextColor3 = theme.TextDim,
-		Text = "🔒",
-		Parent = lockBtn,
+		Font = Enum.Font.GothamMedium,
+		TextSize = tok.Window.SubtitleSize,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = colors.TextDim,
+		Size = UDim2.new(1, 0, 0, 18),
+		Text = subtitle,
+		LayoutOrder = 1,
+		Parent = titleStack,
 	})
 
 	local body = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -24, 1, -70),
-		Position = UDim2.fromOffset(12, 58),
+		Size = UDim2.new(1, -tok.Window.PaddingX * 2, 1, -(tok.Window.BodyTop + tok.Window.PaddingX)),
+		Position = UDim2.fromOffset(tok.Window.PaddingX, tok.Window.BodyTop),
+		ZIndex = 2,
 		Parent = main,
 	})
 
-	local tabList = Utils.Create("ScrollingFrame", {
-		BackgroundColor3 = theme.Surface,
+	local sidebar = Utils.Create("Frame", {
+		BackgroundColor3 = colors.SurfaceMuted,
 		BorderSizePixel = 0,
-		Size = UDim2.new(0, 130, 1, 0),
-		CanvasSize = UDim2.new(0, 0, 0, 0),
-		ScrollBarThickness = 3,
-		ScrollBarImageColor3 = theme.Accent,
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(0, tok.Tab.SidebarWidth, 1, 0),
 		Parent = body,
 	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = tabList })
-	Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.5, Parent = tabList })
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Tab.ItemRadius), Parent = sidebar })
+	local sideStroke = Utils.Create("UIStroke", {
+		Color = colors.Border,
+		Thickness = 1,
+		Transparency = 0.65,
+		Parent = sidebar,
+	})
 	Utils.Create("UIPadding", {
-		PaddingTop = UDim.new(0, 8),
-		PaddingBottom = UDim.new(0, 8),
-		PaddingLeft = UDim.new(0, 8),
-		PaddingRight = UDim.new(0, 8),
-		Parent = tabList,
+		PaddingTop = UDim.new(0, 10),
+		PaddingBottom = UDim.new(0, 10),
+		PaddingLeft = UDim.new(0, 10),
+		PaddingRight = UDim.new(0, 10),
+		Parent = sidebar,
+	})
+
+	local tabList = Utils.Create("ScrollingFrame", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		ScrollBarThickness = tok.Tab.ScrollBarThickness,
+		ScrollBarImageColor3 = colors.Accent,
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		Parent = sidebar,
 	})
 	local tabLayout = Utils.Create("UIListLayout", {
 		Padding = UDim.new(0, 6),
@@ -527,98 +913,95 @@ function Core.CreateWindow(opts)
 		Parent = tabList,
 	})
 
+	local contentGap = tok.Tab.SidebarWidth + tok.Tab.ContentGap
+	local contentShell = Utils.Create("Frame", {
+		BackgroundColor3 = colors.BackgroundElevated,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, -contentGap, 1, 0),
+		Position = UDim2.fromOffset(contentGap, 0),
+		Parent = body,
+	})
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Tab.ItemRadius), Parent = contentShell })
+	local contentShellStroke = Utils.Create("UIStroke", {
+		Color = colors.Border,
+		Thickness = 1,
+		Transparency = 0.85,
+		Parent = contentShell,
+	})
+	Utils.Create("UIPadding", {
+		PaddingTop = UDim.new(0, 8),
+		PaddingBottom = UDim.new(0, 8),
+		PaddingLeft = UDim.new(0, 10),
+		PaddingRight = UDim.new(0, 10),
+		Parent = contentShell,
+	})
+
 	local contentHost = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -142, 1, 0),
-		Position = UDim2.fromOffset(142, 0),
-		Parent = body,
+		Size = UDim2.fromScale(1, 1),
+		Parent = contentShell,
 	})
 
 	local pages = Utils.Create("Folder", { Name = "Pages", Parent = contentHost })
 
 	local loading = Utils.Create("Frame", {
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = 0.25,
+		BackgroundColor3 = colors.Background,
+		BackgroundTransparency = 0,
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = 50,
 		Visible = true,
 		Parent = main,
 	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, 14), Parent = loading })
-	local loadLabel = Utils.Create("TextLabel", {
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = loading })
+	local loadStack = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Font = Enum.Font.GothamMedium,
-		TextSize = 16,
-		TextColor3 = theme.Text,
-		Text = "Loading…",
+		Size = UDim2.fromOffset(320, 120),
+		Position = UDim2.fromScale(0.5, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0.5),
 		ZIndex = 51,
 		Parent = loading,
 	})
-
-	local keyOverlay = Utils.Create("Frame", {
-		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-		BackgroundTransparency = 0.45,
-		Size = UDim2.fromScale(1, 1),
-		Visible = false,
-		ZIndex = 60,
-		Parent = main,
+	Utils.Create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Vertical,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		Padding = UDim.new(0, 8),
+		Parent = loadStack,
 	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, 14), Parent = keyOverlay })
-	local keyBox = Utils.Create("Frame", {
-		BackgroundColor3 = theme.Surface,
-		Size = UDim2.fromOffset(260, 120),
-		Position = UDim2.fromScale(0.5, 0.5),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		ZIndex = 61,
-		Parent = keyOverlay,
-	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = keyBox })
-	Utils.Create("UIStroke", { Color = theme.Border, Parent = keyBox })
-	local keyTitle = Utils.Create("TextLabel", {
+	local loadTitle = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(16, 12),
-		Size = UDim2.new(1, -32, 0, 22),
 		Font = Enum.Font.GothamBold,
-		TextSize = 15,
-		TextColor3 = theme.Text,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Text = "Enter key",
-		ZIndex = 62,
-		Parent = keyBox,
+		TextSize = 22,
+		TextColor3 = colors.Text,
+		Size = UDim2.new(1, 0, 0, 28),
+		Text = loadingTitle,
+		ZIndex = 52,
+		Parent = loadStack,
 	})
-	local keyInput = Utils.Create("TextBox", {
-		BackgroundColor3 = theme.Background,
-		Position = UDim2.fromOffset(16, 44),
-		Size = UDim2.new(1, -32, 0, 32),
-		Font = Enum.Font.Gotham,
+	local loadSub = Utils.Create("TextLabel", {
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamMedium,
 		TextSize = 14,
-		TextColor3 = theme.Text,
-		PlaceholderText = "Key…",
-		PlaceholderColor3 = theme.TextDim,
-		ClearTextOnFocus = false,
-		ZIndex = 62,
-		Parent = keyBox,
+		TextColor3 = colors.TextDim,
+		Size = UDim2.new(1, 0, 0, 20),
+		Text = loadingSub,
+		ZIndex = 52,
+		Parent = loadStack,
 	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = keyInput })
-	Utils.Create("UIPadding", {
-		PaddingLeft = UDim.new(0, 10),
-		PaddingRight = UDim.new(0, 10),
-		Parent = keyInput,
+	local loadBarBg = Utils.Create("Frame", {
+		BackgroundColor3 = colors.SurfaceHover,
+		BorderSizePixel = 1,
+		BorderColor3 = colors.Border,
+		Size = UDim2.new(0, 200, 0, 4),
+		ZIndex = 52,
+		Parent = loadStack,
 	})
-	local keySubmit = Utils.Create("TextButton", {
-		BackgroundColor3 = theme.Accent,
-		Position = UDim2.new(0.5, -50, 1, -40),
-		Size = UDim2.fromOffset(100, 30),
-		Font = Enum.Font.GothamBold,
-		TextSize = 14,
-		TextColor3 = Color3.new(1, 1, 1),
-		Text = "Unlock",
-		AutoButtonColor = false,
-		ZIndex = 62,
-		Parent = keyBox,
+	local loadBarFill = Utils.Create("Frame", {
+		BackgroundColor3 = colors.Accent,
+		Size = UDim2.new(0, 0, 1, 0),
+		BorderSizePixel = 0,
+		ZIndex = 53,
+		Parent = loadBarBg,
 	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = keySubmit })
 
 	local window = {
 		_screen = screen,
@@ -626,20 +1009,99 @@ function Core.CreateWindow(opts)
 		_root = main,
 		_surface = tabList,
 		_title = title,
+		_subTitle = subTitle,
 		_accentBar = accent,
 		_tabList = tabList,
 		_tabLayout = tabLayout,
 		_pages = pages,
 		_tabs = {},
 		_activeTab = nil,
-		_locked = false,
-		_key = opts.Key,
 		_dragConns = {},
 		_destroyed = false,
+		_configEnabled = configEnabled,
+		_configFolder = configFolder,
+		_configFileName = configFileName,
+		_autosaveThread = nil,
+		_tabThemeHooks = {},
 	}
 
+	function window:Notify(data)
+		Services.NotificationService:Notify(data)
+	end
+
+	function window:SetTitle(text)
+		title.Text = tostring(text)
+	end
+
+	function window:SetSubtitle(text)
+		subTitle.Text = tostring(text)
+	end
+
+	function window:ModifyTheme(newTheme)
+		Services.ThemeService:ModifyTheme(newTheme)
+		self:Notify({
+			Title = "Theme",
+			Message = type(newTheme) == "string" and ("Applied preset: " .. tostring(newTheme)) or "Custom theme applied.",
+			Duration = 2.5,
+		})
+	end
+
+	function window:SetVisible(visible)
+		screen.Enabled = visible and true or false
+	end
+
+	function window:IsVisible()
+		return screen.Enabled
+	end
+
+	function window:SaveConfiguration()
+		return Services.ConfigService:SaveToPath(self._configFolder, self._configFileName)
+	end
+
+	function window:LoadConfiguration()
+		return Services.ConfigService:LoadFromPath(self._configFolder, self._configFileName)
+	end
+
+	function window:_scheduleAutosave()
+		if not self._configEnabled then
+			return
+		end
+		if self._autosaveThread then
+			task.cancel(self._autosaveThread)
+			self._autosaveThread = nil
+		end
+		self._autosaveThread = task.delay(0.75, function()
+			self._autosaveThread = nil
+			if self._destroyed then
+				return
+			end
+			Services.ConfigService:SaveToPath(self._configFolder, self._configFileName)
+		end)
+	end
+
+	Core.AddThemeRef(window, main, "BackgroundColor3", "Background")
+	Core.AddThemeRef(window, mainStroke, "Color", "Border")
+	Core.AddThemeRef(window, accent, "BackgroundColor3", "Accent")
+	Core.AddThemeRef(window, title, "TextColor3", "Text")
+	Core.AddThemeRef(window, subTitle, "TextColor3", "TextDim")
+	Core.AddThemeRef(window, sidebar, "BackgroundColor3", "SurfaceMuted")
+	Core.AddThemeRef(window, sideStroke, "Color", "Border")
+	Core.AddThemeRef(window, tabList, "ScrollBarImageColor3", "Accent")
+	Core.AddThemeRef(window, contentShell, "BackgroundColor3", "BackgroundElevated")
+	Core.AddThemeRef(window, contentShellStroke, "Color", "Border")
+	Core.AddThemeRef(window, loading, "BackgroundColor3", "Background")
+	Core.AddThemeRef(window, loadTitle, "TextColor3", "Text")
+	Core.AddThemeRef(window, loadSub, "TextColor3", "TextDim")
+	Core.AddThemeRef(window, loadBarBg, "BackgroundColor3", "SurfaceHover")
+	Core.AddThemeRef(window, loadBarFill, "BackgroundColor3", "Accent")
+	window._unsubscribeTheme = Services.ThemeService:RegisterWindowTheme(function()
+		Core.ApplyThemeRefs(window)
+		for _, hook in ipairs(window._tabThemeHooks) do
+			pcall(hook)
+		end
+	end)
+
 	function window:SetLocked(locked)
-		self._locked = locked
 		main.Interactable = not locked
 		for _, p in ipairs(pages:GetChildren()) do
 			if p:IsA("GuiObject") then
@@ -650,34 +1112,12 @@ function Core.CreateWindow(opts)
 
 	function window:LockUI()
 		self:SetLocked(true)
-		keyOverlay.Visible = true
-		keyInput.Text = ""
 	end
 
 	function window:UnlockUI()
 		self:SetLocked(false)
-		keyOverlay.Visible = false
 	end
 
-	local function tryUnlock()
-		if not window._key then
-			window:UnlockUI()
-			return
-		end
-		if keyInput.Text == window._key then
-			window:UnlockUI()
-			Services.NotificationService:Notify({ Title = "Unlocked", Message = "UI unlocked.", Duration = 2 })
-		else
-			Services.NotificationService:Notify({ Title = "Invalid", Message = "Wrong key.", Duration = 2 })
-		end
-	end
-	keySubmit.MouseButton1Click:Connect(tryUnlock)
-
-	lockBtn.MouseButton1Click:Connect(function()
-		window:LockUI()
-	end)
-
-	-- Drag title bar
 	local dragging, dragStart, startPos
 	table.insert(window._dragConns, titleBar.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -698,35 +1138,87 @@ function Core.CreateWindow(opts)
 		end
 	end))
 
-	Services.ThemeService:RegisterApply(function()
-		Core._ApplyThemeToWindow(window)
-	end)
+	if opts.ToggleUIKeybind then
+		local kb = opts.ToggleUIKeybind
+		if type(kb) == "string" then
+			kb = Enum.KeyCode[kb]
+		end
+		if typeof(kb) == "EnumItem" and kb.EnumType == Enum.KeyCode then
+			table.insert(window._dragConns, UserInputService.InputBegan:Connect(function(input, processed)
+				if processed then
+					return
+				end
+				if input.KeyCode == kb then
+					screen.Enabled = not screen.Enabled
+				end
+			end))
+		end
+	end
 
 	function window:Destroy()
 		if self._destroyed then
 			return
 		end
 		self._destroyed = true
+		if self._unsubscribeTheme then
+			self._unsubscribeTheme()
+		end
+		if self._autosaveThread then
+			task.cancel(self._autosaveThread)
+		end
+		for i, w in ipairs(Services.ConfigService._autoWindows) do
+			if w == self then
+				table.remove(Services.ConfigService._autoWindows, i)
+				break
+			end
+		end
 		for _, c in ipairs(self._dragConns) do
 			c:Disconnect()
 		end
 		screen:Destroy()
 	end
 
+	function window:_syncTabStyles()
+		local th = Services.ThemeService.Current
+		for _, t in ipairs(self._tabs) do
+			local isOn = self._activeTab == t
+			if isOn then
+				t._button.BackgroundColor3 = th.SurfaceHover
+				t._button.TextColor3 = th.Text
+				t._button.BackgroundTransparency = 0
+				t._stroke.Color = th.Accent
+				t._stroke.Transparency = 0.35
+			else
+				t._button.BackgroundColor3 = th.Surface
+				t._button.TextColor3 = th.TabInactive
+				t._button.BackgroundTransparency = 0.35
+				t._stroke.Color = th.Border
+				t._stroke.Transparency = 0.85
+			end
+		end
+	end
+
 	function window:CreateTab(name)
-		local theme = Services.ThemeService.Current
+		local T = Services.ThemeService.Current
 		local btn = Utils.Create("TextButton", {
 			Text = name,
 			Font = Enum.Font.GothamMedium,
 			TextSize = 14,
-			TextColor3 = theme.TextDim,
-			BackgroundColor3 = theme.SurfaceHover,
-			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 34),
+			TextColor3 = T.TabInactive,
+			BackgroundColor3 = T.Surface,
+			BackgroundTransparency = 0.35,
+			Size = UDim2.new(1, 0, 0, tok.Tab.ItemHeight),
 			AutoButtonColor = false,
 			Parent = tabList,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = btn })
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Tab.ItemRadius), Parent = btn })
+		local btnStroke = Utils.Create("UIStroke", {
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			Color = T.Border,
+			Thickness = 1,
+			Transparency = 0.8,
+			Parent = btn,
+		})
 
 		local page = Utils.Create("ScrollingFrame", {
 			Name = name,
@@ -734,21 +1226,21 @@ function Core.CreateWindow(opts)
 			BorderSizePixel = 0,
 			Size = UDim2.fromScale(1, 1),
 			CanvasSize = UDim2.new(0, 0, 0, 0),
-			ScrollBarThickness = 4,
-			ScrollBarImageColor3 = theme.Accent,
+			ScrollBarThickness = tok.Tab.PageScrollBarThickness,
+			ScrollBarImageColor3 = T.Accent,
 			Visible = false,
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
 			Parent = pages,
 		})
-		local pagePad = Utils.Create("UIPadding", {
-			PaddingTop = UDim.new(0, 4),
-			PaddingBottom = UDim.new(0, 12),
+		Utils.Create("UIPadding", {
+			PaddingTop = UDim.new(0, 6),
+			PaddingBottom = UDim.new(0, 14),
 			PaddingLeft = UDim.new(0, 4),
-			PaddingRight = UDim.new(0, 8),
+			PaddingRight = UDim.new(0, 6),
 			Parent = page,
 		})
 		local pageList = Utils.Create("UIListLayout", {
-			Padding = UDim.new(0, 10),
+			Padding = UDim.new(0, 12),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = page,
 		})
@@ -758,6 +1250,7 @@ function Core.CreateWindow(opts)
 			_button = btn,
 			_page = page,
 			_layout = pageList,
+			_stroke = btnStroke,
 		}
 
 		function tabObj:CreateSection(titleText)
@@ -767,32 +1260,34 @@ function Core.CreateWindow(opts)
 		local function selectTab()
 			for _, t in ipairs(window._tabs) do
 				t._page.Visible = false
-				Utils.Tween(t._button, TweenInfo.new(0.2), {
-					BackgroundTransparency = 1,
-					TextColor3 = theme.TextDim,
+				local th = Services.ThemeService.Current
+				Utils.Tween(t._button, TweenInfo.new(0.22, Enum.EasingStyle.Quart), {
+					BackgroundTransparency = 0.35,
+					TextColor3 = th.TabInactive,
 				})
+				Utils.Tween(t._stroke, TweenInfo.new(0.22), { Transparency = 0.85, Color = th.Border })
 			end
 			page.Visible = true
 			window._activeTab = tabObj
-			Utils.Tween(btn, TweenInfo.new(0.2), {
+			local th = Services.ThemeService.Current
+			Utils.Tween(btn, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 				BackgroundTransparency = 0,
-				TextColor3 = theme.Text,
+				TextColor3 = th.Text,
 			})
-			btn.BackgroundColor3 = theme.SurfaceHover
+			btn.BackgroundColor3 = th.SurfaceHover
+			Utils.Tween(btnStroke, TweenInfo.new(0.24), { Transparency = 0.35, Color = th.Accent })
 		end
 
-		btn.MouseButton1Click:Connect(function()
-			selectTab()
-		end)
+		btn.MouseButton1Click:Connect(selectTab)
 
 		btn.MouseEnter:Connect(function()
 			if window._activeTab ~= tabObj then
-				Utils.Tween(btn, TweenInfo.new(0.15), { BackgroundTransparency = 0.5 })
+				Utils.Tween(btn, TweenInfo.new(0.16), { BackgroundTransparency = 0.12 })
 			end
 		end)
 		btn.MouseLeave:Connect(function()
 			if window._activeTab ~= tabObj then
-				Utils.Tween(btn, TweenInfo.new(0.15), { BackgroundTransparency = 1 })
+				Utils.Tween(btn, TweenInfo.new(0.16), { BackgroundTransparency = 0.35 })
 			end
 		end)
 
@@ -804,21 +1299,31 @@ function Core.CreateWindow(opts)
 		return tabObj
 	end
 
-	-- Loading animation
+	Services.NotificationService:_ensureContainer(screen)
+
+	if configEnabled then
+		table.insert(Services.ConfigService._autoWindows, window)
+	end
+
 	task.defer(function()
-		Utils.Tween(scale, TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Scale = 1 })
-		task.wait(0.35)
-		Utils.Tween(loading, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 })
-		Utils.Tween(loadLabel, TweenInfo.new(0.35), { TextTransparency = 1 })
-		task.wait(0.4)
+		Utils.Tween(
+			loadBarFill,
+			TweenInfo.new(tok.Animation.LoadingBarDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Size = UDim2.new(1, 0, 1, 0) }
+		)
+		task.wait(0.28)
+		Utils.Tween(loading, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 })
+		Utils.Tween(loadTitle, TweenInfo.new(0.25), { TextTransparency = 1 })
+		Utils.Tween(loadSub, TweenInfo.new(0.25), { TextTransparency = 1 })
+		Utils.Tween(loadBarBg, TweenInfo.new(0.25), { BackgroundTransparency = 1 })
+		Utils.Tween(loadBarFill, TweenInfo.new(0.25), { BackgroundTransparency = 1 })
+		task.wait(0.32)
 		loading.Visible = false
 	end)
 
-	Services.NotificationService:_ensureContainer(screen)
-
-	if opts.Key then
-		window:LockUI()
-	end
+	table.insert(window._tabThemeHooks, function()
+		window:_syncTabStyles()
+	end)
 
 	return window
 end
@@ -827,8 +1332,16 @@ end
 -- #region Elements
 local _keybindSeq = 0
 
+local function ElemCtx(windowRef)
+	if windowRef then
+		return Core.GetColors(windowRef), Core.GetTokens(windowRef)
+	end
+	return Services.ThemeService.Current, Services.ThemeService.Tokens
+end
+
 function Elements.CreateSection(tab, titleText)
-	local theme = Services.ThemeService.Current
+	local win = tab._window
+	local theme, etok = ElemCtx(win)
 	local wrap = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, 0),
@@ -836,7 +1349,7 @@ function Elements.CreateSection(tab, titleText)
 		Parent = tab._page,
 	})
 	Utils.Create("UIListLayout", {
-		Padding = UDim.new(0, 6),
+		Padding = UDim.new(0, etok.Section.TitleSpacing),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = wrap,
 	})
@@ -844,7 +1357,7 @@ function Elements.CreateSection(tab, titleText)
 	local header = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBold,
-		TextSize = 13,
+		TextSize = etok.Section.HeaderTextSize,
 		TextColor3 = theme.TextDim,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Size = UDim2.new(1, 0, 0, 18),
@@ -860,17 +1373,28 @@ function Elements.CreateSection(tab, titleText)
 		LayoutOrder = 1,
 		Parent = wrap,
 	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = box })
-	Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.55, Parent = box })
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, etok.Section.BoxRadius), Parent = box })
+	local boxStroke = Utils.Create("UIStroke", {
+		Color = theme.Border,
+		Thickness = 1,
+		Transparency = 0.55,
+		Parent = box,
+	})
+	if win then
+		Core.AddThemeRef(win, header, "TextColor3", "TextDim")
+		Core.AddThemeRef(win, box, "BackgroundColor3", "Surface")
+		Core.AddThemeRef(win, boxStroke, "Color", "Border")
+	end
+	local ip = etok.Section.InnerPadding
 	Utils.Create("UIPadding", {
-		PaddingTop = UDim.new(0, 10),
-		PaddingBottom = UDim.new(0, 10),
-		PaddingLeft = UDim.new(0, 12),
-		PaddingRight = UDim.new(0, 12),
+		PaddingTop = UDim.new(0, ip),
+		PaddingBottom = UDim.new(0, ip),
+		PaddingLeft = UDim.new(0, ip),
+		PaddingRight = UDim.new(0, ip),
 		Parent = box,
 	})
 	local list = Utils.Create("UIListLayout", {
-		Padding = UDim.new(0, 8),
+		Padding = UDim.new(0, etok.Section.RowSpacing),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = box,
 	})
@@ -879,7 +1403,7 @@ function Elements.CreateSection(tab, titleText)
 
 	function section:CreateToggle(opts)
 		opts = opts or {}
-		local theme = Services.ThemeService.Current
+		local theme, etok = ElemCtx(win)
 		local flag = opts.Flag
 		local def = opts.Default == true
 		if flag then
@@ -889,13 +1413,13 @@ function Elements.CreateSection(tab, titleText)
 
 		local row = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 28),
+			Size = UDim2.new(1, 0, 0, etok.Control.ToggleRowHeight),
 			Parent = list,
 		})
 		local name = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
-			TextSize = 14,
+			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Size = UDim2.new(1, -54, 1, 0),
@@ -917,7 +1441,8 @@ function Elements.CreateSection(tab, titleText)
 			BorderSizePixel = 0,
 			Parent = switch,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = track })
+		local tr = etok.Control.DefaultRadius
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tr), Parent = track })
 		local knob = Utils.Create("Frame", {
 			BackgroundColor3 = Color3.new(1, 1, 1),
 			Size = UDim2.fromOffset(18, 18),
@@ -925,24 +1450,25 @@ function Elements.CreateSection(tab, titleText)
 			BorderSizePixel = 0,
 			Parent = track,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tr), Parent = knob })
 
 		local function setState(v, animate)
 			value = v
 			if flag then
 				Services.StateService:SetFlag(flag, v)
 			end
+			local th = select(1, ElemCtx(win))
 			if animate then
-				Utils.Tween(track, TweenInfo.new(0.2, Enum.EasingStyle.Quart), {
-					BackgroundColor3 = v and theme.Accent or theme.SurfaceHover,
+				Utils.Tween(track, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+					BackgroundColor3 = v and th.Accent or th.SurfaceHover,
 				})
 				Utils.Tween(
 					knob,
-					TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+					TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
 					{ Position = v and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9) }
 				)
 			else
-				track.BackgroundColor3 = v and theme.Accent or theme.SurfaceHover
+				track.BackgroundColor3 = v and th.Accent or th.SurfaceHover
 				knob.Position = v and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
 			end
 			if opts.Callback then
@@ -974,37 +1500,52 @@ function Elements.CreateSection(tab, titleText)
 
 	function section:CreateButton(opts)
 		opts = opts or {}
-		local theme = Services.ThemeService.Current
+		local theme, etok = ElemCtx(win)
+		local btnStroke
 		local btn = Utils.Create("TextButton", {
 			BackgroundColor3 = theme.SurfaceHover,
 			Font = Enum.Font.GothamMedium,
-			TextSize = 14,
+			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			Text = opts.Name or "Button",
-			Size = UDim2.new(1, 0, 0, 36),
+			Size = UDim2.new(1, 0, 0, etok.Control.ButtonHeight),
 			AutoButtonColor = false,
 			Parent = list,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = btn })
-		Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.6, Parent = btn })
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, etok.Control.DefaultRadius), Parent = btn })
+		btnStroke = Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.55, Parent = btn })
+		if win then
+			Core.AddThemeRef(win, btnStroke, "Color", "Border")
+		end
 
 		btn.MouseButton1Click:Connect(function()
-			Utils.Ripple(btn, theme.Accent, 0.4)
+			Utils.Ripple(btn, select(1, ElemCtx(win)).Accent, 0.4)
 			if opts.Callback then
 				task.spawn(opts.Callback)
 			end
 		end)
 		btn.MouseEnter:Connect(function()
-			Utils.Tween(btn, TweenInfo.new(0.15), { BackgroundColor3 = theme.Accent })
+			local th = select(1, ElemCtx(win))
+			Utils.Tween(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = th.Accent })
 		end)
 		btn.MouseLeave:Connect(function()
-			Utils.Tween(btn, TweenInfo.new(0.15), { BackgroundColor3 = theme.SurfaceHover })
+			local th = select(1, ElemCtx(win))
+			Utils.Tween(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = th.SurfaceHover })
 		end)
+
+		return {
+			Set = function(_, text)
+				btn.Text = tostring(text)
+			end,
+			Get = function()
+				return btn.Text
+			end,
+		}
 	end
 
 	function section:CreateSlider(opts)
 		opts = opts or {}
-		local theme = Services.ThemeService.Current
+		local theme, etok = ElemCtx(win)
 		local flag = opts.Flag
 		local minv = opts.Min or 0
 		local maxv = opts.Max or 100
@@ -1017,7 +1558,7 @@ function Elements.CreateSection(tab, titleText)
 
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 46),
+			Size = UDim2.new(1, 0, 0, etok.Control.SliderBlockHeight),
 			Parent = list,
 		})
 		local top = Utils.Create("Frame", {
@@ -1028,7 +1569,7 @@ function Elements.CreateSection(tab, titleText)
 		Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
-			TextSize = 14,
+			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Size = UDim2.new(0.65, 0, 1, 0),
@@ -1038,7 +1579,7 @@ function Elements.CreateSection(tab, titleText)
 		local valLabel = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamMedium,
-			TextSize = 13,
+			TextSize = etok.Control.SecondaryTextSize,
 			TextColor3 = theme.TextDim,
 			TextXAlignment = Enum.TextXAlignment.Right,
 			Size = UDim2.new(0.35, 0, 1, 0),
@@ -1047,21 +1588,23 @@ function Elements.CreateSection(tab, titleText)
 			Parent = top,
 		})
 
+		local tr = etok.Control.DefaultRadius
+		local thk = etok.Control.SliderTrackThickness
 		local track = Utils.Create("Frame", {
 			BackgroundColor3 = theme.SurfaceHover,
 			Position = UDim2.fromOffset(0, 24),
-			Size = UDim2.new(1, 0, 0, 8),
+			Size = UDim2.new(1, 0, 0, thk),
 			BorderSizePixel = 0,
 			Parent = wrap,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = track })
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tr), Parent = track })
 		local fill = Utils.Create("Frame", {
 			BackgroundColor3 = theme.Accent,
 			Size = UDim2.new((value - minv) / (maxv - minv), 0, 1, 0),
 			BorderSizePixel = 0,
 			Parent = track,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = fill })
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tr), Parent = fill })
 
 		local dragging = false
 		local function setFromX(x)
@@ -1101,6 +1644,17 @@ function Elements.CreateSection(tab, titleText)
 			end
 		end)
 
+		if flag then
+			Services.StateService:OnFlagChanged(flag, function(v)
+				local n = tonumber(v)
+				if n and math.abs(n - value) > 1e-5 then
+					value = Utils.Clamp(n, minv, maxv)
+					fill.Size = UDim2.new((value - minv) / (maxv - minv), 0, 1, 0)
+					valLabel.Text = tostring(value)
+				end
+			end)
+		end
+
 		return {
 			Set = function(_, v)
 				value = Utils.Clamp(tonumber(v) or value, minv, maxv)
@@ -1118,7 +1672,7 @@ function Elements.CreateSection(tab, titleText)
 
 	function section:CreateDropdown(opts)
 		opts = opts or {}
-		local theme = Services.ThemeService.Current
+		local theme, etok = ElemCtx(win)
 		local flag = opts.Flag
 		local options = opts.Options or {}
 		local def = opts.Default or options[1] or ""
@@ -1141,7 +1695,7 @@ function Elements.CreateSection(tab, titleText)
 		Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
-			TextSize = 14,
+			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Size = UDim2.new(1, 0, 0, 18),
@@ -1149,18 +1703,19 @@ function Elements.CreateSection(tab, titleText)
 			LayoutOrder = 0,
 			Parent = wrap,
 		})
+		local dr = etok.Control.DefaultRadius
 		local openBtn = Utils.Create("TextButton", {
 			BackgroundColor3 = theme.SurfaceHover,
-			Size = UDim2.new(1, 0, 0, 34),
+			Size = UDim2.new(1, 0, 0, etok.Control.DropdownRowOpen),
 			LayoutOrder = 1,
 			Font = Enum.Font.GothamMedium,
-			TextSize = 13,
+			TextSize = etok.Control.SecondaryTextSize,
 			TextColor3 = theme.Text,
 			Text = tostring(current),
 			AutoButtonColor = false,
 			Parent = wrap,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = openBtn })
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = openBtn })
 		Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.6, Parent = openBtn })
 		Utils.Create("UIPadding", {
 			PaddingLeft = UDim.new(0, 10),
@@ -1178,7 +1733,7 @@ function Elements.CreateSection(tab, titleText)
 			LayoutOrder = 2,
 			Parent = wrap,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = listFrame })
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = listFrame })
 		Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.5, Parent = listFrame })
 		Utils.Create("UIPadding", {
 			PaddingTop = UDim.new(0, 6),
@@ -1203,15 +1758,15 @@ function Elements.CreateSection(tab, titleText)
 				local b = Utils.Create("TextButton", {
 					Text = tostring(opt),
 					Font = Enum.Font.Gotham,
-					TextSize = 13,
+					TextSize = etok.Control.SecondaryTextSize,
 					TextColor3 = theme.Text,
 					BackgroundColor3 = theme.SurfaceHover,
-					Size = UDim2.new(1, 0, 0, 28),
+					Size = UDim2.new(1, 0, 0, etok.Control.ToggleRowHeight),
 					AutoButtonColor = false,
 					ZIndex = 6,
 					Parent = listFrame,
 				})
-				Utils.Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = b })
+				Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = b })
 				b.MouseButton1Click:Connect(function()
 					current = opt
 					openBtn.Text = tostring(current)
@@ -1237,6 +1792,15 @@ function Elements.CreateSection(tab, titleText)
 			end
 		end)
 
+		if flag then
+			Services.StateService:OnFlagChanged(flag, function(v)
+				if v ~= current then
+					current = v
+					openBtn.Text = tostring(current)
+				end
+			end)
+		end
+
 		return {
 			Refresh = function(_, newOpts)
 				options = newOpts or options
@@ -1249,12 +1813,15 @@ function Elements.CreateSection(tab, titleText)
 					Services.StateService:SetFlag(flag, current)
 				end
 			end,
+			Get = function()
+				return current
+			end,
 		}
 	end
 
 	function section:CreateInput(opts)
 		opts = opts or {}
-		local theme = Services.ThemeService.Current
+		local theme, etok = ElemCtx(win)
 		local flag = opts.Flag
 		local def = opts.Default or ""
 		if flag then
@@ -1263,13 +1830,13 @@ function Elements.CreateSection(tab, titleText)
 
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 58),
+			Size = UDim2.new(1, 0, 0, etok.Control.InputRowHeight),
 			Parent = list,
 		})
 		Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
-			TextSize = 14,
+			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Size = UDim2.new(1, 0, 0, 18),
@@ -1277,11 +1844,11 @@ function Elements.CreateSection(tab, titleText)
 			Parent = wrap,
 		})
 		local box = Utils.Create("TextBox", {
-			BackgroundColor3 = theme.Background,
+			BackgroundColor3 = theme.BackgroundElevated,
 			Position = UDim2.fromOffset(0, 22),
-			Size = UDim2.new(1, 0, 0, 32),
+			Size = UDim2.new(1, 0, 0, etok.Control.InputHeight),
 			Font = Enum.Font.Gotham,
-			TextSize = 14,
+			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			Text = tostring(flag and Services.StateService:GetFlag(flag) or def),
 			PlaceholderText = opts.Placeholder or "",
@@ -1289,7 +1856,7 @@ function Elements.CreateSection(tab, titleText)
 			ClearTextOnFocus = false,
 			Parent = wrap,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = box })
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, etok.Control.DefaultRadius), Parent = box })
 		Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.55, Parent = box })
 		Utils.Create("UIPadding", {
 			PaddingLeft = UDim.new(0, 10),
@@ -1314,17 +1881,33 @@ function Elements.CreateSection(tab, titleText)
 				end
 			end)
 		end
+
+		return {
+			Set = function(_, text)
+				box.Text = tostring(text)
+				if flag then
+					Services.StateService:SetFlag(flag, box.Text)
+				end
+			end,
+			Get = function()
+				return box.Text
+			end,
+		}
 	end
 
 	function section:CreateColorPicker(opts)
 		opts = opts or {}
-		local theme = Services.ThemeService.Current
+		local theme, etok = ElemCtx(win)
 		local flag = opts.Flag
 		local def = opts.Default or Color3.fromRGB(255, 255, 255)
 		if flag then
 			local existing = Services.StateService:GetFlag(flag)
 			if existing == nil then
-				Services.StateService:SetFlag(flag, { def.R * 255, def.G * 255, def.B * 255 })
+				Services.StateService:SetFlag(flag, {
+					math.floor(def.R * 255),
+					math.floor(def.G * 255),
+					math.floor(def.B * 255),
+				})
 			end
 		end
 		local function getColor()
@@ -1351,14 +1934,16 @@ function Elements.CreateSection(tab, titleText)
 		})
 		local row = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 28),
+			Size = UDim2.new(1, 0, 0, etok.Control.ToggleRowHeight),
 			LayoutOrder = 0,
 			Parent = wrap,
 		})
+		local dr = etok.Control.DefaultRadius
+		local thk = etok.Control.SliderTrackThickness
 		Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
-			TextSize = 14,
+			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Size = UDim2.new(1, -40, 1, 0),
@@ -1372,11 +1957,12 @@ function Elements.CreateSection(tab, titleText)
 			BorderSizePixel = 0,
 			Parent = row,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = preview })
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = preview })
 		Utils.Create("UIStroke", { Color = theme.Border, Parent = preview })
 
 		local sliders = { "R", "G", "B" }
 		local vals = { math.floor(col.R * 255), math.floor(col.G * 255), math.floor(col.B * 255) }
+		local fills = {}
 
 		local function push()
 			local c = Color3.fromRGB(vals[1], vals[2], vals[3])
@@ -1400,7 +1986,7 @@ function Elements.CreateSection(tab, titleText)
 				BackgroundTransparency = 1,
 				Size = UDim2.new(0, 24, 1, 0),
 				Font = Enum.Font.GothamBold,
-				TextSize = 12,
+				TextSize = etok.Control.SecondaryTextSize,
 				TextColor3 = theme.TextDim,
 				Text = label,
 				Parent = sw,
@@ -1408,18 +1994,19 @@ function Elements.CreateSection(tab, titleText)
 			local track = Utils.Create("Frame", {
 				BackgroundColor3 = theme.SurfaceHover,
 				Position = UDim2.fromOffset(28, 11),
-				Size = UDim2.new(1, -28, 0, 8),
+				Size = UDim2.new(1, -28, 0, thk),
 				BorderSizePixel = 0,
 				Parent = sw,
 			})
-			Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = track })
+			Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = track })
 			local fill = Utils.Create("Frame", {
 				BackgroundColor3 = theme.Accent,
 				Size = UDim2.new(vals[i] / 255, 0, 1, 0),
 				BorderSizePixel = 0,
 				Parent = track,
 			})
-			Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = fill })
+			fills[i] = fill
+			Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = fill })
 			local drag = false
 			track.InputBegan:Connect(function(input)
 				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -1447,11 +2034,44 @@ function Elements.CreateSection(tab, titleText)
 				end
 			end)
 		end
+
+		if flag then
+			Services.StateService:OnFlagChanged(flag, function(v)
+				if type(v) == "table" and v[1] and v[2] and v[3] then
+					vals[1], vals[2], vals[3] = v[1], v[2], v[3]
+					for j = 1, 3 do
+						if fills[j] then
+							fills[j].Size = UDim2.new(vals[j] / 255, 0, 1, 0)
+						end
+					end
+					preview.BackgroundColor3 = Color3.fromRGB(vals[1], vals[2], vals[3])
+				end
+			end)
+		end
+
+		return {
+			Get = getColor,
+			Set = function(_, c)
+				if typeof(c) == "Color3" then
+					vals[1] = math.floor(c.R * 255)
+					vals[2] = math.floor(c.G * 255)
+					vals[3] = math.floor(c.B * 255)
+				elseif type(c) == "table" and c[1] then
+					vals[1], vals[2], vals[3] = c[1], c[2], c[3]
+				end
+				for j = 1, 3 do
+					if fills[j] then
+						fills[j].Size = UDim2.new(vals[j] / 255, 0, 1, 0)
+					end
+				end
+				push()
+			end,
+		}
 	end
 
 	function section:CreateKeybind(opts)
 		opts = opts or {}
-		local theme = Services.ThemeService.Current
+		local theme, etok = ElemCtx(win)
 		local flag = opts.Flag
 		local def = opts.Default or Enum.KeyCode.Unknown
 		local key = def
@@ -1466,13 +2086,13 @@ function Elements.CreateSection(tab, titleText)
 
 		local row = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 34),
+			Size = UDim2.new(1, 0, 0, etok.Control.KeybindRowHeight + 2),
 			Parent = list,
 		})
 		Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
-			TextSize = 14,
+			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Size = UDim2.new(1, -120, 1, 0),
@@ -1481,16 +2101,17 @@ function Elements.CreateSection(tab, titleText)
 		})
 		local bindBtn = Utils.Create("TextButton", {
 			BackgroundColor3 = theme.SurfaceHover,
-			Size = UDim2.fromOffset(112, 30),
-			Position = UDim2.new(1, -112, 0.5, -15),
+			Size = UDim2.fromOffset(112, etok.Control.KeybindRowHeight),
+			Position = UDim2.new(1, -112, 0.5, 0),
+			AnchorPoint = Vector2.new(0, 0.5),
 			Font = Enum.Font.GothamMedium,
-			TextSize = 13,
+			TextSize = etok.Control.SecondaryTextSize,
 			TextColor3 = theme.Text,
 			Text = key.Name ~= "Unknown" and key.Name or "…",
 			AutoButtonColor = false,
 			Parent = row,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 8), Parent = bindBtn })
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, etok.Control.DefaultRadius), Parent = bindBtn })
 		Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.55, Parent = bindBtn })
 
 		local bindId = "gulle_kb_" .. tostring(_keybindSeq)
@@ -1532,15 +2153,31 @@ function Elements.CreateSection(tab, titleText)
 				end
 			end)
 		end)
+
+		return {
+			Set = function(_, kc)
+				if typeof(kc) == "EnumItem" and kc.EnumType == Enum.KeyCode then
+					key = kc
+					bindBtn.Text = key.Name ~= "Unknown" and key.Name or "…"
+					if flag then
+						Services.StateService:SetFlag(flag, key.Name)
+					end
+					applyBinding()
+				end
+			end,
+			Get = function()
+				return key
+			end,
+		}
 	end
 
 	function section:CreateLabel(opts)
 		opts = opts or {}
-		local theme = Services.ThemeService.Current
-		Utils.Create("TextLabel", {
+		local theme, etok = ElemCtx(win)
+		local lbl = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamMedium,
-			TextSize = 14,
+			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextWrapped = true,
@@ -1549,15 +2186,26 @@ function Elements.CreateSection(tab, titleText)
 			Text = opts.Text or opts.Name or "Label",
 			Parent = list,
 		})
+		if win then
+			Core.AddThemeRef(win, lbl, "TextColor3", "Text")
+		end
+		return {
+			Set = function(_, text)
+				lbl.Text = tostring(text)
+			end,
+			Get = function()
+				return lbl.Text
+			end,
+		}
 	end
 
 	function section:CreateParagraph(opts)
 		opts = opts or {}
-		local theme = Services.ThemeService.Current
-		Utils.Create("TextLabel", {
+		local theme, etok = ElemCtx(win)
+		local lbl = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
-			TextSize = 13,
+			TextSize = etok.Control.SecondaryTextSize,
 			TextColor3 = theme.TextDim,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextWrapped = true,
@@ -1566,6 +2214,17 @@ function Elements.CreateSection(tab, titleText)
 			Text = opts.Text or opts.Content or "",
 			Parent = list,
 		})
+		if win then
+			Core.AddThemeRef(win, lbl, "TextColor3", "TextDim")
+		end
+		return {
+			Set = function(_, text)
+				lbl.Text = tostring(text)
+			end,
+			Get = function()
+				return lbl.Text
+			end,
+		}
 	end
 
 	return section
@@ -1574,35 +2233,91 @@ end
 
 -- #region Library
 function Library:Init()
-	return {
-		CreateWindow = function(_, opts)
-			return Core.CreateWindow(opts)
-		end,
+	local api = {
 		Services = Services,
 		Theme = Services.ThemeService,
 		Config = Services.ConfigService,
-		Notify = function(_, data)
-			Services.NotificationService:Notify(data)
-		end,
-		SetFlag = function(_, f, v)
-			Services.StateService:SetFlag(f, v)
-		end,
-		GetFlag = function(_, f)
-			return Services.StateService:GetFlag(f)
-		end,
+		Dependency = Services.DependencyService,
+		Window = nil,
 	}
+
+	function api.CreateWindow(_, opts)
+		local w = Core.CreateWindow(opts)
+		api.Window = w
+		return w
+	end
+
+	function api.Notify(_, data)
+		Services.NotificationService:Notify(data)
+	end
+
+	function api.ModifyTheme(_, partial)
+		Services.ThemeService:ModifyTheme(partial)
+	end
+
+	function api.LoadConfiguration(_)
+		return api.Window and api.Window:LoadConfiguration() or false
+	end
+
+	function api.SaveConfiguration(_)
+		return api.Window and api.Window:SaveConfiguration() or false
+	end
+
+	function api.SetFlag(_, f, v)
+		Services.StateService:SetFlag(f, v)
+	end
+
+	function api.GetFlag(_, f)
+		return Services.StateService:GetFlag(f)
+	end
+
+	return api
 end
 
 return Library
 
 --[[
-	---------------------------------------------------------------------------
-	LOADSTRING (single file, no local dependencies)
-	Host this file as raw on GitHub, then:
+================================================================================
+EXAMPLE (paste after loading the library, or run as second loadstring)
 
-	local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/USERNAME/REPO/main/GulleUILibrary.lua"))()
+	local Library = loadstring(game:HttpGet("RAW_URL_HERE"))()
 	local UI = Library:Init()
-	local Window = UI:CreateWindow({ Title = "My UI" })
-	-- ... see ExampleUsage.lua in the same repo for a full demo.
-	---------------------------------------------------------------------------
+
+	local Window = UI:CreateWindow({
+		Name = "Demo Hub",
+		Subtitle = "Wind-inspired layout · Rayfield-style API",
+		Theme = "Default",
+		LoadingTitle = "Demo Hub",
+		LoadingSubtitle = "Preparing interface",
+		ToggleUIKeybind = Enum.KeyCode.RightShift,
+		ConfigurationSaving = {
+			Enabled = false,
+			FolderName = "GulleUI",
+			FileName = "demo_config",
+		},
+	})
+
+	local Tab = Window:CreateTab("General")
+	local Section = Tab:CreateSection("Controls")
+
+	Section:CreateToggle({
+		Name = "Example toggle",
+		Default = false,
+		Flag = "demo_toggle",
+		Callback = function(v) print("toggle", v) end,
+	})
+
+	Section:CreateButton({
+		Name = "Notify",
+		Callback = function()
+			Window:Notify({ Title = "Hello", Content = "Notification from button.", Duration = 3 })
+		end,
+	})
+
+================================================================================
+LOADSTRING (host this file as script.lua on GitHub raw)
+
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/USERNAME/REPO/main/script.lua"))()
+
+================================================================================
 ]]
