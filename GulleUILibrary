@@ -221,8 +221,8 @@ local _defaultDeveloperUserIds = {
 
 local _defaultTokens = {
 	Window = {
-		Width = 760,
-		Height = 540,
+		Width = 820,
+		Height = 580,
 		MinWidth = 380,
 		MinHeight = 280,
 		ResizeGripSize = 18,
@@ -239,7 +239,7 @@ local _defaultTokens = {
 	},
 	Tab = {
 		SidebarWidth = 168,
-		ContentGap = 14,
+		ContentGap = 16,
 		ItemHeight = 34,
 		ItemRadius = 6,
 		SidebarPadding = 10,
@@ -249,22 +249,25 @@ local _defaultTokens = {
 		SearchHeight = 32,
 		SidebarFooterHeight = 56,
 		-- Fanens scroll-indhold: luft omkring to-kolonne layout
-		PagePaddingTop = 10,
-		PagePaddingBottom = 14,
-		PagePaddingLeft = 10,
-		PagePaddingRight = 12,
-		ColumnGap = 16,
-		SectionStackPadding = 14,
+		PagePaddingTop = 14,
+		PagePaddingBottom = 22,
+		PagePaddingLeft = 14,
+		PagePaddingRight = 16,
+		ColumnGap = 40,
+		SectionStackPadding = 36,
 	},
 	Section = {
 		HeaderTextSize = 12,
 		DescriptionTextSize = 11,
-		TitleSpacing = 8,
+		TitleSpacing = 16,
 		BoxRadius = 6,
-		InnerPadding = 0,
-		RowSpacing = 8,
-		RowPaddingX = 12,
-		RowPaddingY = 8,
+		-- Luft inde i sektionen omkring rækkekort (top/bund/sider)
+		InnerPadding = 14,
+		-- Ekstra luft under sidste kontrol før næste sektion starter
+		WrapPaddingBottom = 18,
+		RowSpacing = 16,
+		RowPaddingX = 18,
+		RowPaddingY = 12,
 		RowStrokeTransparency = 0.93,
 	},
 	Control = {
@@ -272,14 +275,14 @@ local _defaultTokens = {
 		TogglePill = true,
 		LabelTextSize = 13,
 		SecondaryTextSize = 12,
-		ButtonHeight = 34,
-		ToggleRowHeight = 38,
-		SliderBlockHeight = 44,
+		ButtonHeight = 36,
+		ToggleRowHeight = 40,
+		SliderBlockHeight = 46,
 		SliderTrackThickness = 5,
-		InputRowHeight = 54,
+		InputRowHeight = 56,
 		InputHeight = 30,
-		KeybindRowHeight = 32,
-		DropdownRowOpen = 30,
+		KeybindRowHeight = 34,
+		DropdownRowOpen = 32,
 	},
 	Animation = {
 		WindowOpenDuration = 0.25,
@@ -1245,10 +1248,10 @@ function Core.CreateWindow(opts)
 		Parent = contentShell,
 	})
 	Utils.Create("UIPadding", {
-		PaddingTop = UDim.new(0, 10),
-		PaddingBottom = UDim.new(0, 10),
-		PaddingLeft = UDim.new(0, 12),
-		PaddingRight = UDim.new(0, 12),
+		PaddingTop = UDim.new(0, 14),
+		PaddingBottom = UDim.new(0, 14),
+		PaddingLeft = UDim.new(0, 16),
+		PaddingRight = UDim.new(0, 16),
 		Parent = contentShell,
 	})
 
@@ -2017,6 +2020,13 @@ function Elements.CreateSection(tab, arg1, arg2)
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = wrap,
 	})
+	local wrapTail = math.max(0, math.floor(tonumber(etok.Section.WrapPaddingBottom) or 0))
+	if wrapTail > 0 then
+		Utils.Create("UIPadding", {
+			PaddingBottom = UDim.new(0, wrapTail),
+			Parent = wrap,
+		})
+	end
 
 	local lo = 0
 	local headerH = math.max(14, math.floor((etok.Section.HeaderTextSize or 12) + 4))
@@ -2061,6 +2071,16 @@ function Elements.CreateSection(tab, arg1, arg2)
 		LayoutOrder = lo,
 		Parent = wrap,
 	})
+	local innerPad = math.max(0, math.floor(tonumber(etok.Section.InnerPadding) or 0))
+	if innerPad > 0 then
+		Utils.Create("UIPadding", {
+			PaddingTop = UDim.new(0, innerPad),
+			PaddingBottom = UDim.new(0, innerPad),
+			PaddingLeft = UDim.new(0, innerPad),
+			PaddingRight = UDim.new(0, innerPad),
+			Parent = rowsHost,
+		})
+	end
 	local list = Utils.Create("UIListLayout", {
 		Padding = UDim.new(0, etok.Section.RowSpacing),
 		SortOrder = Enum.SortOrder.LayoutOrder,
