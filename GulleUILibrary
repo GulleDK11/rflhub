@@ -235,7 +235,7 @@ local _defaultTokens = {
 		SubtitleSize = 12,
 		AccentBarHeight = 0,
 		AccentBarTop = 0,
-		TitleControlsWidth = 100,
+		TitleControlsWidth = 68,
 	},
 	Tab = {
 		SidebarWidth = 168,
@@ -1047,7 +1047,6 @@ function Core.CreateWindow(opts)
 	end
 
 	local minBtn = makeTitleBtn("−")
-	local maxBtn = makeTitleBtn("□")
 	local closeBtn = makeTitleBtn("×")
 
 	local body = Utils.Create("Frame", {
@@ -1505,30 +1504,12 @@ function Core.CreateWindow(opts)
 	end
 
 	local savedMainSize = main.Size
-	local savedMainPos = main.Position
-	local maximized = false
 
 	minBtn.MouseButton1Click:Connect(function()
 		screen.Enabled = false
 	end)
 	closeBtn.MouseButton1Click:Connect(function()
 		screen.Enabled = false
-	end)
-	maxBtn.MouseButton1Click:Connect(function()
-		local cam = workspace.CurrentCamera
-		local vp = cam and cam.ViewportSize or Vector2.new(800, 600)
-		if not maximized then
-			savedMainSize = main.Size
-			savedMainPos = main.Position
-			maximized = true
-			main.AnchorPoint = Vector2.new(0.5, 0.5)
-			main.Position = UDim2.fromScale(0.5, 0.5)
-			main.Size = UDim2.fromOffset(math.floor(vp.X * 0.92), math.floor(vp.Y * 0.88))
-		else
-			maximized = false
-			main.Size = savedMainSize
-			main.Position = savedMainPos
-		end
 	end)
 
 	local dragging, dragStart, startPos
@@ -1554,9 +1535,6 @@ function Core.CreateWindow(opts)
 	local rsDragging, rsStart, rsSize
 	table.insert(window._dragConns, resizeGrip.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			if maximized then
-				maximized = false
-			end
 			rsDragging = true
 			rsStart = input.Position
 			rsSize = main.AbsoluteSize
