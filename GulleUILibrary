@@ -115,11 +115,12 @@ function Utils.Ripple(button, color, duration, screenPos)
 
 	local layer = sg:FindFirstChild("_GulleRippleLayer")
 	if not layer then
+		-- 0×0: takes no space in layout; circles still draw (ClipsDescendants off) so they don't push the hub UI.
 		layer = Utils.Create("Frame", {
 			Name = "_GulleRippleLayer",
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			Size = UDim2.fromScale(1, 1),
+			Size = UDim2.fromOffset(0, 0),
 			Position = UDim2.fromScale(0, 0),
 			ZIndex = 9999,
 			Active = false,
@@ -458,46 +459,35 @@ end
 
 -- #region NotificationService
 Services.NotificationService = {
-	_queue = {},
-	_processing = false,
 	_container = nil,
+	_toastZ = 200,
 }
 
 function Services.NotificationService:_ensureContainer(parent)
 	if self._container and self._container.Parent then
 		return
 	end
+	-- No UIListLayout: toasts use the same anchor so they stack; layout+Position tween was reflowing the ScreenGui tree.
 	self._container = Utils.Create("Frame", {
 		Name = "Notifications",
 		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
 		Size = UDim2.fromScale(1, 1),
 		Position = UDim2.fromScale(0, 0),
 		ZIndex = 200,
+		Active = false,
+		Selectable = false,
+		ClipsDescendants = false,
 		Parent = parent,
-	})
-	local list = Utils.Create("UIListLayout", {
-		Padding = UDim.new(0, 8),
-		HorizontalAlignment = Enum.HorizontalAlignment.Right,
-		VerticalAlignment = Enum.VerticalAlignment.Bottom,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Parent = self._container,
-	})
-	Utils.Create("UIPadding", {
-		PaddingBottom = UDim.new(0, 20),
-		PaddingRight = UDim.new(0, 20),
-		Parent = self._container,
 	})
 end
 
-function Services.NotificationService:_next()
-	if #self._queue == 0 then
-		self._processing = false
-		return
-	end
-	self._processing = true
-	local item = table.remove(self._queue, 1)
+function Services.NotificationService:_spawnToast(item)
 	local theme = Services.ThemeService.Current
 	local nt = Services.ThemeService.Tokens.Notification
+	local insetX = 20
+	local insetY = 20
+	self._toastZ = self._toastZ + 1
 	local card = Utils.Create("Frame", {
 		BackgroundColor3 = theme.Surface,
 		BackgroundTransparency = 0,
@@ -505,6 +495,8 @@ function Services.NotificationService:_next()
 		BorderColor3 = theme.Border,
 		Size = UDim2.new(0, nt.Width, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
+		AnchorPoint = Vector2.new(1, 1),
+		ZIndex = self._toastZ,
 		Parent = self._container,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, nt.CornerRadius), Parent = card })
@@ -554,40 +546,40 @@ function Services.NotificationService:_next()
 		LayoutOrder = 1,
 		Parent = inner,
 	})
-	card.Position = UDim2.new(1, 40, 1, 0)
+	card.Position = UDim2.new(1, insetX + 24, 1, -insetY)
 	card.BackgroundTransparency = 1
 	title.TextTransparency = 1
 	body.TextTransparency = 1
 	Utils.Tween(card, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-		Position = UDim2.new(1, -20, 1, 0),
+		Position = UDim2.new(1, -insetX, 1, -insetY),
 		BackgroundTransparency = 0,
 	})
 	Utils.Tween(title, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { TextTransparency = 0 })
 	Utils.Tween(body, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { TextTransparency = 0 })
 	task.delay(item.Duration or 3.5, function()
 		if not card.Parent then
-			self:_next()
 			return
 		end
 		Utils.Tween(card, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
-			Position = UDim2.new(1, 40, 1, 0),
+			Position = UDim2.new(1, insetX + 24, 1, -insetY),
 			BackgroundTransparency = 1,
 		})
 		Utils.Tween(title, TweenInfo.new(0.3), { TextTransparency = 1 })
 		Utils.Tween(body, TweenInfo.new(0.3), { TextTransparency = 1 })
 		task.delay(0.32, function()
-			card:Destroy()
-			self:_next()
+			if card.Parent then
+				card:Destroy()
+			end
 		end)
 	end)
 end
 
 function Services.NotificationService:Notify(data)
 	data = type(data) == "table" and data or { Title = "Notice", Message = tostring(data) }
-	table.insert(self._queue, data)
-	if not self._processing then
-		self:_next()
+	if not self._container or not self._container.Parent then
+		return
 	end
+	self:_spawnToast(data)
 end
 -- #endregion
 
