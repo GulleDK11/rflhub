@@ -9,6 +9,9 @@ local Elements = {}
 local Services = {}
 local Utils = {}
 
+-- Sættes via `Library:Init({ AllowedPlaceIds = { 123, … } })`. `nil` = intet tjek (standard).
+Services._allowedPlaceIds = nil
+
 -- #region Services bootstrap
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -938,6 +941,9 @@ end
 
 function Core.CreateWindow(opts)
 	opts = opts or {}
+	if not currentPlaceAllowed() then
+		placeDeniedToastGui(resolveGuiParent(opts))
+	end
 	local displayName = opts.Name or opts.Title or "GulleUI"
 	local subtitle = opts.Subtitle ~= nil and opts.Subtitle or ""
 	local loadingTitle = opts.LoadingTitle or displayName
@@ -2050,9 +2056,17 @@ function Core.CreateWindow(opts)
 			selectTab()
 		end
 
-		return tabObj
-	end
+	return tabObj
+end
 
+	-- Notifikationer skal kunne vises før hub (fx key-gate / place denied); flyt container hvis forælder skiftes.
+	do
+		local notifyParent = windowFadeRoot or screen
+		local c = Services.NotificationService._container
+		if c and c.Parent and c.Parent ~= notifyParent then
+			c.Parent = notifyParent
+		end
+	end
 	Services.NotificationService:_ensureContainer(windowFadeRoot or screen)
 
 	if configEnabled then
@@ -3250,7 +3264,55 @@ end
 -- #endregion
 
 -- #region Library
-function Library:Init()
+local function currentPlaceAllowed()
+	local ids = Services._allowedPlaceIds
+	if ids == nil then
+		return true
+	end
+	if type(ids) ~= "table" then
+		return true
+	end
+	local pid = game.PlaceId
+	for _, id in ipairs(ids) do
+		if tonumber(id) == pid then
+			return true
+		end
+	end
+	return false
+end
+
+local function placeDeniedToastGui(guiParent)
+	local sg = Utils.Create("ScreenGui", {
+		Name = "GulleUI_PlaceDenied",
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		DisplayOrder = 620,
+		Parent = guiParent,
+	})
+	Services.NotificationService:_ensureContainer(sg)
+	Services.NotificationService:Notify({
+		Title = "GulleUI",
+		Message = "Place not allowed.",
+		Duration = 5,
+	})
+	task.wait()
+	pcall(function()
+		local s = script
+		if s and typeof(s) == "Instance" and s.Destroy then
+			s:Destroy()
+		end
+	end)
+	error("GulleUI: Place not allowed.", 0)
+end
+
+function Library:Init(opts)
+	opts = type(opts) == "table" and opts or {}
+	if type(opts.AllowedPlaceIds) == "table" then
+		Services._allowedPlaceIds = opts.AllowedPlaceIds
+	else
+		Services._allowedPlaceIds = nil
+	end
+
 	local api = {
 		Services = Services,
 		Theme = Services.ThemeService,
@@ -3299,6 +3361,9 @@ function Library:Init()
 	function api.OpenAfterValidate(_, opts)
 		opts = opts or {}
 		local winOpts = type(opts.Window) == "table" and opts.Window or {}
+		if not currentPlaceAllowed() then
+			placeDeniedToastGui(resolveGuiParent(winOpts))
+		end
 
 		local function finishOpen()
 			if opts.PrintCredits == true then
@@ -3359,6 +3424,9 @@ function Library:Init()
 		opts = opts or {}
 		local winOpts = type(opts.Window) == "table" and opts.Window or {}
 		local guiParent = resolveGuiParent({ UseCoreGui = winOpts.UseCoreGui })
+		if not currentPlaceAllowed() then
+			placeDeniedToastGui(guiParent)
+		end
 		local themeStub = { _themeOverride = type(opts.KeyTheme) == "table" and opts.KeyTheme or nil }
 		local C = Core.GetColors(themeStub)
 		local tok = Core.GetTokens(themeStub)
@@ -3402,6 +3470,7 @@ function Library:Init()
 			DisplayOrder = type(opts.KeyDisplayOrder) == "number" and opts.KeyDisplayOrder or 550,
 			Parent = guiParent,
 		})
+		Services.NotificationService:_ensureContainer(screen)
 
 		local keyFadeRoot = Utils.TryCreateCanvasGroup({
 			Name = "GulleKeyFade",
@@ -3773,6 +3842,11 @@ function Library:Init()
 					{ Transparency = cardStrokeTargetT }
 				)
 			end
+			Services.NotificationService:Notify({
+				Title = "UI loaded",
+				Message = "Enter your key to continue.",
+				Duration = 3.5,
+			})
 		end)
 
 		return {
@@ -3814,6 +3888,10 @@ function Library:Init()
 
 	function api.GetFlag(_, f)
 		return Services.StateService:GetFlag(f)
+	end
+
+	function api.IsPlaceAllowed(_)
+		return currentPlaceAllowed()
 	end
 
 	return api
