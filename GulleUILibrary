@@ -93,25 +93,60 @@ function Utils.Tween(inst, ti, props)
 	return t
 end
 
-function Utils.Ripple(button, color, duration)
-	local abs = button.AbsoluteSize
+-- Ripple is drawn in a ScreenGui overlay so tweened Size does not affect AutomaticSize on row cards.
+function Utils.Ripple(button, color, duration, screenPos)
+	if not button or not button:IsDescendantOf(game) then
+		return
+	end
+	duration = duration or 0.35
+	local sg = button:FindFirstAncestorWhichIsA("ScreenGui")
+	if not sg then
+		return
+	end
+	local absPos = button.AbsolutePosition
+	local absSize = button.AbsoluteSize
+	local maxDim = math.max(absSize.X, absSize.Y, 1)
+	local center
+	if typeof(screenPos) == "Vector2" then
+		center = screenPos
+	else
+		center = Vector2.new(absPos.X + absSize.X * 0.5, absPos.Y + absSize.Y * 0.5)
+	end
+
+	local layer = sg:FindFirstChild("_GulleRippleLayer")
+	if not layer then
+		layer = Utils.Create("Frame", {
+			Name = "_GulleRippleLayer",
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 1),
+			Position = UDim2.fromScale(0, 0),
+			ZIndex = 9999,
+			Active = false,
+			Selectable = false,
+			ClipsDescendants = false,
+			Parent = sg,
+		})
+	end
+
 	local circle = Utils.Create("Frame", {
+		Name = "Ripple",
 		BackgroundColor3 = color,
 		BackgroundTransparency = 0.6,
 		BorderSizePixel = 0,
 		Size = UDim2.fromOffset(0, 0),
-		Position = UDim2.fromScale(0.5, 0.5),
+		Position = UDim2.fromOffset(center.X, center.Y),
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		ZIndex = button.ZIndex + 1,
-		Parent = button,
+		ZIndex = 1,
+		Parent = layer,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = circle })
-	Utils.Tween(circle, TweenInfo.new(duration or 0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Size = UDim2.fromOffset(math.max(abs.X, abs.Y) * 2, math.max(abs.X, abs.Y) * 2),
+	Utils.Tween(circle, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = UDim2.fromOffset(maxDim * 2, maxDim * 2),
 		BackgroundTransparency = 1,
 	})
-	task.delay(duration or 0.35, function()
-		if circle then
+	task.delay(duration, function()
+		if circle and circle.Parent then
 			circle:Destroy()
 		end
 	end)
@@ -2006,7 +2041,6 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			Text = opts.Name or "Button",
 			Size = UDim2.new(1, 0, 0, etok.Control.ButtonHeight),
 			AutoButtonColor = false,
-			ClipsDescendants = true,
 			Parent = card,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, etok.Control.DefaultRadius), Parent = btn })
@@ -2015,8 +2049,22 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			Core.AddThemeRef(win, btnStroke, "Color", "Border")
 		end
 
+		btn.InputBegan:Connect(function(input, gameProcessed)
+			if gameProcessed then
+				return
+			end
+			local ut = input.UserInputType
+			if ut ~= Enum.UserInputType.MouseButton1 and ut ~= Enum.UserInputType.Touch then
+				return
+			end
+			Utils.Ripple(
+				btn,
+				select(1, ElemCtx(win)).Accent,
+				0.4,
+				Vector2.new(input.Position.X, input.Position.Y)
+			)
+		end)
 		btn.MouseButton1Click:Connect(function()
-			Utils.Ripple(btn, select(1, ElemCtx(win)).Accent, 0.4)
 			if opts.Callback then
 				task.spawn(opts.Callback)
 			end
