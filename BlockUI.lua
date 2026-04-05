@@ -6,8 +6,8 @@
     ██████╔╝███████╗╚██████╔╝╚██████╗██║  ██╗╚██████╔╝██║
     ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝
 
-    BlockUI v3.0.0 — Nyt layout (ingen Zypher-slice): rene kort/rækker, ens spacing, glidende notify
-    CreateWindow → LoadNotify (default true), LoadNotifyTitle/Text/Duration, + LogoImage, ShowProfile, DeveloperUserIds …
+    BlockUI v3.1.0 — Firkantet UI, resize (PC + touch), dropdown-overlay (ingen clipping)
+    CreateWindow → Resizable, MinWindowSize, MaxWindowSize, WindowSize, LoadNotify, LogoImage, …
 
     Usage:
         local BlockUI = require(pathToModule)  -- eller dit loadstring-setup
@@ -18,7 +18,8 @@
                   CreateInput, CreateDropdown, CreateLabel
         BlockUI → Notify, LoadConfiguration, SaveConfiguration
         CreateWindow → ToggleKey, LogoImage, ShowProfile, DeveloperUserIds, DevBadgeImage, ProfileTag,
-                       LoadNotify (default true), LoadNotifyTitle, LoadNotifyText, LoadNotifyDuration, LoadNotifyType
+                       LoadNotify*, Resizable, MinWindowSize, MaxWindowSize, WindowSize (Vector2 / {w,h})
+        Window → SetTitle, SetSubtitle, SetSize, SetPosition, GetSize, GetPosition, Minimize, IsMinimized
         VIGTIG: Kun én ToggleKey-linje i tabellen — gentagne nøgler overskrives (sidste vinder).
 --]]
 
@@ -28,8 +29,8 @@ BlockUI._windows = {}
 BlockUI._configFile = nil
 
 -- ── Services ────────────────────────────────────────────────
-local Players        = game:GetService("Players")
-local TweenService   = game:GetService("TweenService")
+local Players          = game:GetService("Players")
+local TweenService     = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer    = Players.LocalPlayer
@@ -68,8 +69,8 @@ local S = {
     fontMono       = Enum.Font.Code,
     fontBody       = Enum.Font.Gotham,
     fontTitle      = Enum.Font.GothamBold,
-    radiusS        = UDim.new(0, 10),
-    radiusM        = UDim.new(0, 14),
+    radiusS        = UDim.new(0, 0),
+    radiusM        = UDim.new(0, 0),
     border         = Color3.fromRGB(48, 50, 56),
     strokeEtch     = Color3.fromRGB(90, 92, 100),
     black          = Color3.fromRGB(6, 6, 8),
@@ -96,17 +97,44 @@ local SIDEBAR_W = 184
 local PROFILE_H = 102
 local TOP_STRIP = 2
 local HEADER_H = 54
-local CORNER_MAIN = UDim.new(0, 18)
+-- Firkantet chrome (0 = ingen afrunding; Dollarware-lignende “kasse”-look)
+local CORNER_MAIN = UDim.new(0, 0)
 local INNER_PAD = 12
 local GAP = 10
-local ROW_R = UDim.new(0, 12)
+local ROW_R = UDim.new(0, 0)
 local function corner(inst, r)
+    r = r or CORNER_MAIN
+    if r.Scale == 0 and r.Offset == 0 then
+        local old = inst:FindFirstChildOfClass("UICorner")
+        if old then
+            old:Destroy()
+        end
+        return
+    end
     local c = inst:FindFirstChildOfClass("UICorner")
     if not c then
         c = Instance.new("UICorner")
         c.Parent = inst
     end
-    c.CornerRadius = r or CORNER_MAIN
+    c.CornerRadius = r
+end
+
+local function getViewportSize()
+    local cam = workspace.CurrentCamera
+    if cam then
+        return cam.ViewportSize.X, cam.ViewportSize.Y
+    end
+    return 800, 600
+end
+
+local function inputIsPressStart(input)
+    return input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch
+end
+
+local function inputIsDrag(input)
+    return input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch
 end
 
 local function resolveUserProfileTag(cfg)
@@ -179,21 +207,24 @@ local function runCallback(fn, ...)
 end
 
 local function makeDraggable(frame, handle)
-    local dragging, dragInput, dragStart, startPos
+    local dragging = false
+    local dragStart
+    local startPos
     handle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if inputIsPressStart(input) then
             dragging  = true
             dragStart = input.Position
             startPos  = frame.Position
         end
     end)
     handle.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
             dragging = false
         end
     end)
     UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        if dragging and inputIsDrag(input) and input.UserInputState == Enum.UserInputState.Change then
             local delta = input.Position - dragStart
             frame.Position = UDim2.new(
                 startPos.X.Scale,
@@ -256,7 +287,7 @@ function BlockUI:Notify(cfg)
         BackgroundTransparency = 0.08,
         BorderSizePixel  = 0,
     }, notifHolder)
-    corner(card, UDim.new(0, 14))
+    corner(card, CORNER_MAIN)
     new("UIStroke", {
         Color = S.border,
         Thickness = 1,
@@ -275,7 +306,7 @@ function BlockUI:Notify(cfg)
         BorderSizePixel  = 0,
         LayoutOrder      = 0,
     }, card)
-    corner(stripe, UDim.new(0, 2))
+    corner(stripe, CORNER_MAIN)
 
     local body = new("Frame", {
         Size             = UDim2.new(1, 0, 0, 0),
@@ -456,13 +487,77 @@ function BlockUI:CreateWindow(cfg)
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
     }, PlayerGui)
 
+    local vw, vh = getViewportSize()
+    local minWin = cfg.MinWindowSize
+    if typeof(minWin) == "Vector2" then
+        minWin = { math.max(200, math.floor(minWin.X)), math.max(160, math.floor(minWin.Y)) }
+    elseif type(minWin) == "table" and minWin[1] and minWin[2] then
+        minWin = { math.max(200, math.floor(minWin[1])), math.max(160, math.floor(minWin[2])) }
+    else
+        minWin = { 320, 220 }
+    end
+    local maxWin = cfg.MaxWindowSize
+    if typeof(maxWin) == "Vector2" then
+        maxWin = { math.floor(maxWin.X), math.floor(maxWin.Y) }
+    elseif type(maxWin) == "table" and maxWin[1] and maxWin[2] then
+        maxWin = { math.floor(maxWin[1]), math.floor(maxWin[2]) }
+    else
+        maxWin = { math.max(minWin[1], vw - 12), math.max(minWin[2], vh - 12) }
+    end
+    local initW, initH = MAIN_W, MAIN_H
+    local ws = cfg.WindowSize
+    if typeof(ws) == "Vector2" then
+        initW, initH = math.floor(ws.X), math.floor(ws.Y)
+    elseif type(ws) == "table" then
+        initW = math.floor(ws[1] or ws.x or initW)
+        initH = math.floor(ws[2] or ws.y or initH)
+    else
+        initW = math.clamp(math.floor(vw * 0.92), minWin[1], maxWin[1])
+        initH = math.clamp(math.floor(vh * 0.88), minWin[2], maxWin[2])
+        initW = math.min(initW, 748)
+        initH = math.min(initH, 560)
+    end
+    initW = math.clamp(initW, minWin[1], maxWin[1])
+    initH = math.clamp(initH, minWin[2], maxWin[2])
+
     local headerH = (winSub ~= "") and 58 or HEADER_H
     local bodyTop = TOP_STRIP + headerH
     local showProfile = cfg.ShowProfile ~= false
+    local resizable = cfg.Resizable ~= false
+
+    -- Dropdowns / overlays klippes ikke af scroll (Dollarware-lignende flytning til top-lag)
+    local dropHost = new("Frame", {
+        Name             = "BlockUI_DropHost",
+        Size             = UDim2.fromScale(1, 1),
+        Position         = UDim2.new(0, 0, 0, 0),
+        BackgroundTransparency = 1,
+        ZIndex           = 800,
+        Active           = false,
+        Selectable       = false,
+    }, gui)
+    local dropBackdrop = new("TextButton", {
+        Name             = "DropBackdrop",
+        Size             = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        Text             = "",
+        AutoButtonColor  = false,
+        ZIndex           = 1,
+        Visible          = false,
+    }, dropHost)
+    local activeDropdownClose = nil
+    dropBackdrop.MouseButton1Click:Connect(function()
+        if activeDropdownClose then
+            local fn = activeDropdownClose
+            activeDropdownClose = nil
+            fn()
+        end
+        dropBackdrop.Visible = false
+    end)
 
     local main = new("Frame", {
-        Size             = UDim2.new(0, MAIN_W, 0, MAIN_H),
-        Position         = UDim2.new(0.5, -MAIN_W / 2, 0.5, -MAIN_H / 2),
+        AnchorPoint      = Vector2.new(0.5, 0.5),
+        Position         = UDim2.new(0.5, 0, 0.5, 0),
+        Size             = UDim2.fromOffset(initW, initH),
         BackgroundColor3 = S.bg,
         BorderSizePixel  = 0,
         -- false: ellers klipper UICorner profilfooteren i venstre bund
@@ -534,7 +629,7 @@ function BlockUI:CreateWindow(cfg)
         BorderSizePixel  = 0,
         ZIndex           = 6,
     }, titlebar)
-    corner(headerGlow, UDim.new(1, 0))
+    corner(headerGlow, CORNER_MAIN)
 
     local hasLogo = type(logoImage) == "string" and logoImage ~= ""
     local titleLeft = 14
@@ -547,7 +642,7 @@ function BlockUI:CreateWindow(cfg)
             BorderSizePixel  = 0,
             ZIndex           = 6,
         }, titlebar)
-        corner(logoHolder, UDim.new(0, 10))
+        corner(logoHolder, CORNER_MAIN)
         new("UIStroke", {
             Color = S.strokeEtch,
             Thickness = 1,
@@ -596,8 +691,9 @@ function BlockUI:CreateWindow(cfg)
         Transparency     = 0.9,
     }, titleLbl)
 
+    local subtitleLbl = nil
     if winSub ~= "" then
-        new("TextLabel", {
+        subtitleLbl = new("TextLabel", {
             Size             = UDim2.new(1, 0, 0, 0),
             AutomaticSize    = Enum.AutomaticSize.Y,
             BackgroundTransparency = 1,
@@ -608,6 +704,42 @@ function BlockUI:CreateWindow(cfg)
             TextXAlignment   = Enum.TextXAlignment.Left,
             LayoutOrder      = 2,
         }, titleStack)
+    end
+
+    local minBtn = new("TextButton", {
+        Size             = UDim2.new(0, 34, 0, 34),
+        Position         = UDim2.new(1, -80, 0.5, -17),
+        BackgroundColor3 = S.darkContrast,
+        BackgroundTransparency = 0.35,
+        Text             = "−",
+        TextColor3       = S.muted,
+        FontFace         = Font.fromEnum(Enum.Font.GothamMedium),
+        TextSize         = 20,
+        AutoButtonColor  = false,
+        ZIndex           = 8,
+    }, titlebar)
+    corner(minBtn, CORNER_MAIN)
+    new("UIStroke", {
+        Color = S.border,
+        Thickness = 1,
+        Transparency = 0.5,
+    }, minBtn)
+    minBtn.MouseEnter:Connect(function()
+        tween(minBtn, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0,
+            BackgroundColor3 = S.panelRaised,
+            TextColor3 = S.accentGlow,
+        })
+    end)
+    minBtn.MouseLeave:Connect(function()
+        tween(minBtn, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 0.35,
+            BackgroundColor3 = S.darkContrast,
+            TextColor3 = S.muted,
+        })
+    end)
+    if cfg.ShowMinButton == false then
+        minBtn.Visible = false
     end
 
     local closeBtn = new("TextButton", {
@@ -622,7 +754,7 @@ function BlockUI:CreateWindow(cfg)
         AutoButtonColor  = false,
         ZIndex           = 8,
     }, titlebar)
-    corner(closeBtn, UDim.new(0, 10))
+    corner(closeBtn, CORNER_MAIN)
     new("UIStroke", {
         Color = S.border,
         Thickness = 1,
@@ -709,7 +841,7 @@ function BlockUI:CreateWindow(cfg)
         Size             = UDim2.new(1, -16, 0, 32),
         ZIndex           = 1,
     }, sidebar)
-    corner(tabSelector, UDim.new(0, 10))
+    corner(tabSelector, ROW_R)
     new("UIStroke", {
         Color = S.strokeEtch,
         Thickness = 1,
@@ -728,7 +860,7 @@ function BlockUI:CreateWindow(cfg)
             BorderSizePixel  = 0,
             ZIndex           = 20,
         }, sidebarCol)
-        corner(profilePanel, UDim.new(0, 12))
+        corner(profilePanel, CORNER_MAIN)
         new("UIStroke", {
             Color = S.border,
             Thickness = 1,
@@ -756,7 +888,7 @@ function BlockUI:CreateWindow(cfg)
             BorderSizePixel  = 0,
             ZIndex           = 3,
         }, profilePanel)
-        corner(avWrap, UDim.new(1, 0))
+        corner(avWrap, CORNER_MAIN)
         new("UIStroke", {
             Color = S.accentGlow,
             Thickness = 1,
@@ -775,7 +907,7 @@ function BlockUI:CreateWindow(cfg)
             ScaleType        = Enum.ScaleType.Fit,
             ZIndex           = 4,
         }, avWrap)
-        corner(avImg, UDim.new(1, 0))
+        corner(avImg, CORNER_MAIN)
 
         new("TextLabel", {
             Size             = UDim2.new(1, -82, 0, 18),
@@ -825,7 +957,7 @@ function BlockUI:CreateWindow(cfg)
                 LayoutOrder      = 1,
                 ZIndex           = 5,
             }, badgeRow)
-            corner(devIcon, UDim.new(0, 4))
+            corner(devIcon, CORNER_MAIN)
         end
 
         local badgeLbl = new("TextLabel", {
@@ -839,7 +971,7 @@ function BlockUI:CreateWindow(cfg)
             LayoutOrder      = 2,
             ZIndex           = 5,
         }, badgeRow)
-        corner(badgeLbl, UDim.new(0, 8))
+        corner(badgeLbl, CORNER_MAIN)
         new("UIPadding", {
             PaddingLeft   = UDim.new(0, 8),
             PaddingRight  = UDim.new(0, 8),
@@ -862,7 +994,8 @@ function BlockUI:CreateWindow(cfg)
     end
 
     local splitX = INNER_PAD + SIDEBAR_W
-    new("Frame", {
+    local splitBar = new("Frame", {
+        Name             = "SplitBar",
         Size             = UDim2.new(0, 1, 1, -bodyBottomPad),
         Position         = UDim2.fromOffset(splitX, bodyTop),
         BackgroundColor3 = S.border,
@@ -875,9 +1008,84 @@ function BlockUI:CreateWindow(cfg)
         Position         = UDim2.fromOffset(splitX + 1, bodyTop),
         BackgroundColor3 = S.bg,
         BorderSizePixel  = 0,
-        ClipsDescendants = true,
+        -- false: dropdowns m.m. må ikke klippes (scroll + overlay)
+        ClipsDescendants = false,
         ZIndex           = 3,
     }, main)
+
+    local savedRestoreW, savedRestoreH = initW, initH
+    local hubMinimized = false
+
+    local resizeGrip = new("TextButton", {
+        Name             = "ResizeGrip",
+        Size             = UDim2.fromOffset(18, 18),
+        Position         = UDim2.new(1, -18, 1, -18),
+        BackgroundColor3 = S.btn,
+        BackgroundTransparency = 0.2,
+        Text             = "",
+        AutoButtonColor  = false,
+        ZIndex           = 60,
+    }, main)
+    corner(resizeGrip, CORNER_MAIN)
+    new("UIStroke", { Color = S.border, Thickness = 1, Transparency = 0.55 }, resizeGrip)
+    if not resizable then
+        resizeGrip.Visible = false
+    end
+
+    local sizing = false
+    local sizeStartPos
+    local sizeStartMain
+    resizeGrip.InputBegan:Connect(function(input)
+        if not resizable or hubMinimized then
+            return
+        end
+        if inputIsPressStart(input) then
+            sizing = true
+            sizeStartPos = input.Position
+            sizeStartMain = main.AbsoluteSize
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            sizing = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if not sizing or not inputIsDrag(input) or input.UserInputState ~= Enum.UserInputState.Change then
+            return
+        end
+        local delta = input.Position - sizeStartPos
+        local nw = math.clamp(sizeStartMain.X + delta.X, minWin[1], maxWin[1])
+        local nh = math.clamp(sizeStartMain.Y + delta.Y, minWin[2], maxWin[2])
+        main.Size = UDim2.fromOffset(nw, nh)
+        savedRestoreW, savedRestoreH = nw, nh
+    end)
+
+    local function applyHubMinimize(on)
+        hubMinimized = on
+        if on then
+            savedRestoreW = main.AbsoluteSize.X
+            savedRestoreH = main.AbsoluteSize.Y
+            sidebarCol.Visible = false
+            contentArea.Visible = false
+            splitBar.Visible = false
+            resizeGrip.Visible = false
+            main.Size = UDim2.fromOffset(savedRestoreW, bodyTop + INNER_PAD)
+        else
+            sidebarCol.Visible = true
+            contentArea.Visible = true
+            splitBar.Visible = true
+            resizeGrip.Visible = resizable
+            main.Size = UDim2.fromOffset(savedRestoreW, savedRestoreH)
+        end
+    end
+
+    if cfg.ShowMinButton ~= false then
+        minBtn.MouseButton1Click:Connect(function()
+            applyHubMinimize(not hubMinimized)
+        end)
+    end
 
     local tabs      = {}
     local tabFrames = {}
@@ -937,7 +1145,7 @@ function BlockUI:CreateWindow(cfg)
             BorderSizePixel  = 0,
             ZIndex           = 3,
         }, sidebar)
-        corner(rowWrap, UDim.new(0, 10))
+        corner(rowWrap, ROW_R)
 
         local btn = new("TextButton", {
             Size             = UDim2.new(1, 0, 1, 0),
@@ -1026,10 +1234,16 @@ function BlockUI:CreateWindow(cfg)
         -- ── Button (kort med UICorner) ─────────────────────────
         function Tab:CreateButton(elCfg)
             elCfg = elCfg or {}
-            local iconPrefix = (elCfg.Icon and elCfg.Icon ~= "") and (elCfg.Icon .. "  ") or ""
-            local labelText = iconPrefix .. (elCfg.Name or "Button")
-            if elCfg.ButtonText and elCfg.ButtonText ~= "" then
-                labelText = labelText .. "  ·  " .. elCfg.ButtonText
+            local storedIcon = elCfg.Icon
+            local storedName = elCfg.Name or "Button"
+            local storedButtonText = elCfg.ButtonText
+            local function buildButtonCaption()
+                local iconPrefix = (storedIcon and storedIcon ~= "") and (storedIcon .. "  ") or ""
+                local t = iconPrefix .. storedName
+                if storedButtonText and storedButtonText ~= "" then
+                    t = t .. "  ·  " .. tostring(storedButtonText)
+                end
+                return t
             end
 
             local imgBtn = new("TextButton", {
@@ -1053,7 +1267,7 @@ function BlockUI:CreateWindow(cfg)
                 Size             = UDim2.new(1, -24, 1, 0),
                 Position         = UDim2.fromOffset(12, 0),
                 BackgroundTransparency = 1,
-                Text             = labelText,
+                Text             = buildButtonCaption(),
                 TextColor3       = S.text,
                 FontFace         = Font.fromEnum(S.fontTitle),
                 TextSize         = 14,
@@ -1078,8 +1292,18 @@ function BlockUI:CreateWindow(cfg)
             end)
 
             local Button = {}
-            function Button:Set(name)
-                caption.Text = tostring(name)
+            function Button:Set(name, buttonText)
+                if name ~= nil then
+                    storedName = tostring(name)
+                end
+                if buttonText ~= nil then
+                    storedButtonText = buttonText
+                end
+                caption.Text = buildButtonCaption()
+            end
+            function Button:SetIcon(icon)
+                storedIcon = icon
+                caption.Text = buildButtonCaption()
             end
             return Button
         end
@@ -1145,7 +1369,7 @@ function BlockUI:CreateWindow(cfg)
                 BorderSizePixel  = 0,
                 Active           = false,
             }, toggleBtn)
-            corner(toggleBack, UDim.new(1, 0))
+            corner(toggleBack, CORNER_MAIN)
             new("UIStroke", {
                 Color = S.border,
                 Thickness = 1,
@@ -1158,7 +1382,7 @@ function BlockUI:CreateWindow(cfg)
                 BackgroundColor3 = Color3.fromRGB(200, 200, 208),
                 BorderSizePixel  = 0,
             }, toggleBack)
-            corner(toggleKnob, UDim.new(1, 0))
+            corner(toggleKnob, CORNER_MAIN)
             new("UIStroke", {
                 Color = S.accentSoft,
                 Thickness = 1,
@@ -1256,7 +1480,7 @@ function BlockUI:CreateWindow(cfg)
                 BackgroundColor3 = S.trackBg,
                 BorderSizePixel  = 0,
             }, row)
-            corner(trackBg, UDim.new(1, 0))
+            corner(trackBg, CORNER_MAIN)
 
             -- Fill
             local fill = new("Frame", {
@@ -1264,7 +1488,7 @@ function BlockUI:CreateWindow(cfg)
                 BackgroundColor3 = S.fluentBlue,
                 BorderSizePixel  = 0,
             }, trackBg)
-            corner(fill, UDim.new(1, 0))
+            corner(fill, CORNER_MAIN)
 
             -- Thumb
             local sliderThumb = new("Frame", {
@@ -1274,7 +1498,7 @@ function BlockUI:CreateWindow(cfg)
                 BackgroundColor3 = S.text,
                 BorderSizePixel  = 0,
             }, trackBg)
-            corner(sliderThumb, UDim.new(1, 0))
+            corner(sliderThumb, CORNER_MAIN)
             new("UIStroke", { Color = S.accent, Thickness = 1, Transparency = 0.35 }, sliderThumb)
 
             local function updateSlider(val, skipCallback)
@@ -1305,24 +1529,27 @@ function BlockUI:CreateWindow(cfg)
                 updateSlider(v)
             end
             trackBg.InputBegan:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                if inp.UserInputType == Enum.UserInputType.MouseButton1
+                    or inp.UserInputType == Enum.UserInputType.Touch then
                     draggingSlider = true
                     sliderFromInput(inp)
                 end
             end)
             sliderThumb.InputBegan:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                if inp.UserInputType == Enum.UserInputType.MouseButton1
+                    or inp.UserInputType == Enum.UserInputType.Touch then
                     draggingSlider = true
                     sliderFromInput(inp)
                 end
             end)
             UserInputService.InputEnded:Connect(function(inp)
-                if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                if inp.UserInputType == Enum.UserInputType.MouseButton1
+                    or inp.UserInputType == Enum.UserInputType.Touch then
                     draggingSlider = false
                 end
             end)
             UserInputService.InputChanged:Connect(function(inp)
-                if draggingSlider and inp.UserInputType == Enum.UserInputType.MouseMovement then
+                if draggingSlider and inputIsDrag(inp) then
                     sliderFromInput(inp)
                 end
             end)
@@ -1446,7 +1673,7 @@ function BlockUI:CreateWindow(cfg)
                 AutoButtonColor  = false,
             }, container)
             new("UIStroke", { Color = S.border, Thickness = 1, Transparency = 0.25 }, selBtn)
-            corner(selBtn, S.radiusS)
+            corner(selBtn, CORNER_MAIN)
 
             local selLabel = new("TextLabel", {
                 Size             = UDim2.new(1, -24, 1, 0),
@@ -1469,24 +1696,81 @@ function BlockUI:CreateWindow(cfg)
                 TextSize         = 10,
             }, selBtn)
 
-            -- Dropdown list (absolute, layered on top)
+            -- Liste i ScreenGui-lag — ikke klippet af ScrollingFrame (Dollarware-stil)
             local dropList = new("Frame", {
-                Size             = UDim2.new(1, -28, 0, 0),
-                Position         = UDim2.fromOffset(14, 46),
+                Size             = UDim2.fromOffset(120, 0),
+                Position         = UDim2.fromOffset(0, 0),
                 BackgroundColor3 = S.surface2,
                 BorderSizePixel  = 0,
                 Visible          = false,
-                ZIndex           = 10,
-            }, container)
+                ZIndex           = 50,
+            }, dropHost)
             new("UIStroke", { Color = S.border, Thickness = 1, Transparency = 0.25 }, dropList)
-            corner(dropList, S.radiusS)
+            corner(dropList, CORNER_MAIN)
             new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, dropList)
 
             local isOpen = false
+            local canvasScrollConn = nil
+
+            local closeDropdown
+            local function positionDropList()
+                if not selBtn.Parent then
+                    return
+                end
+                local hp = dropHost.AbsolutePosition
+                local ap = selBtn.AbsolutePosition
+                local as = selBtn.AbsoluteSize
+                local rows = math.max(0, #options)
+                if rows < 1 then
+                    rows = 1
+                end
+                dropList.Size = UDim2.fromOffset(math.max(72, math.floor(as.X)), rows * 28)
+                dropList.Position = UDim2.fromOffset(
+                    math.floor(ap.X - hp.X),
+                    math.floor(ap.Y - hp.Y + as.Y)
+                )
+            end
+
+            closeDropdown = function()
+                if not isOpen then
+                    return
+                end
+                isOpen = false
+                dropList.Visible = false
+                dropBackdrop.Visible = false
+                if activeDropdownClose == closeDropdown then
+                    activeDropdownClose = nil
+                end
+                if canvasScrollConn then
+                    canvasScrollConn:Disconnect()
+                    canvasScrollConn = nil
+                end
+            end
+
+            local function openDropdown()
+                if #options < 1 then
+                    return
+                end
+                if activeDropdownClose and activeDropdownClose ~= closeDropdown then
+                    activeDropdownClose()
+                end
+                isOpen = true
+                activeDropdownClose = closeDropdown
+                dropBackdrop.Visible = true
+                positionDropList()
+                dropList.Visible = true
+                if canvasScrollConn then
+                    canvasScrollConn:Disconnect()
+                end
+                canvasScrollConn = tabFrame:GetPropertyChangedSignal("CanvasPosition"):Connect(positionDropList)
+            end
 
             local function refreshOptions(opts)
+                options = opts
                 for _, c in pairs(dropList:GetChildren()) do
-                    if c:IsA("TextButton") then c:Destroy() end
+                    if c:IsA("TextButton") then
+                        c:Destroy()
+                    end
                 end
                 for _, opt in ipairs(opts) do
                     local optBtn = new("TextButton", {
@@ -1498,9 +1782,15 @@ function BlockUI:CreateWindow(cfg)
                         FontFace         = Font.fromEnum(S.fontBody),
                         TextSize         = 12,
                         AutoButtonColor  = false,
-                        ZIndex           = 11,
+                        ZIndex           = 55,
                     }, dropList)
-                    new("Frame", { Size = UDim2.new(1,0,0,1), Position = UDim2.new(0,0,1,-1), BackgroundColor3 = S.border, BorderSizePixel = 0, ZIndex = 11 }, optBtn)
+                    new("Frame", {
+                        Size             = UDim2.new(1, 0, 0, 1),
+                        Position         = UDim2.new(0, 0, 1, -1),
+                        BackgroundColor3 = S.border,
+                        BorderSizePixel  = 0,
+                        ZIndex           = 54,
+                    }, optBtn)
                     optBtn.MouseEnter:Connect(function()
                         tween(optBtn, TweenInfo.new(0.08), { BackgroundColor3 = S.surface })
                     end)
@@ -1510,39 +1800,57 @@ function BlockUI:CreateWindow(cfg)
                     optBtn.MouseButton1Click:Connect(function()
                         if multi then
                             local idx = table.find(selected, opt)
-                            if idx then table.remove(selected, idx)
-                            else table.insert(selected, opt) end
+                            if idx then
+                                table.remove(selected, idx)
+                            else
+                                table.insert(selected, opt)
+                            end
                         else
                             selected = { opt }
-                            isOpen = false
-                            dropList.Visible = false
+                            closeDropdown()
                         end
                         selLabel.Text = #selected > 0 and table.concat(selected, ", ") or "—"
-                        if flag then BlockUI.Flags[flag] = selected end
+                        if flag then
+                            BlockUI.Flags[flag] = selected
+                        end
                         runCallback(elCfg.Callback, selected)
                     end)
                 end
-                local n = #opts
-                dropList.Size = UDim2.new(1, 0, 0, n * 28)
+                if isOpen then
+                    positionDropList()
+                end
             end
 
             refreshOptions(options)
 
             selBtn.MouseButton1Click:Connect(function()
-                isOpen = not isOpen
-                dropList.Visible = isOpen
+                if isOpen then
+                    closeDropdown()
+                else
+                    openDropdown()
+                end
             end)
 
             local Dropdown = {}
             function Dropdown:Refresh(opts)
-                options = opts
                 refreshOptions(opts)
+                if isOpen then
+                    positionDropList()
+                end
             end
             function Dropdown:Set(opts)
                 selected = opts
                 selLabel.Text = #selected > 0 and table.concat(selected, ", ") or "—"
-                if flag then BlockUI.Flags[flag] = selected end
+                if flag then
+                    BlockUI.Flags[flag] = selected
+                end
                 runCallback(elCfg.Callback, selected)
+                if isOpen then
+                    positionDropList()
+                end
+            end
+            function Dropdown:Close()
+                closeDropdown()
             end
             return Dropdown
         end
@@ -1592,7 +1900,7 @@ function BlockUI:CreateWindow(cfg)
                 BackgroundColor3 = S.accent,
                 BorderSizePixel  = 0,
             }, row)
-            corner(accentBar, UDim.new(0, 2))
+            corner(accentBar, CORNER_MAIN)
             new("UIGradient", {
                 Rotation = 90,
                 Color = ColorSequence.new({
@@ -1624,6 +1932,60 @@ function BlockUI:CreateWindow(cfg)
         end
 
         return Tab
+    end
+
+    function Window:SetTitle(text)
+        titleLbl.Text = tostring(text)
+    end
+
+    function Window:SetSubtitle(text)
+        local s = tostring(text or "")
+        if subtitleLbl then
+            subtitleLbl.Text = s
+            subtitleLbl.Visible = s ~= ""
+        elseif s ~= "" then
+            warn("[BlockUI] SetSubtitle: vinduet har ingen undertitel — sæt Subtitle i CreateWindow først.")
+        end
+    end
+
+    function Window:SetSize(width, height)
+        local w = math.clamp(math.floor(width), minWin[1], maxWin[1])
+        local h = math.clamp(math.floor(height), minWin[2], maxWin[2])
+        main.Size = UDim2.fromOffset(w, h)
+        if not hubMinimized then
+            savedRestoreW, savedRestoreH = w, h
+        end
+    end
+
+    function Window:SetPosition(x, y)
+        if typeof(x) == "UDim2" then
+            main.Position = x
+            return
+        end
+        main.Position = UDim2.new(0.5, math.floor(x), 0.5, math.floor(y))
+    end
+
+    function Window:GetSize()
+        local s = main.AbsoluteSize
+        return s.X, s.Y
+    end
+
+    function Window:GetPosition()
+        local p = main.AbsolutePosition
+        local s = main.AbsoluteSize
+        return p.X + s.X * 0.5, p.Y + s.Y * 0.5
+    end
+
+    function Window:Minimize(min)
+        if min == nil then
+            applyHubMinimize(not hubMinimized)
+        else
+            applyHubMinimize(min and true or false)
+        end
+    end
+
+    function Window:IsMinimized()
+        return hubMinimized
     end
 
     function Window:SetEnabled(enabled)
@@ -1669,47 +2031,89 @@ return BlockUI
 
 --[[
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  EKSEMPEL (HttpGet + faner der virker)
+  EKSEMPEL — dækker hele API’et
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Raw-URL (brug /main/… ikke /refs/heads/main/…):
-  https://raw.githubusercontent.com/GulleDK11/rflhub/main/BlockUI.lua
+  BlockUI:CreateWindow       → Name, Subtitle, ToggleKey, LogoImage,
+                               ShowProfile, DeveloperUserIds, DevBadgeImage,
+                               ProfileTag, ProfileTagColor,
+                               LoadNotify*, ConfigurationSaving,
+                               Resizable, MinWindowSize, MaxWindowSize, WindowSize,
+                               ShowMinButton (default true)
+  Window:CreateTab           → Name, Icon
+  Window:SetTitle, SetSubtitle, SetSize, SetPosition, GetSize, GetPosition,
+           Minimize, IsMinimized, SetEnabled, Toggle
+  Tab:CreateSection, CreateLabel, CreateButton, CreateToggle, CreateSlider,
+      CreateInput, CreateDropdown
+  Retur: Button:Set(name, buttonText?), Button:SetIcon(icon)
+         Toggle/Slider/Input/Label :Set …
+         Dropdown:Refresh, :Set, :Close
+  BlockUI:Notify, SaveConfiguration, LoadConfiguration
 
-  Du må kun have ÉN ToggleKey i CreateWindow{ … } — ellers overskriver Lua
-  de forrige (sidste nøgle vinder). Skriv fx kun:
-      ToggleKey = Enum.KeyCode.Insert,
+  UI er firkantet; resize nederst til højre (mus + touch). Dropdown åbner i top-lag.
+  Inspireret af funktioner fra Dollarware (topitbopit) — ikke 1:1 samme kode/API.
+
+  Raw-URL: https://raw.githubusercontent.com/GulleDK11/rflhub/main/BlockUI.lua
+  Kun én nøgle per felt i tabeller — fx kun én linje ToggleKey.
 
 local BlockUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/GulleDK11/rflhub/main/BlockUI.lua"))()
+local Players = game:GetService("Players")
+local lp = Players.LocalPlayer
 
 local function getHumanoid()
-    local ch = game.Players.LocalPlayer.Character
+    local ch = lp.Character
     return ch and ch:FindFirstChildWhichIsA("Humanoid")
 end
 
 local Window = BlockUI:CreateWindow({
     Name     = "Mit Script",
-    Subtitle = "Powered by BlockUI",
+    Subtitle = "Komplet BlockUI-demo",
+    -- Vindue: standard ~92% viewport (mobil/PC); eller fast størrelse:
+    -- WindowSize = Vector2.new(520, 400),
+    -- MinWindowSize = { 300, 200 },
+    -- MaxWindowSize = { 900, 700 },
+    -- Resizable = false,
+    -- ShowMinButton = false,
+    -- Én tast, flere taster, eller ingen GUI-toggle:
     ToggleKey = Enum.KeyCode.RightControl,
-    -- LoadNotify = false,  -- slå start-notify fra
-    -- LoadNotifyTitle = "Hub",
-    -- LoadNotifyText = "Indlæst.",
-    -- LoadNotifyDuration = 5,
-    -- LoadNotifyType = "success",  -- info | warning | error
+    -- ToggleKey = { Enum.KeyCode.Insert, Enum.KeyCode.RightControl },
+    -- ToggleKey = false,
+    LoadNotifyTitle    = "Klar",
+    LoadNotifyText     = "Hubben er indlæst — alle elementer nedenfor er API-demo.",
+    LoadNotifyDuration = 5,
+    LoadNotifyType     = "success", -- "info" | "warning" | "error"
+    -- LoadNotify = false,
     LogoImage = 74523675899900,
-    -- Dit Roblox UserId (tal) — ikke det samme som et billede-id
+    ShowProfile = true,
+    -- Skjul profilfooter: ShowProfile = false,
+    -- Erstat med dit UserId for “Dev”-badge (liste):
     DeveloperUserIds = { 10770498428 },
-    -- Lille ikon ved siden af “DEV” (rbxasset / tal)
-    DevBadgeImage = 10770498428,
+    -- Lille billede ved siden af DEV (tal = rbxassetid):
+    DevBadgeImage = 74523675899900,
+    -- Manuel badge i stedet for Member/Premium/Dev:
+    -- ProfileTag = "VIP",
+    -- ProfileTagColor = Color3.fromRGB(200, 160, 70),
+    -- Kræver writefile/readfile i din executor:
+    -- ConfigurationSaving = { Enabled = true, FileName = "MyHub_BlockUI" },
 })
 
-local Main = Window:CreateTab({ Name = "Main" })
-local Visuals = Window:CreateTab({ Name = "Visuals" })
+-- Efter alle faner/flags er oprettet (valgfrit):
+-- BlockUI:LoadConfiguration()
 
+-- Window:SetTitle("Nyt navn")
+-- Window:SetSize(600, 420)
+-- Window:Minimize()  -- eller Window:Minimize(true/false)
+
+local Main = Window:CreateTab({ Name = "Main" })
+local Visuals = Window:CreateTab({ Name = "Visuals", Icon = "◇" })
+
+-- ── Sektion + movement (Toggle, Slider, Flag, Callback) ─────
 Main:CreateSection({ Name = "Movement" })
 
-Main:CreateToggle({
+local speedToggle = Main:CreateToggle({
     Name         = "Speed Hack",
     Description  = "Brug slideren når denne er tændt",
+    Icon         = "»",
     CurrentValue = false,
     Flag         = "SpeedHack",
     Callback     = function(val)
@@ -1725,7 +2129,7 @@ Main:CreateToggle({
     end,
 })
 
-Main:CreateSlider({
+local walkSlider = Main:CreateSlider({
     Name         = "Walk Speed",
     Range        = { 0, 200 },
     Increment    = 5,
@@ -1743,14 +2147,136 @@ Main:CreateSlider({
     end,
 })
 
+Main:CreateSection({ Name = "Knapper" })
+
 Main:CreateButton({
-    Name     = "Teleport to Spawn",
-    Callback = function()
-        local ch = game.Players.LocalPlayer.Character
+    Name       = "Teleport til spawn",
+    Icon       = "◎",
+    ButtonText = "0, 5, 0",
+    Callback   = function()
+        local ch = lp.Character
         if ch then
             ch:MoveTo(Vector3.new(0, 5, 0))
-            BlockUI:Notify({ Title = "Teleporteret", Content = "Du er ved spawnen nu.", Type = "success" })
+            BlockUI:Notify({
+                Title    = "Teleporteret",
+                Content  = "Du er ved spawnen.",
+                Type     = "success",
+                Duration = 3,
+            })
         end
+    end,
+})
+
+-- Button:Set("ny tekst") — opdaterer synlig label
+local renameDemo = Main:CreateButton({
+    Name     = "Klik for at omdøbe knappen",
+    ButtonText = "demo",
+    Callback = function()
+        renameDemo:Set("Omdøbt", "script ✓")
+    end,
+})
+
+Main:CreateButton({
+    Name     = "Nulstil speed-toggle",
+    Callback = function()
+        speedToggle:Set(false)
+    end,
+})
+
+Main:CreateButton({
+    Name     = "Sæt walk speed-slider til 50",
+    Callback = function()
+        walkSlider:Set(50)
+    end,
+})
+
+-- ── Notify-typer + Window API (udkommentér og bind til tast) ─
+Main:CreateButton({
+    Name     = "Vis info / advarsel / fejl-notify",
+    Callback = function()
+        BlockUI:Notify({ Title = "Info", Content = "Almindelig besked.", Type = "info", Duration = 2.5 })
+        task.delay(0.35, function()
+            BlockUI:Notify({ Title = "Advarsel", Content = "Eksempel.", Type = "warning", Duration = 2.5 })
+        end)
+        task.delay(0.7, function()
+            BlockUI:Notify({ Title = "Fejl", Content = "Kun demo.", Type = "error", Duration = 2.5 })
+        end)
+    end,
+})
+
+--[[
+    Window:SetEnabled(false)  -- skjul hele hubben
+    Window:Toggle()           -- skjul/vis
+]]
+
+-- ── Label, Input, Dropdown (én + multi) ─────────────────────
+Visuals:CreateSection({ Name = "Formular & lister" })
+
+local statusLabel = Visuals:CreateLabel({
+    Text = "Skriv i feltet nedenfor — label opdateres via :Set()",
+})
+
+local noteInput = Visuals:CreateInput({
+    Name                  = "Notat",
+    PlaceholderText       = "Skriv her…",
+    CurrentValue          = "",
+    Flag                  = "DemoNote",
+    Callback              = function(text)
+        statusLabel:Set(#text > 0 and ("Gemt: " .. text) or "Tomt notat.")
+    end,
+    -- RemoveTextAfterFocusLost = true,
+})
+
+Visuals:CreateButton({
+    Name     = "Sæt input-tekst fra script",
+    Callback = function()
+        noteInput:Set("Sat via Input:Set()")
+    end,
+})
+
+Visuals:CreateDropdown({
+    Name           = "Enkeltvalg",
+    Options        = { "Standard", "Høj kontrast", "Kompakt" },
+    CurrentOption  = { "Standard" },
+    Flag           = "DemoTheme",
+    Callback       = function(selected)
+        BlockUI:Notify({
+            Title    = "Tema",
+            Content  = table.concat(selected, ", "),
+            Type     = "info",
+            Duration = 2,
+        })
+    end,
+})
+
+local multiDrop = Visuals:CreateDropdown({
+    Name              = "Flere valg",
+    Options           = { "A", "B", "C" },
+    CurrentOption     = {},
+    MultipleOptions   = true,
+    Flag              = "DemoTags",
+    Callback          = function(selected)
+        statusLabel:Set("Valgt: " .. (#selected > 0 and table.concat(selected, ", ") or "(ingen)"))
+    end,
+})
+
+Visuals:CreateButton({
+    Name     = "Dropdown:Refresh + :Set demo",
+    Callback = function()
+        multiDrop:Refresh({ "Nord", "Syd", "Øst", "Vest" })
+        multiDrop:Set({ "Nord", "Vest" })
+    end,
+})
+
+Visuals:CreateButton({
+    Name     = "Gem flags til fil (ConfigurationSaving)",
+    Callback = function()
+        BlockUI:SaveConfiguration()
+        BlockUI:Notify({
+            Title    = "Config",
+            Content  = "SaveConfiguration kørt (virker kun med fil-API i executor).",
+            Type     = "info",
+        })
     end,
 })
 ]]
