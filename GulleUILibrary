@@ -210,6 +210,8 @@ local _defaultTheme = {
 	Error = Color3.fromRGB(248, 113, 113),
 	Warning = Color3.fromRGB(251, 191, 36),
 	TabInactive = Color3.fromRGB(160, 160, 170),
+	-- Sidebar rank: "Developer" uses this; "User" uses TextDim.
+	DeveloperRank = Color3.fromRGB(125, 220, 255),
 }
 
 -- Hardcoded dev IDs (merged with opts.DeveloperUserIds). Add your UserId here or pass DeveloperUserIds on CreateWindow.
@@ -256,6 +258,7 @@ local _defaultTokens = {
 		RowSpacing = 6,
 		RowPaddingX = 12,
 		RowPaddingY = 8,
+		RowStrokeTransparency = 0.93,
 	},
 	Control = {
 		DefaultRadius = 6,
@@ -893,6 +896,19 @@ function Core.CreateWindow(opts)
 		end
 	end
 
+	local function windowSidebarRankLabel()
+		if type(opts.SidebarRank) == "string" and opts.SidebarRank ~= "" then
+			return opts.SidebarRank
+		end
+		if table.find(developerUserIds, LocalPlayer.UserId) then
+			return "Developer"
+		end
+		if game.CreatorType == Enum.CreatorType.User and LocalPlayer.UserId == game.CreatorId then
+			return "Developer"
+		end
+		return "User"
+	end
+
 	local windowThemeOverride = nil
 	if type(opts.Theme) == "table" then
 		if opts.Theme.ApplyGlobally or opts.Theme.Globally then
@@ -1123,19 +1139,6 @@ function Core.CreateWindow(opts)
 
 	local profileBarInst, profileNameInst, profileRankInst
 	if opts.HideSidebarProfile ~= true then
-		local function sidebarRankLabel()
-			if type(opts.SidebarRank) == "string" and opts.SidebarRank ~= "" then
-				return opts.SidebarRank
-			end
-			if table.find(developerUserIds, LocalPlayer.UserId) then
-				return "Developer"
-			end
-			if game.CreatorType == Enum.CreatorType.User and LocalPlayer.UserId == game.CreatorId then
-				return "Developer"
-			end
-			return "User"
-		end
-
 		profileBarInst = Utils.Create("Frame", {
 			BackgroundColor3 = colors.BackgroundElevated,
 			BackgroundTransparency = 0.15,
@@ -1198,10 +1201,10 @@ function Core.CreateWindow(opts)
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = 11,
-			TextColor3 = colors.TextDim,
+			TextColor3 = windowSidebarRankLabel() == "Developer" and colors.DeveloperRank or colors.TextDim,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Size = UDim2.new(1, 0, 0, 14),
-			Text = sidebarRankLabel(),
+			Text = windowSidebarRankLabel(),
 			LayoutOrder = 1,
 			Parent = textCol,
 		})
@@ -1445,7 +1448,6 @@ function Core.CreateWindow(opts)
 	if profileBarInst then
 		Core.AddThemeRef(window, profileBarInst, "BackgroundColor3", "BackgroundElevated")
 		Core.AddThemeRef(window, profileNameInst, "TextColor3", "Text")
-		Core.AddThemeRef(window, profileRankInst, "TextColor3", "TextDim")
 	end
 	Core.AddThemeRef(window, sideStroke, "Color", "Border")
 	Core.AddThemeRef(window, tabList, "ScrollBarImageColor3", "Accent")
@@ -1457,12 +1459,33 @@ function Core.CreateWindow(opts)
 	Core.AddThemeRef(window, loadBarBg, "BackgroundColor3", "SurfaceHover")
 	Core.AddThemeRef(window, loadBarFill, "BackgroundColor3", "Accent")
 	Core.AddThemeRef(window, resizeHint, "BackgroundColor3", "Border")
+	if profileRankInst then
+		function window:_syncProfileRankColor()
+			if not profileRankInst or not profileRankInst.Parent then
+				return
+			end
+			local th = Core.GetColors(self)
+			if windowSidebarRankLabel() == "Developer" then
+				profileRankInst.TextColor3 = th.DeveloperRank
+			else
+				profileRankInst.TextColor3 = th.TextDim
+			end
+		end
+	end
+
 	window._unsubscribeTheme = Services.ThemeService:RegisterWindowTheme(function()
 		Core.ApplyThemeRefs(window)
 		for _, hook in ipairs(window._tabThemeHooks) do
 			pcall(hook)
 		end
+		if window._syncProfileRankColor then
+			window:_syncProfileRankColor()
+		end
 	end)
+
+	if window._syncProfileRankColor then
+		window:_syncProfileRankColor()
+	end
 
 	function window:SetLocked(locked)
 		main.Interactable = not locked
@@ -1878,7 +1901,7 @@ local function createControlRowCard(rowsParent, theme, etok, win)
 	local stroke = Utils.Create("UIStroke", {
 		Color = theme.Border,
 		Thickness = 1,
-		Transparency = 0.93,
+		Transparency = etok.Section.RowStrokeTransparency or 0.93,
 		Parent = card,
 	})
 	Utils.Create("UIPadding", {
@@ -2806,6 +2829,29 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 		})
 	end
 
+	function section:CreateDivider(opts)
+		opts = opts or {}
+		local theme = select(1, ElemCtx(win))
+		local mx = opts.MarginX or 0
+		local thick = opts.Thickness or 1
+		local trans = opts.Transparency
+		if trans == nil then
+			trans = 0.45
+		end
+		local line = Utils.Create("Frame", {
+			BackgroundColor3 = theme.Border,
+			BackgroundTransparency = trans,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, -mx * 2, 0, thick),
+			Position = UDim2.new(0, mx, 0, 0),
+			Parent = rowsHost,
+		})
+		if win then
+			Core.AddThemeRef(win, line, "BackgroundColor3", "Border")
+		end
+		return elementApi(line, {})
+	end
+
 	function section:CreateParagraph(opts)
 		opts = opts or {}
 		local theme, etok = ElemCtx(win)
@@ -2888,6 +2934,10 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 		})
 	end
 
+	function section:NewDivider(opts)
+		return self:CreateDivider(opts)
+	end
+
 	return section
 end
 -- #endregion
@@ -2916,6 +2966,9 @@ function Library:Init()
 			LoadingTitle = opts.LoadingTitle,
 			LoadingSubtitle = opts.LoadingSubtitle,
 			ConfigurationSaving = opts.ConfigurationSaving,
+			DeveloperUserIds = opts.DeveloperUserIds,
+			SidebarRank = opts.SidebarRank,
+			HideSidebarProfile = opts.HideSidebarProfile,
 		})
 		api.Window = w
 		return w
@@ -2930,6 +2983,8 @@ function Library:Init()
 		api.Window = w
 		return w
 	end
+
+	api.BlockyTheme = Library.BlockyTheme
 
 	function api.Notify(_, data)
 		Services.NotificationService:Notify(data)
@@ -2957,6 +3012,21 @@ function Library:Init()
 
 	return api
 end
+
+-- Merge into CreateWindow: `Theme = Library.BlockyTheme` (per-window; default hub look unchanged).
+Library.BlockyTheme = {
+	Tokens = {
+		Window = { CornerRadius = 0 },
+		Tab = { ItemRadius = 0 },
+		Section = { BoxRadius = 0, RowStrokeTransparency = 0.72 },
+		Control = { DefaultRadius = 0, TogglePill = false },
+		Notification = { CornerRadius = 0 },
+	},
+	Colors = {
+		Border = Color3.fromRGB(78, 78, 86),
+		BorderLight = Color3.fromRGB(98, 98, 108),
+	},
+}
 
 return Library
 
