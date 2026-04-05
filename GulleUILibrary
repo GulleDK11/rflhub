@@ -564,10 +564,8 @@ function Services.NotificationService:_spawnToast(item)
 	local padX = nt.PaddingX or 12
 	local card = Utils.Create("Frame", {
 		Name = "ToastCard",
-		BackgroundColor3 = theme.Surface,
-		BackgroundTransparency = 0,
-		BorderSizePixel = 1,
-		BorderColor3 = theme.Border,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
 		Size = UDim2.new(0, nt.Width, 0, 48),
 		AutomaticSize = Enum.AutomaticSize.None,
 		LayoutOrder = self._toastOrder,
@@ -582,6 +580,24 @@ function Services.NotificationService:_spawnToast(item)
 		Position = UDim2.fromScale(0, 0),
 		Parent = card,
 	})
+	if toastFade then
+		local chrome = Utils.Create("Frame", {
+			Name = "ToastChrome",
+			BackgroundColor3 = theme.Surface,
+			BackgroundTransparency = 0,
+			BorderSizePixel = 1,
+			BorderColor3 = theme.Border,
+			Size = UDim2.fromScale(1, 1),
+			Position = UDim2.fromScale(0, 0),
+			Parent = toastFade,
+		})
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, nt.CornerRadius), Parent = chrome })
+	else
+		card.BackgroundColor3 = theme.Surface
+		card.BackgroundTransparency = 0
+		card.BorderSizePixel = 1
+		card.BorderColor3 = theme.Border
+	end
 	local contentRoot = toastFade or card
 	local mover = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
