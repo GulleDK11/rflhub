@@ -2062,8 +2062,13 @@ function Core.CreateWindow(opts)
 				{ Scale = tok.Animation.WindowOpenScale or 1 }
 			)
 		end
-		loadBarFill.Size = UDim2.new(1, 0, 1, 0)
-		local hold = math.max(openDur, tok.Animation.LoadingBarDuration or 0.35, 0.2)
+		local barDur = tok.Animation.LoadingBarDuration or 1
+		Utils.Tween(
+			loadBarFill,
+			TweenInfo.new(barDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Size = UDim2.new(1, 0, 1, 0) }
+		)
+		local hold = math.max(openDur, barDur, 0.2)
 		task.wait(hold)
 		loading.BackgroundTransparency = 1
 		loadTitle.TextTransparency = 1
