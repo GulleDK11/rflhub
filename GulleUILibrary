@@ -295,6 +295,11 @@ local _defaultTokens = {
 		TabTween = 0.18,
 		TabContentScaleFrom = 0.97,
 		LoadingBarDuration = 0.35,
+		-- Key gate (CreateWindowAfterKey): nil = fallback til WindowOpen*
+		KeyGateOpenDuration = 0.3,
+		KeyGateOpenScaleStart = 0.92,
+		KeyGateCloseDuration = 0.22,
+		KeyGateCloseScaleEnd = 0.86,
 	},
 	Notification = {
 		Width = 280,
@@ -3230,6 +3235,23 @@ function Library:Init()
 		local themeStub = { _themeOverride = type(opts.KeyTheme) == "table" and opts.KeyTheme or nil }
 		local C = Core.GetColors(themeStub)
 		local tok = Core.GetTokens(themeStub)
+		local animTok = tok.Animation or {}
+		local keyOpenDur = animTok.KeyGateOpenDuration or animTok.WindowOpenDuration or 0.32
+		local keyOpenStart = animTok.KeyGateOpenScaleStart
+		if keyOpenStart == nil then
+			keyOpenStart = animTok.WindowOpenScaleStart
+		end
+		if keyOpenStart == nil then
+			keyOpenStart = 0.92
+		end
+		local keyCloseDur = animTok.KeyGateCloseDuration or (animTok.WindowOpenDuration or 0.32) * 0.85
+		local keyCloseEndScale = animTok.KeyGateCloseScaleEnd
+		if keyCloseEndScale == nil then
+			keyCloseEndScale = animTok.WindowOpenScaleStart
+		end
+		if keyCloseEndScale == nil then
+			keyCloseEndScale = 0.86
+		end
 
 		local titleText = opts.Title or opts.KeyTitle or "Key required"
 		local descText = opts.Description or opts.Subtitle or "Enter your key to continue."
@@ -3251,8 +3273,8 @@ function Library:Init()
 
 		local overlay = Utils.Create("Frame", {
 			Name = "Overlay",
-			BackgroundColor3 = C.Background,
-			BackgroundTransparency = 0.35,
+			BackgroundTransparency = 1,
+			Active = true,
 			BorderSizePixel = 0,
 			Size = UDim2.fromScale(1, 1),
 			Parent = screen,
@@ -3268,11 +3290,13 @@ function Library:Init()
 			BorderSizePixel = 0,
 			Parent = overlay,
 		})
+		local cardUIScale = Utils.Create("UIScale", { Scale = keyOpenStart, Parent = card })
+		local cardStrokeTargetT = 0.5
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = card })
-		Utils.Create("UIStroke", {
+		local cardStroke = Utils.Create("UIStroke", {
 			Color = C.Border,
 			Thickness = 1,
-			Transparency = 0.5,
+			Transparency = 1,
 			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 			Parent = card,
 		})
@@ -3483,9 +3507,23 @@ function Library:Init()
 				return
 			end
 			opened = true
-			screen:Destroy()
-			task.defer(function()
-				finishOpen(trimmed)
+			setBusy(true)
+			if closeBtn then
+				closeBtn.Active = false
+			end
+			submitBtn.Active = false
+			local tiClose = TweenInfo.new(keyCloseDur, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+			Utils.Tween(cardUIScale, tiClose, { Scale = keyCloseEndScale })
+			if cardStroke then
+				Utils.Tween(cardStroke, tiClose, { Transparency = 1 })
+			end
+			task.delay(keyCloseDur, function()
+				if screen.Parent then
+					screen:Destroy()
+				end
+				task.defer(function()
+					finishOpen(trimmed)
+				end)
 			end)
 		end
 
@@ -3552,6 +3590,21 @@ function Library:Init()
 				end
 			end)
 		end
+
+		task.defer(function()
+			Utils.Tween(
+				cardUIScale,
+				TweenInfo.new(keyOpenDur, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+				{ Scale = 1 }
+			)
+			if cardStroke then
+				Utils.Tween(
+					cardStroke,
+					TweenInfo.new(keyOpenDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{ Transparency = cardStrokeTargetT }
+				)
+			end
+		end)
 
 		return {
 			Destroy = function()
