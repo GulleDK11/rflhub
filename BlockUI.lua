@@ -6,8 +6,8 @@
     ██████╔╝███████╗╚██████╔╝╚██████╗██║  ██╗╚██████╔╝██║
     ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝
 
-    BlockUI v1.0.5 — Frame: InputBegan (ikke MouseButton1Click)
-    Sharp. Fast. Clean.
+    BlockUI v1.1.0 — Zypher-inspireret layout (teppyboy/RbxScripts)
+    Slice UI + sidebar selector; knap/toggle via ImageButton.
 
     Usage:
         local BlockUI = require(pathToModule)  -- eller dit loadstring-setup
@@ -34,36 +34,52 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer    = Players.LocalPlayer
 local PlayerGui      = LocalPlayer:WaitForChild("PlayerGui")
 
--- ── Style: grå Fluent + tydelig “ON”-blå ────────────────────
-local S = {
-    bg           = Color3.fromRGB(28, 28, 31),
-    shell        = Color3.fromRGB(40, 40, 44),
-    surface      = Color3.fromRGB(48, 48, 52),
-    surface2     = Color3.fromRGB(56, 56, 62),
-    surface3     = Color3.fromRGB(34, 34, 38),
-    sidebarSel   = Color3.fromRGB(52, 56, 64),
-    accent       = Color3.fromRGB(230, 232, 238),
-    accentBar    = Color3.fromRGB(0, 120, 215),
-    accent2      = Color3.fromRGB(96, 165, 250),
-    fluentBlue   = Color3.fromRGB(0, 120, 215),
-    toggleOn     = Color3.fromRGB(0, 120, 215),
-    toggleOnGlow = Color3.fromRGB(120, 190, 255),
-    text         = Color3.fromRGB(250, 250, 252),
-    muted        = Color3.fromRGB(145, 147, 156),
-    border       = Color3.fromRGB(72, 74, 82),
-    danger       = Color3.fromRGB(232, 90, 90),
-    warning      = Color3.fromRGB(230, 180, 60),
-    success      = Color3.fromRGB(80, 200, 130),
-    black        = Color3.fromRGB(12, 12, 14),
-    font         = Enum.Font.GothamMedium,
-    fontMono     = Enum.Font.Code,
-    fontBody     = Enum.Font.Gotham,
-    radiusS      = UDim.new(0, 6),
-    radiusM      = UDim.new(0, 10),
-}
+-- ── Zypher-lignende palette + 9-slice (samme asset som Zypher UI) ──
+local SLICE_ASSET = "rbxassetid://3570695787"
+local SLICE_RECT = Rect.new(100, 100, 100, 100)
+local SLICE_SCALE = 0.04
 
-local CORNER_MAIN = UDim.new(0, 12)
-local SIDEBAR_W = 196
+local S = {
+    bg             = Color3.fromRGB(46, 46, 54),
+    grayContrast   = Color3.fromRGB(39, 38, 46),
+    darkContrast   = Color3.fromRGB(29, 29, 35),
+    charcoal       = Color3.fromRGB(21, 21, 26),
+    sectionTone    = Color3.fromRGB(39, 38, 46),
+    text           = Color3.fromRGB(255, 255, 255),
+    muted          = Color3.fromRGB(180, 180, 190),
+    accentCyan     = Color3.fromRGB(0, 220, 220),
+    accentPurple   = Color3.fromRGB(125, 92, 164),
+    toggleOn       = Color3.fromRGB(0, 200, 200),
+    toggleThumb    = Color3.fromRGB(255, 255, 255),
+    sliderFill     = Color3.fromRGB(0, 210, 210),
+    danger         = Color3.fromRGB(232, 90, 90),
+    warning        = Color3.fromRGB(230, 180, 60),
+    success        = Color3.fromRGB(80, 200, 130),
+    font           = Enum.Font.GothamBold,
+    fontMono       = Enum.Font.Code,
+    fontBody       = Enum.Font.Gotham,
+    radiusS        = UDim.new(0, 4),
+    radiusM        = UDim.new(0, 8),
+    border         = Color3.fromRGB(52, 52, 60),
+    black          = Color3.fromRGB(8, 8, 10),
+}
+-- Bagudkompatibilitet for resten af filen
+S.shell = S.bg
+S.surface = S.darkContrast
+S.surface2 = S.charcoal
+S.surface3 = S.grayContrast
+S.sidebarSel = S.bg
+S.fluentBlue = S.accentCyan
+S.toggleOnGlow = S.accentCyan
+S.accent2 = S.accentPurple
+S.accent = S.accentCyan
+S.accentBar = S.accentCyan
+
+local MAIN_W, MAIN_H = 700, 460
+local SIDEBAR_W = 152
+local TOP_STRIP = 3
+local HEADER_H = 42
+local CORNER_MAIN = UDim.new(0, 6)
 local function corner(inst, r)
     local c = inst:FindFirstChildOfClass("UICorner")
     if not c then
@@ -367,13 +383,13 @@ function BlockUI:CreateWindow(cfg)
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
     }, PlayerGui)
 
-    local titleBarH = (winSub ~= "") and 58 or 46
+    local headerH = (winSub ~= "") and 52 or HEADER_H
+    local bodyTop = TOP_STRIP + headerH
 
-    -- Main frame (bred, blødere Fluent-shell)
     local main = new("Frame", {
-        Size             = UDim2.new(0, 728, 0, 492),
-        Position         = UDim2.new(0.5, -364, 0.5, -246),
-        BackgroundColor3 = S.shell,
+        Size             = UDim2.new(0, MAIN_W, 0, MAIN_H),
+        Position         = UDim2.new(0.5, -MAIN_W / 2, 0.5, -MAIN_H / 2),
+        BackgroundColor3 = S.bg,
         BorderSizePixel  = 0,
         ClipsDescendants = true,
     }, gui)
@@ -381,27 +397,36 @@ function BlockUI:CreateWindow(cfg)
     new("UIStroke", {
         Color            = S.border,
         Thickness        = 1,
-        Transparency     = 0.25,
+        Transparency     = 0.28,
         ApplyStrokeMode  = Enum.ApplyStrokeMode.Border,
     }, main)
 
-    -- ── Titlebar (drag) — ingen “Apple”-knapper ──────────────
-    local titlebar = new("Frame", {
-        Size             = UDim2.new(1, 0, 0, titleBarH),
-        BackgroundColor3 = S.surface3,
+    local upline = new("Frame", {
+        Name             = "Upline",
+        Size             = UDim2.new(1, 0, 0, TOP_STRIP),
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
         BorderSizePixel  = 0,
+        ZIndex           = 10,
     }, main)
+    new("UIGradient", {
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 183, 183)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0, 248, 248)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(125, 92, 164)),
+        }),
+    }, upline)
 
-    new("Frame", {
-        Size             = UDim2.new(1, 0, 0, 1),
-        Position         = UDim2.new(0, 0, 1, -1),
-        BackgroundColor3 = S.border,
+    local titlebar = new("Frame", {
+        Size             = UDim2.new(1, 0, 0, headerH),
+        Position         = UDim2.fromOffset(0, TOP_STRIP),
+        BackgroundColor3 = S.grayContrast,
         BorderSizePixel  = 0,
-    }, titlebar)
+        ZIndex           = 5,
+    }, main)
 
     local titleStack = new("Frame", {
         Size             = UDim2.new(1, -96, 1, 0),
-        Position         = UDim2.fromOffset(16, 0),
+        Position         = UDim2.fromOffset(14, 0),
         BackgroundTransparency = 1,
         BorderSizePixel  = 0,
     }, titlebar)
@@ -419,8 +444,8 @@ function BlockUI:CreateWindow(cfg)
         BackgroundTransparency = 1,
         Text             = winName,
         TextColor3       = S.text,
-        FontFace         = Font.fromEnum(Enum.Font.GothamSemibold),
-        TextSize         = 16,
+        FontFace         = Font.fromEnum(Enum.Font.GothamBold),
+        TextSize         = 17,
         TextXAlignment   = Enum.TextXAlignment.Left,
         TextYAlignment   = Enum.TextYAlignment.Center,
         LayoutOrder      = 1,
@@ -443,7 +468,7 @@ function BlockUI:CreateWindow(cfg)
     local closeBtn = new("TextButton", {
         Size             = UDim2.new(0, 32, 0, 28),
         Position         = UDim2.new(1, -40, 0.5, -14),
-        BackgroundColor3 = S.surface2,
+        BackgroundColor3 = S.charcoal,
         BackgroundTransparency = 1,
         Text             = "×",
         TextColor3       = S.muted,
@@ -486,42 +511,53 @@ function BlockUI:CreateWindow(cfg)
 
     makeDraggable(main, titlebar)
 
-    -- Venstre sidebar (NavigationView-stil)
-    local sidebar = new("Frame", {
+    local nextTabY = 15
+    local sidebar = new("ScrollingFrame", {
         Name             = "Sidebar",
-        Size             = UDim2.new(0, SIDEBAR_W, 1, -titleBarH),
-        Position         = UDim2.fromOffset(0, titleBarH),
-        BackgroundColor3 = S.surface3,
+        BackgroundColor3 = S.grayContrast,
         BorderSizePixel  = 0,
+        Position         = UDim2.fromOffset(0, bodyTop),
+        Size             = UDim2.new(0, SIDEBAR_W, 1, -bodyTop),
+        CanvasSize       = UDim2.new(0, 0, 0, 200),
+        ScrollBarThickness = 0,
+        ScrollingDirection = Enum.ScrollingDirection.Y,
+        AutomaticCanvasSize = Enum.AutomaticSize.None,
+        ZIndex           = 2,
     }, main)
 
+    new("UIPadding", {
+        PaddingTop  = UDim.new(0, 0),
+        PaddingLeft = UDim.new(0, 0),
+    }, sidebar)
+
+    local tabSelector = new("ImageLabel", {
+        Name             = "Categoriesselector",
+        BackgroundTransparency = 1,
+        Position         = UDim2.fromOffset(8, nextTabY),
+        Size             = UDim2.new(1, -16, 0, 30),
+        Image            = SLICE_ASSET,
+        ImageColor3      = S.bg,
+        ScaleType        = Enum.ScaleType.Slice,
+        SliceCenter      = SLICE_RECT,
+        SliceScale       = SLICE_SCALE,
+        ZIndex           = 1,
+    }, sidebar)
+
     new("Frame", {
-        Size             = UDim2.new(0, 1, 1, 0),
-        Position         = UDim2.new(1, -1, 0, 0),
+        Size             = UDim2.new(0, 1, 1, -bodyTop),
+        Position         = UDim2.fromOffset(SIDEBAR_W, bodyTop),
         BackgroundColor3 = S.border,
         BorderSizePixel  = 0,
-    }, sidebar)
+        ZIndex           = 3,
+    }, main)
 
-    local tabList = new("Frame", {
-        Size             = UDim2.new(1, -8, 1, -12),
-        Position         = UDim2.fromOffset(4, 6),
-        BackgroundTransparency = 1,
-        BorderSizePixel  = 0,
-    }, sidebar)
-
-    new("UIListLayout", {
-        FillDirection = Enum.FillDirection.Vertical,
-        SortOrder     = Enum.SortOrder.LayoutOrder,
-        Padding       = UDim.new(0, 4),
-    }, tabList)
-
-    -- Indhold til højre for sidebar
     local contentArea = new("Frame", {
-        Size             = UDim2.new(1, -SIDEBAR_W, 1, -titleBarH),
-        Position         = UDim2.fromOffset(SIDEBAR_W, titleBarH),
+        Size             = UDim2.new(1, -SIDEBAR_W, 1, -bodyTop),
+        Position         = UDim2.fromOffset(SIDEBAR_W, bodyTop),
         BackgroundColor3 = S.bg,
         BorderSizePixel  = 0,
         ClipsDescendants = true,
+        ZIndex           = 1,
     }, main)
 
     local tabs      = {}
@@ -534,11 +570,12 @@ function BlockUI:CreateWindow(cfg)
         end
         for n, entry in pairs(tabs) do
             local isOn = (n == name)
-            if type(entry) == "table" and entry.btn and entry.wrap then
-                entry.btn.TextColor3 = isOn and S.fluentBlue or S.muted
-                entry.wrap.BackgroundColor3 = isOn and S.sidebarSel or S.surface3
-                if entry.ind and entry.ind:IsA("Frame") then
-                    entry.ind.BackgroundTransparency = isOn and 0 or 1
+            if type(entry) == "table" and entry.btn then
+                entry.btn.TextColor3 = isOn and S.accentCyan or S.text
+                if isOn and tabSelector and entry.tabY ~= nil then
+                    tween(tabSelector, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        Position = UDim2.fromOffset(8, entry.tabY),
+                    })
                 end
             end
         end
@@ -557,72 +594,47 @@ function BlockUI:CreateWindow(cfg)
             tabText = tabIcon .. "  " .. tabName
         end
 
-        -- Række: indikator + knap (aldrig barn af TextButton → ingen streg over tekst)
-        local rowWrap = new("Frame", {
-            Size             = UDim2.new(1, 0, 0, 38),
-            BackgroundColor3 = S.surface3,
-            BorderSizePixel  = 0,
-        }, tabList)
-        corner(rowWrap, UDim.new(0, 7))
-        new("UIStroke", {
-            Color            = S.border,
-            Thickness        = 1,
-            Transparency     = 0.65,
-            ApplyStrokeMode  = Enum.ApplyStrokeMode.Border,
-        }, rowWrap)
+        local tabY = nextTabY
+        nextTabY = nextTabY + 34
+        sidebar.CanvasSize = UDim2.new(0, 0, 0, nextTabY + 16)
 
-        local selInd = new("Frame", {
-            Name             = "SelIndicator",
-            Size             = UDim2.new(0, 3, 1, -10),
-            Position         = UDim2.new(0, 8, 0.5, 0),
-            AnchorPoint      = Vector2.new(0, 0.5),
-            BackgroundColor3 = S.fluentBlue,
+        local rowWrap = new("Frame", {
+            Size             = UDim2.new(1, -16, 0, 30),
+            Position         = UDim2.fromOffset(8, tabY),
             BackgroundTransparency = 1,
             BorderSizePixel  = 0,
-            ZIndex           = 1,
-            Active           = false,
-        }, rowWrap)
-        new("UICorner", { CornerRadius = UDim.new(1, 0) }, selInd)
+            ZIndex           = 3,
+        }, sidebar)
 
         local btn = new("TextButton", {
-            Size             = UDim2.new(1, -22, 1, -4),
-            Position         = UDim2.fromOffset(19, 2),
+            Size             = UDim2.new(1, 0, 1, 0),
+            Position         = UDim2.new(0, 0, 0, 0),
             BackgroundTransparency = 1,
             BorderSizePixel  = 0,
             Text             = tabText,
-            TextColor3       = S.muted,
-            FontFace         = Font.fromEnum(Enum.Font.GothamMedium),
-            TextSize         = 13,
+            TextColor3       = S.text,
+            FontFace         = Font.fromEnum(Enum.Font.GothamBold),
+            TextSize         = 16,
             TextXAlignment   = Enum.TextXAlignment.Left,
+            TextYAlignment   = Enum.TextYAlignment.Center,
             AutoButtonColor  = false,
-            ZIndex           = 2,
+            ZIndex           = 4,
         }, rowWrap)
 
         new("UIPadding", {
-            PaddingLeft  = UDim.new(0, 4),
+            PaddingLeft  = UDim.new(0, 6),
             PaddingRight = UDim.new(0, 6),
         }, btn)
 
-        tabs[tabName] = { wrap = rowWrap, btn = btn, ind = selInd }
-
-        btn.MouseEnter:Connect(function()
-            if activeTab ~= tabName then
-                tween(rowWrap, TweenInfo.new(0.1), { BackgroundColor3 = S.surface })
-            end
-        end)
-        btn.MouseLeave:Connect(function()
-            if activeTab ~= tabName then
-                tween(rowWrap, TweenInfo.new(0.1), { BackgroundColor3 = S.surface3 })
-            end
-        end)
+        tabs[tabName] = { wrap = rowWrap, btn = btn, tabY = tabY }
 
         -- Tab content frame with scrolling
         local tabFrame = new("ScrollingFrame", {
             Size             = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
             BorderSizePixel  = 0,
-            ScrollBarThickness = 2,
-            ScrollBarImageColor3 = S.fluentBlue,
+            ScrollBarThickness = 3,
+            ScrollBarImageColor3 = S.charcoal,
             CanvasSize       = UDim2.new(0, 0, 0, 0),
             AutomaticCanvasSize = Enum.AutomaticSize.Y,
             Visible          = false,
@@ -630,7 +642,7 @@ function BlockUI:CreateWindow(cfg)
 
         local layout = new("UIListLayout", {
             SortOrder        = Enum.SortOrder.LayoutOrder,
-            Padding          = UDim.new(0, 0),
+            Padding          = UDim.new(0, 10),
         }, tabFrame)
 
         new("UIPadding", {
@@ -663,169 +675,145 @@ function BlockUI:CreateWindow(cfg)
         local order = 0
         local function nextOrder() order = order + 1; return order end
 
-        -- ── Button ───────────────────────────────────────────
+        -- ── Button (Zypher-lignende 9-slice ImageButton) ───────
         function Tab:CreateButton(elCfg)
             elCfg = elCfg or {}
-            local row = new("Frame", {
-                Size             = UDim2.new(1, 0, 0, 48),
-                BackgroundColor3 = S.surface,
+            local iconPrefix = (elCfg.Icon and elCfg.Icon ~= "") and (elCfg.Icon .. "  ") or ""
+            local labelText = iconPrefix .. (elCfg.Name or "Button")
+            if elCfg.ButtonText and elCfg.ButtonText ~= "" then
+                labelText = labelText .. "  ·  " .. elCfg.ButtonText
+            end
+
+            local imgBtn = new("ImageButton", {
+                Size             = UDim2.new(1, 0, 0, 32),
+                BackgroundTransparency = 1,
                 BorderSizePixel  = 0,
+                Image            = SLICE_ASSET,
+                ImageColor3      = S.darkContrast,
+                ScaleType        = Enum.ScaleType.Slice,
+                SliceCenter      = SLICE_RECT,
+                SliceScale       = SLICE_SCALE,
+                AutoButtonColor  = false,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
-            corner(row, S.radiusS)
-            new("UIStroke", {
-                Color           = S.border,
-                Thickness       = 1,
-                Transparency    = 0.4,
-            }, row)
 
-            local iconPrefix = (elCfg.Icon and elCfg.Icon ~= "") and (elCfg.Icon .. "  ") or ""
-            new("TextLabel", {
-                Size             = UDim2.new(1, -118, 1, 0),
-                Position         = UDim2.fromOffset(14, 0),
+            local caption = new("TextLabel", {
+                Size             = UDim2.new(1, -24, 1, 0),
+                Position         = UDim2.fromOffset(12, 0),
                 BackgroundTransparency = 1,
-                Text             = iconPrefix .. (elCfg.Name or "Button"),
+                Text             = labelText,
                 TextColor3       = S.text,
-                Font             = S.fontBody,
-                TextSize         = 14,
+                FontFace         = Font.fromEnum(Enum.Font.GothamBold),
+                TextSize         = 15,
                 TextXAlignment   = Enum.TextXAlignment.Left,
-            }, row)
+                TextYAlignment   = Enum.TextYAlignment.Center,
+                Active           = false,
+            }, imgBtn)
 
-            local btn2 = new("TextButton", {
-                Size             = UDim2.new(0, 88, 0, 30),
-                Position         = UDim2.new(1, -100, 0.5, -15),
-                BackgroundColor3 = S.surface2,
-                BorderSizePixel  = 0,
-                Text             = elCfg.ButtonText or "Kør",
-                TextColor3       = S.fluentBlue,
-                FontFace         = Font.fromEnum(Enum.Font.GothamMedium),
-                TextSize         = 13,
-                AutoButtonColor  = false,
-                ZIndex           = 2,
-            }, row)
-            new("UIStroke", { Color = S.fluentBlue, Thickness = 1, Transparency = 0.5 }, btn2)
-            corner(btn2, UDim.new(0, 7))
-
-            btn2.MouseEnter:Connect(function()
-                tween(btn2, TweenInfo.new(0.12), {
-                    BackgroundColor3 = S.fluentBlue,
-                    TextColor3 = Color3.fromRGB(255, 255, 255),
-                })
-            end)
-            btn2.MouseLeave:Connect(function()
-                tween(btn2, TweenInfo.new(0.12), {
-                    BackgroundColor3 = S.surface2,
-                    TextColor3 = S.fluentBlue,
-                })
-            end)
-            btn2.MouseButton1Click:Connect(function()
+            imgBtn.MouseButton1Click:Connect(function()
                 runCallback(elCfg.Callback)
             end)
 
             local Button = {}
             function Button:Set(name)
-                btn2.Text = tostring(name)
+                caption.Text = tostring(name)
             end
             return Button
         end
 
-        -- ── Toggle ───────────────────────────────────────────
+        -- ── Toggle (Zypher-lignende række + slice-switch) ─────
         function Tab:CreateToggle(elCfg)
             elCfg = elCfg or {}
             local flag = elCfg.Flag
             local value = elCfg.CurrentValue or false
             if flag then BlockUI.Flags[flag] = value end
 
-            local row = new("Frame", {
-                Size             = UDim2.new(1, 0, 0, elCfg.Description and 58 or 50),
-                BackgroundColor3 = S.surface,
+            local rowH = elCfg.Description and 56 or 36
+            local toggleBtn = new("ImageButton", {
+                Size             = UDim2.new(1, 0, 0, rowH),
+                BackgroundTransparency = 1,
                 BorderSizePixel  = 0,
+                Image            = SLICE_ASSET,
+                ImageColor3      = S.darkContrast,
+                ScaleType        = Enum.ScaleType.Slice,
+                SliceCenter      = SLICE_RECT,
+                SliceScale       = SLICE_SCALE,
+                AutoButtonColor  = false,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
-            corner(row, S.radiusS)
-            new("UIStroke", { Color = S.border, Thickness = 1, Transparency = 0.4 }, row)
-
-            local function flipToggle()
-                setState(not value)
-            end
-
-            local rowHit = new("TextButton", {
-                Size             = UDim2.fromScale(1, 1),
-                BackgroundTransparency = 1,
-                Text             = "",
-                AutoButtonColor  = false,
-                ZIndex           = 1,
-            }, row)
 
             local iconT = (elCfg.Icon and elCfg.Icon ~= "") and (elCfg.Icon .. "  ") or ""
+            local titleY = elCfg.Description and 6 or 0
             new("TextLabel", {
-                Size             = UDim2.new(1, -130, 0, 20),
-                Position         = UDim2.fromOffset(14, 10),
+                Size             = UDim2.new(1, -80, 0, 22),
+                Position         = UDim2.new(0, 12, 0, titleY + (elCfg.Description and 0 or 7)),
                 BackgroundTransparency = 1,
                 Text             = iconT .. (elCfg.Name or "Toggle"),
                 TextColor3       = S.text,
-                Font             = S.fontBody,
-                TextSize         = 14,
+                FontFace         = Font.fromEnum(Enum.Font.GothamBold),
+                TextSize         = 15,
                 TextXAlignment   = Enum.TextXAlignment.Left,
-                ZIndex           = 2,
-            }, row)
+                TextYAlignment   = Enum.TextYAlignment.Top,
+                Active           = false,
+            }, toggleBtn)
 
             if elCfg.Description then
                 new("TextLabel", {
-                    Size             = UDim2.new(1, -130, 0, 16),
-                    Position         = UDim2.fromOffset(14, 32),
+                    Size             = UDim2.new(1, -80, 0, 18),
+                    Position         = UDim2.fromOffset(12, 30),
                     BackgroundTransparency = 1,
                     Text             = elCfg.Description,
                     TextColor3       = S.muted,
-                    Font             = S.fontBody,
+                    FontFace         = Font.fromEnum(S.fontBody),
                     TextSize         = 11,
                     TextXAlignment   = Enum.TextXAlignment.Left,
-                    ZIndex           = 2,
-                }, row)
+                    Active           = false,
+                }, toggleBtn)
             end
 
-            local track = new("Frame", {
-                Size             = UDim2.new(0, 42, 0, 22),
-                Position         = UDim2.new(1, -56, 0.5, -11),
-                BackgroundColor3 = S.surface2,
-                BorderSizePixel  = 0,
-                ZIndex           = 3,
+            local toggleBack = new("ImageLabel", {
+                Size             = UDim2.new(0, 54, 0, 26),
+                Position         = UDim2.new(1, -62, 0.5, -13),
+                BackgroundTransparency = 1,
+                Image            = SLICE_ASSET,
+                ImageColor3      = S.charcoal,
+                ScaleType        = Enum.ScaleType.Slice,
+                SliceCenter      = SLICE_RECT,
+                SliceScale       = SLICE_SCALE,
                 Active           = false,
-            }, row)
-            new("UICorner", { CornerRadius = UDim.new(1, 0) }, track)
-            local trackStroke = new("UIStroke", { Color = S.border, Thickness = 1 }, track)
+            }, toggleBtn)
 
-            local thumb = new("Frame", {
-                Size             = UDim2.new(0, 16, 0, 16),
-                Position         = UDim2.fromOffset(3, 3),
-                BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-                BorderSizePixel  = 0,
-                ZIndex           = 3,
+            local toggleKnob = new("ImageLabel", {
+                Size             = UDim2.new(0, 24, 0, 18),
+                Position         = UDim2.fromOffset(4, 4),
+                BackgroundTransparency = 1,
+                Image            = SLICE_ASSET,
+                ImageColor3      = Color3.fromRGB(200, 200, 208),
+                ScaleType        = Enum.ScaleType.Slice,
+                SliceCenter      = SLICE_RECT,
+                SliceScale       = SLICE_SCALE,
                 Active           = false,
-            }, track)
-            new("UICorner", { CornerRadius = UDim.new(1, 0) }, thumb)
+            }, toggleBack)
 
             local function setState(val, silent)
                 value = val
                 if flag then BlockUI.Flags[flag] = val end
                 if val then
-                    tween(track, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                        BackgroundColor3 = S.toggleOn,
+                    tween(toggleBack, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        ImageColor3 = S.toggleOn,
                     })
-                    tween(thumb, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                        Position = UDim2.fromOffset(23, 3),
-                        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+                    tween(toggleKnob, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        Position = UDim2.fromOffset(26, 4),
+                        ImageColor3 = S.toggleThumb,
                     })
-                    trackStroke.Color = S.toggleOnGlow
                 else
-                    tween(track, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                        BackgroundColor3 = S.surface2,
+                    tween(toggleBack, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        ImageColor3 = S.charcoal,
                     })
-                    tween(thumb, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                        Position = UDim2.fromOffset(3, 3),
-                        BackgroundColor3 = Color3.fromRGB(200, 200, 205),
+                    tween(toggleKnob, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        Position = UDim2.fromOffset(4, 4),
+                        ImageColor3 = Color3.fromRGB(200, 200, 208),
                     })
-                    trackStroke.Color = S.border
                 end
                 if not silent and elCfg.Callback then
                     runCallback(elCfg.Callback, val)
@@ -834,7 +822,9 @@ function BlockUI:CreateWindow(cfg)
 
             setState(value, true)
 
-            rowHit.MouseButton1Click:Connect(flipToggle)
+            toggleBtn.MouseButton1Click:Connect(function()
+                setState(not value)
+            end)
 
             local Toggle = {}
             function Toggle:Set(val)
@@ -853,13 +843,17 @@ function BlockUI:CreateWindow(cfg)
             local value   = elCfg.CurrentValue or range[1]
             if flag then BlockUI.Flags[flag] = value end
 
-            local row = new("Frame", {
+            local row = new("ImageLabel", {
                 Size             = UDim2.new(1, 0, 0, 64),
-                BackgroundColor3 = S.surface,
+                BackgroundTransparency = 1,
                 BorderSizePixel  = 0,
+                Image            = SLICE_ASSET,
+                ImageColor3      = S.darkContrast,
+                ScaleType        = Enum.ScaleType.Slice,
+                SliceCenter      = SLICE_RECT,
+                SliceScale       = SLICE_SCALE,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
-            new("Frame", { Size = UDim2.new(1,0,0,1), Position = UDim2.new(0,0,1,-1), BackgroundColor3 = S.border, BorderSizePixel = 0 }, row)
 
             new("TextLabel", {
                 Size             = UDim2.new(1, -80, 0, 20),
@@ -1210,28 +1204,33 @@ function BlockUI:CreateWindow(cfg)
             return Label
         end
 
-        -- ── Section divider ───────────────────────────────────
+        -- ── Section (Zypher-lignende slice-header) ─────────────
         function Tab:CreateSection(elCfg)
             elCfg = elCfg or {}
-            local row = new("Frame", {
-                Size             = UDim2.new(1, 0, 0, 30),
-                BackgroundColor3 = S.surface2,
+            local wrap = new("ImageLabel", {
+                Size             = UDim2.new(1, 0, 0, 36),
+                BackgroundTransparency = 1,
                 BorderSizePixel  = 0,
+                Image            = SLICE_ASSET,
+                ImageColor3      = S.sectionTone,
+                ScaleType        = Enum.ScaleType.Slice,
+                SliceCenter      = SLICE_RECT,
+                SliceScale       = SLICE_SCALE,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
-            new("Frame", { Size=UDim2.new(1,0,0,1), BackgroundColor3=S.border, BorderSizePixel=0 }, row)
-            new("Frame", { Size=UDim2.new(1,0,0,1), Position=UDim2.new(0,0,1,-1), BackgroundColor3=S.border, BorderSizePixel=0 }, row)
 
             new("TextLabel", {
-                Size             = UDim2.new(1, -16, 1, 0),
-                Position         = UDim2.fromOffset(8, 0),
+                Size             = UDim2.new(0.55, 0, 0, 22),
+                Position         = UDim2.fromOffset(6, -6),
                 BackgroundTransparency = 1,
-                Text             = "// " .. (elCfg.Name or "Section"):upper(),
-                TextColor3       = S.muted,
-                FontFace         = Font.fromEnum(S.fontMono),
-                TextSize         = 9,
+                Text             = elCfg.Name or "Section",
+                TextColor3       = S.text,
+                FontFace         = Font.fromEnum(Enum.Font.GothamBold),
+                TextSize         = 16,
                 TextXAlignment   = Enum.TextXAlignment.Left,
-            }, row)
+                TextYAlignment   = Enum.TextYAlignment.Bottom,
+                Active           = false,
+            }, wrap)
         end
 
         return Tab
