@@ -706,6 +706,48 @@ function Services.NotificationService:Notify(data)
 end
 -- #endregion
 
+-- Place check + deny (skal ligge før Core.CreateWindow — ellers er lokaler nil ved første kald)
+local function currentPlaceAllowed()
+	local ids = Services._allowedPlaceIds
+	if ids == nil then
+		return true
+	end
+	if type(ids) ~= "table" then
+		return true
+	end
+	local pid = game.PlaceId
+	for _, id in ipairs(ids) do
+		if tonumber(id) == pid then
+			return true
+		end
+	end
+	return false
+end
+
+local function placeDeniedToastGui(guiParent)
+	local sg = Utils.Create("ScreenGui", {
+		Name = "GulleUI_PlaceDenied",
+		ResetOnSpawn = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		DisplayOrder = 620,
+		Parent = guiParent,
+	})
+	Services.NotificationService:_ensureContainer(sg)
+	Services.NotificationService:Notify({
+		Title = "GulleUI",
+		Message = "Place not allowed.",
+		Duration = 5,
+	})
+	task.wait()
+	pcall(function()
+		local s = script
+		if s and typeof(s) == "Instance" and s.Destroy then
+			s:Destroy()
+		end
+	end)
+	error("GulleUI: Place not allowed.", 0)
+end
+
 -- #region ConfigService (Rayfield-style paths + autosave)
 Services.ConfigService = {
 	Profile = "default",
@@ -3264,47 +3306,6 @@ end
 -- #endregion
 
 -- #region Library
-local function currentPlaceAllowed()
-	local ids = Services._allowedPlaceIds
-	if ids == nil then
-		return true
-	end
-	if type(ids) ~= "table" then
-		return true
-	end
-	local pid = game.PlaceId
-	for _, id in ipairs(ids) do
-		if tonumber(id) == pid then
-			return true
-		end
-	end
-	return false
-end
-
-local function placeDeniedToastGui(guiParent)
-	local sg = Utils.Create("ScreenGui", {
-		Name = "GulleUI_PlaceDenied",
-		ResetOnSpawn = false,
-		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-		DisplayOrder = 620,
-		Parent = guiParent,
-	})
-	Services.NotificationService:_ensureContainer(sg)
-	Services.NotificationService:Notify({
-		Title = "GulleUI",
-		Message = "Place not allowed.",
-		Duration = 5,
-	})
-	task.wait()
-	pcall(function()
-		local s = script
-		if s and typeof(s) == "Instance" and s.Destroy then
-			s:Destroy()
-		end
-	end)
-	error("GulleUI: Place not allowed.", 0)
-end
-
 function Library:Init(opts)
 	opts = type(opts) == "table" and opts or {}
 	if type(opts.AllowedPlaceIds) == "table" then
@@ -3451,6 +3452,13 @@ function Library:Init(opts)
 		if keyPauseBeforeHub == nil then
 			keyPauseBeforeHub = 0.1
 		end
+		local keyCardPadY = 36
+		local keyCardResizeDur = (animTok.KeyGateOpenDuration or animTok.WindowOpenDuration or 0.32) * 0.5
+		if keyCardResizeDur < 0.14 then
+			keyCardResizeDur = 0.14
+		elseif keyCardResizeDur > 0.26 then
+			keyCardResizeDur = 0.26
+		end
 
 		local titleText = opts.Title or opts.KeyTitle or "Key required"
 		local descText = opts.Description or opts.Subtitle or "Enter your key to continue."
@@ -3492,8 +3500,8 @@ function Library:Init(opts)
 			Name = "Card",
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromOffset(380, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
+			Size = UDim2.fromOffset(380, 200),
+			AutomaticSize = Enum.AutomaticSize.None,
 			BackgroundColor3 = C.Surface,
 			BorderSizePixel = 0,
 			Parent = overlay,
@@ -3524,7 +3532,7 @@ function Library:Init(opts)
 			AutomaticSize = Enum.AutomaticSize.Y,
 			Parent = card,
 		})
-		Utils.Create("UIListLayout", {
+		local stackListLayout = Utils.Create("UIListLayout", {
 			FillDirection = Enum.FillDirection.Vertical,
 			Padding = UDim.new(0, 10),
 			SortOrder = Enum.SortOrder.LayoutOrder,
@@ -3648,6 +3656,48 @@ function Library:Init(opts)
 			wrong.Visible = false
 		end
 
+		local cardHeightTween = nil
+		local function targetKeyCardHeight()
+			return math.max(math.ceil(keyCardPadY + stack.AbsoluteContentSize.Y), 96)
+		end
+		local function syncKeyCardHeight(animate)
+			if not card.Parent then
+				return
+			end
+			local h = targetKeyCardHeight()
+			if not animate then
+				if cardHeightTween then
+					pcall(function()
+						cardHeightTween:Cancel()
+					end)
+					cardHeightTween = nil
+				end
+				card.Size = UDim2.fromOffset(380, h)
+				return
+			end
+			if cardHeightTween then
+				pcall(function()
+					cardHeightTween:Cancel()
+				end)
+				cardHeightTween = nil
+			end
+			local curY = card.Size.Y.Offset
+			if math.abs(curY - h) < 1.5 then
+				card.Size = UDim2.fromOffset(380, h)
+				return
+			end
+			cardHeightTween = Utils.Tween(
+				card,
+				TweenInfo.new(keyCardResizeDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ Size = UDim2.fromOffset(380, h) }
+			)
+			cardHeightTween.Completed:Connect(function()
+				if cardHeightTween then
+					cardHeightTween = nil
+				end
+			end)
+		end
+
 		local function keyCheckSync(trimmed)
 			if trimmed == "" then
 				return false
@@ -3697,6 +3747,10 @@ function Library:Init(opts)
 				print("GulleUI — CreateWindowAfterKey → CreateWindow. See GulleUILibrary.md.")
 			end
 			local w = Core.CreateWindow(winOpts)
+			if not w then
+				warn("[GulleUI] CreateWindowAfterKey: CreateWindow returned nil.")
+				return nil
+			end
 			api.Window = w
 			if type(opts.OnSuccess) == "function" then
 				pcall(opts.OnSuccess, usedKey)
@@ -3820,6 +3874,11 @@ function Library:Init(opts)
 		end
 
 		task.defer(function()
+			task.wait()
+			syncKeyCardHeight(false)
+			stackListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+				syncKeyCardHeight(true)
+			end)
 			if keyFadeRoot and keyFadeRoot:IsA("CanvasGroup") and animTok.KeyGateContentFadeIn ~= false then
 				keyFadeRoot.GroupTransparency = 1
 				Utils.Tween(
