@@ -287,9 +287,13 @@ local _defaultTokens = {
 		ColorChannelRowHeight = 22,
 	},
 	Animation = {
-		WindowOpenDuration = 0.25,
+		WindowOpenDuration = 0.32,
 		WindowOpenScale = 1,
-		TabTween = 0.15,
+		-- < 1 = pop-in via UIScale; sæt til 1 eller nil for at slå fra
+		WindowOpenScaleStart = 0.94,
+		WindowStrokeFadeIn = true,
+		TabTween = 0.18,
+		TabContentScaleFrom = 0.97,
 		LoadingBarDuration = 0.35,
 	},
 	Notification = {
@@ -891,10 +895,7 @@ function Core.CreateWindow(opts)
 	local configFolder = (configSaving.FolderName ~= nil) and configSaving.FolderName or "GulleUI"
 	local configFileName = configSaving.FileName or tostring(game.PlaceId)
 
-	local keyOpts = (type(opts.Key) == "table" and opts.Key) or (type(opts.KeySystem) == "table" and opts.KeySystem) or nil
-	local keyGateActive = keyOpts and keyOpts.Enabled == true
-
-	if configEnabled and not keyGateActive then
+	if configEnabled then
 		Services.ConfigService:LoadFromPath(configFolder, configFileName)
 	end
 
@@ -957,10 +958,20 @@ function Core.CreateWindow(opts)
 	local mainStroke = Utils.Create("UIStroke", {
 		Color = colors.Border,
 		Thickness = 1,
-		Transparency = 0.82,
+		Transparency = (tok.Animation.WindowStrokeFadeIn == false) and 0.82 or 1,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		Parent = main,
 	})
+
+	local mainUIScale = Utils.Create("UIScale", {
+		Name = "_GulleWindowScale",
+		Scale = 1,
+		Parent = main,
+	})
+	local wScaleStart = tok.Animation.WindowOpenScaleStart
+	if type(wScaleStart) == "number" and wScaleStart > 0 and wScaleStart < 0.999 then
+		mainUIScale.Scale = wScaleStart
+	end
 
 	local accent = nil
 	if (tok.Window.AccentBarHeight or 0) > 0 then
@@ -1282,7 +1293,7 @@ function Core.CreateWindow(opts)
 		BackgroundTransparency = 0,
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = 50,
-		Visible = not keyGateActive,
+		Visible = true,
 		Parent = main,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = loading })
@@ -1384,6 +1395,7 @@ function Core.CreateWindow(opts)
 		_configFileName = configFileName,
 		_autosaveThread = nil,
 		_tabThemeHooks = {},
+		_themeOverride = windowThemeOverride,
 	}
 
 	function window:Notify(data)
@@ -1741,6 +1753,11 @@ function Core.CreateWindow(opts)
 			Parent = pages,
 		})
 		Core.AddThemeRef(window, page, "ScrollBarImageColor3", "TextDim")
+		local tabPageScale = Utils.Create("UIScale", {
+			Name = "_GulleTabScale",
+			Scale = 1,
+			Parent = page,
+		})
 
 		-- Single child under ScrollingFrame + inner padding avoids broken canvas sizing.
 		local pageContent = Utils.Create("Frame", {
@@ -1868,6 +1885,11 @@ function Core.CreateWindow(opts)
 
 		local function selectTab()
 			local th = Core.GetColors(window)
+			local tabDur = tok.Animation.TabTween or 0.15
+			local tabFrom = tok.Animation.TabContentScaleFrom
+			if type(tabFrom) ~= "number" or tabFrom >= 0.999 then
+				tabFrom = nil
+			end
 			for _, t in ipairs(window._tabs) do
 				t._page.Visible = false
 				t._button.BackgroundTransparency = 0
@@ -1877,6 +1899,10 @@ function Core.CreateWindow(opts)
 				end
 			end
 			page.Visible = true
+			if tabFrom and tabPageScale then
+				tabPageScale.Scale = tabFrom
+				Utils.Tween(tabPageScale, TweenInfo.new(tabDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 })
+			end
 			window._activeTab = tabObj
 			btn.BackgroundTransparency = 0
 			btn.BackgroundColor3 = th.SurfaceHover
@@ -1908,311 +1934,40 @@ function Core.CreateWindow(opts)
 
 	Services.NotificationService:_ensureContainer(screen)
 
-	local function registerAutosaveOnce()
-		if not configEnabled or window._gulleAutosaveRegistered then
-			return
-		end
-		window._gulleAutosaveRegistered = true
+	if configEnabled then
 		table.insert(Services.ConfigService._autoWindows, window)
 	end
 
-	local function beginStartupLoadingAnimation()
-		task.defer(function()
+	task.defer(function()
+		local openDur = tok.Animation.WindowOpenDuration or 0.32
+		if mainUIScale and mainUIScale.Scale < 0.999 then
 			Utils.Tween(
-				loadBarFill,
-				TweenInfo.new(tok.Animation.LoadingBarDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ Size = UDim2.new(1, 0, 1, 0) }
+				mainUIScale,
+				TweenInfo.new(openDur, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+				{ Scale = tok.Animation.WindowOpenScale or 1 }
 			)
-			task.wait(0.28)
-			Utils.Tween(loading, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 })
-			Utils.Tween(loadTitle, TweenInfo.new(0.25), { TextTransparency = 1 })
-			Utils.Tween(loadSub, TweenInfo.new(0.25), { TextTransparency = 1 })
-			Utils.Tween(loadBarBg, TweenInfo.new(0.25), { BackgroundTransparency = 1 })
-			Utils.Tween(loadBarFill, TweenInfo.new(0.25), { BackgroundTransparency = 1 })
-			task.wait(0.32)
-			loading.Visible = false
-		end)
-	end
-
-	local function resetLoadingLayerForReveal()
-		loading.BackgroundTransparency = 0
-		loadTitle.TextTransparency = 0
-		loadSub.TextTransparency = 0
-		loadBarBg.BackgroundTransparency = 0
-		loadBarFill.BackgroundTransparency = 0
-		loadBarFill.Size = UDim2.new(0, 0, 1, 0)
-		loading.Visible = true
-	end
-
-	if keyGateActive then
-		local noCase = keyOpts.CaseInsensitive == true
-		local function norm(s)
-			s = tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")
-			if noCase then
-				return string.lower(s)
-			end
-			return s
 		end
-
-		-- Ingen synlig vindueskant / resize under nøgle; valgfrit kompakt vindue; centreret lille panel der smelter med baggrunden.
-		local strokeTransBefore = mainStroke.Transparency
-		mainStroke.Transparency = 1
-		resizeGrip.Visible = false
-		local keyShrinkOn = keyOpts.KeepWindowSize ~= true
-		if keyShrinkOn then
-			local cw = tonumber(keyOpts.CompactWindowWidth) or 392
-			local ch = tonumber(keyOpts.CompactWindowHeight) or 264
-			main.Size = UDim2.fromOffset(cw, ch)
+		if tok.Animation.WindowStrokeFadeIn ~= false and mainStroke and mainStroke.Transparency > 0.9 then
+			Utils.Tween(
+				mainStroke,
+				TweenInfo.new(math.min(openDur + 0.05, 0.4), Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ Transparency = 0.82 }
+			)
 		end
-
-		local dim = Utils.Create("Frame", {
-			Name = "KeyGateRoot",
-			BackgroundColor3 = colors.Background,
-			BackgroundTransparency = 0,
-			BorderSizePixel = 0,
-			Size = UDim2.fromScale(1, 1),
-			Position = UDim2.fromOffset(0, 0),
-			ZIndex = 20,
-			Parent = body,
-		})
-
-		local centerHost = Utils.Create("Frame", {
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			Size = UDim2.fromScale(1, 1),
-			Parent = dim,
-		})
-		Utils.Create("UIListLayout", {
-			FillDirection = Enum.FillDirection.Vertical,
-			HorizontalAlignment = Enum.HorizontalAlignment.Center,
-			VerticalAlignment = Enum.VerticalAlignment.Center,
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			Padding = UDim.new(0, 0),
-			Parent = centerHost,
-		})
-
-		local panelW = math.min(420, math.max(240, tonumber(keyOpts.PanelWidth) or 292))
-		local panel = Utils.Create("Frame", {
-			Name = "KeyGateForm",
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			Size = UDim2.new(0, panelW, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			LayoutOrder = 0,
-			Parent = centerHost,
-		})
-		Utils.Create("UIPadding", {
-			PaddingTop = UDim.new(0, 4),
-			PaddingBottom = UDim.new(0, 4),
-			PaddingLeft = UDim.new(0, 4),
-			PaddingRight = UDim.new(0, 4),
-			Parent = panel,
-		})
-		local form = panel
-		Utils.Create("UIListLayout", {
-			FillDirection = Enum.FillDirection.Vertical,
-			HorizontalAlignment = Enum.HorizontalAlignment.Left,
-			VerticalAlignment = Enum.VerticalAlignment.Top,
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			Padding = UDim.new(0, 7),
-			Parent = form,
-		})
-
-		local titleLbl = Utils.Create("TextLabel", {
-			BackgroundTransparency = 1,
-			Font = Enum.Font.GothamBold,
-			TextSize = 19,
-			TextColor3 = colors.Text,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			Size = UDim2.new(1, 0, 0, 24),
-			Text = tostring(keyOpts.Title or "License key"),
-			LayoutOrder = 0,
-			Parent = form,
-		})
-		local descText = keyOpts.Description or keyOpts.Subtitle
-		local descOrder = 1
-		if type(descText) == "string" and descText ~= "" then
-			Utils.Create("TextLabel", {
-				BackgroundTransparency = 1,
-				Font = Enum.Font.Gotham,
-				TextSize = 12,
-				TextColor3 = colors.TextDim,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				TextWrapped = true,
-				AutomaticSize = Enum.AutomaticSize.Y,
-				Size = UDim2.new(1, 0, 0, 0),
-				Text = descText,
-				LayoutOrder = 1,
-				Parent = form,
-			})
-			descOrder = 2
-		end
-
-		local box = Utils.Create("TextBox", {
-			BackgroundColor3 = colors.SurfaceMuted,
-			BackgroundTransparency = 0.15,
-			BorderSizePixel = 0,
-			Size = UDim2.new(1, 0, 0, 34),
-			Font = Enum.Font.Gotham,
-			TextSize = 13,
-			TextColor3 = colors.Text,
-			Text = "",
-			PlaceholderColor3 = colors.TextDim,
-			PlaceholderText = tostring(keyOpts.Placeholder or "Paste your key…"),
-			ClearTextOnFocus = false,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			LayoutOrder = descOrder,
-			Parent = form,
-		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Control.DefaultRadius), Parent = box })
-		Utils.Create("UIPadding", {
-			PaddingLeft = UDim.new(0, 10),
-			PaddingRight = UDim.new(0, 10),
-			Parent = box,
-		})
-
-		local errLbl = Utils.Create("TextLabel", {
-			BackgroundTransparency = 1,
-			Font = Enum.Font.Gotham,
-			TextSize = 12,
-			TextColor3 = colors.Error,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextWrapped = true,
-			AutomaticSize = Enum.AutomaticSize.None,
-			Size = UDim2.new(1, 0, 0, 0),
-			Text = "",
-			Visible = false,
-			LayoutOrder = descOrder + 1,
-			Parent = form,
-		})
-
-		local function keyGateClearError()
-			errLbl.Visible = false
-			errLbl.Text = ""
-			errLbl.AutomaticSize = Enum.AutomaticSize.None
-			errLbl.Size = UDim2.new(1, 0, 0, 0)
-		end
-		local function keyGateShowError(msg)
-			errLbl.AutomaticSize = Enum.AutomaticSize.Y
-			errLbl.Size = UDim2.new(1, 0, 0, 0)
-			errLbl.Text = tostring(msg)
-			errLbl.Visible = true
-		end
-
-		local btnRow = Utils.Create("Frame", {
-			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 34),
-			LayoutOrder = descOrder + 2,
-			Parent = form,
-		})
-		Utils.Create("UIListLayout", {
-			FillDirection = Enum.FillDirection.Horizontal,
-			HorizontalAlignment = Enum.HorizontalAlignment.Right,
-			VerticalAlignment = Enum.VerticalAlignment.Center,
-			Padding = UDim.new(0, 10),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			Parent = btnRow,
-		})
-
-		local closeKeyBtn
-		if keyOpts.ShowClose ~= false then
-			closeKeyBtn = Utils.Create("TextButton", {
-				Text = tostring(keyOpts.CloseText or "Close"),
-				Font = Enum.Font.GothamMedium,
-				TextSize = 14,
-				TextColor3 = colors.TextDim,
-				BackgroundColor3 = colors.SurfaceMuted,
-				AutoButtonColor = false,
-				Size = UDim2.new(0.35, -5, 1, 0),
-				BorderSizePixel = 0,
-				LayoutOrder = 0,
-				Parent = btnRow,
-			})
-			Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Control.DefaultRadius), Parent = closeKeyBtn })
-		end
-
-		local submitBtn = Utils.Create("TextButton", {
-			Text = tostring(keyOpts.SubmitText or "Continue"),
-			Font = Enum.Font.GothamBold,
-			TextSize = 14,
-			TextColor3 = Color3.new(1, 1, 1),
-			BackgroundColor3 = colors.Accent,
-			AutoButtonColor = false,
-			Size = closeKeyBtn and UDim2.new(0.65, -5, 1, 0) or UDim2.new(1, 0, 1, 0),
-			BorderSizePixel = 0,
-			LayoutOrder = 1,
-			Parent = btnRow,
-		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Control.DefaultRadius), Parent = submitBtn })
-
-		local busy = false
-		local function trySubmit()
-			if busy or window._destroyed then
-				return
-			end
-			keyGateClearError()
-			local trimmed = box.Text:gsub("^%s+", ""):gsub("%s+$", "")
-			local ok = false
-			if type(keyOpts.Validate) == "function" then
-				local r = keyOpts.Validate(trimmed)
-				ok = r == true
-			elseif type(keyOpts.Keys) == "table" then
-				local want = norm(trimmed)
-				for _, k in ipairs(keyOpts.Keys) do
-					if norm(k) == want then
-						ok = true
-						break
-					end
-				end
-			elseif keyOpts.Key ~= nil then
-				ok = norm(keyOpts.Key) == norm(trimmed)
-			else
-				keyGateShowError("Key: set Keys, Key, or Validate.")
-				return
-			end
-
-			if not ok then
-				keyGateShowError(keyOpts.WrongText or keyOpts.InvalidText or "Invalid key.")
-				if type(keyOpts.OnFail) == "function" then
-					pcall(keyOpts.OnFail, trimmed)
-				end
-				return
-			end
-
-			busy = true
-			window._keyValidated = true
-			if configEnabled then
-				Services.ConfigService:LoadFromPath(configFolder, configFileName)
-			end
-			registerAutosaveOnce()
-			if type(keyOpts.OnSuccess) == "function" then
-				pcall(keyOpts.OnSuccess, trimmed)
-			end
-			dim:Destroy()
-			mainStroke.Transparency = strokeTransBefore
-			resizeGrip.Visible = true
-			if keyShrinkOn then
-				main.Size = savedMainSize
-			end
-			resetLoadingLayerForReveal()
-			beginStartupLoadingAnimation()
-		end
-
-		submitBtn.MouseButton1Click:Connect(trySubmit)
-		box.FocusLost:Connect(function(enter)
-			if enter and keyOpts.SubmitOnEnter ~= false then
-				trySubmit()
-			end
-		end)
-		if closeKeyBtn then
-			closeKeyBtn.MouseButton1Click:Connect(function()
-				screen.Enabled = false
-			end)
-		end
-	else
-		registerAutosaveOnce()
-		beginStartupLoadingAnimation()
-	end
+		Utils.Tween(
+			loadBarFill,
+			TweenInfo.new(tok.Animation.LoadingBarDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Size = UDim2.new(1, 0, 1, 0) }
+		)
+		task.wait(0.28)
+		Utils.Tween(loading, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 })
+		Utils.Tween(loadTitle, TweenInfo.new(0.25), { TextTransparency = 1 })
+		Utils.Tween(loadSub, TweenInfo.new(0.25), { TextTransparency = 1 })
+		Utils.Tween(loadBarBg, TweenInfo.new(0.25), { BackgroundTransparency = 1 })
+		Utils.Tween(loadBarFill, TweenInfo.new(0.25), { BackgroundTransparency = 1 })
+		task.wait(0.32)
+		loading.Visible = false
+	end)
 
 	table.insert(window._tabThemeHooks, function()
 		window:_syncTabStyles()
@@ -3402,6 +3157,410 @@ function Library:Init()
 		local w = Core.CreateWindow(opts)
 		api.Window = w
 		return w
+	end
+
+	--[[
+		Kør validering før hubben oprettes. `CreateWindow` kaldes først når check består.
+		opts.Validate() → skal returnere true (synk). Eller opts.ValidateAsync(function(done) done(ok, err?) end).
+		opts.Window = samme tabel som til CreateWindow. opts.Build(Window) = opret faner/sektioner.
+	]]
+	function api.OpenAfterValidate(_, opts)
+		opts = opts or {}
+		local winOpts = type(opts.Window) == "table" and opts.Window or {}
+
+		local function finishOpen()
+			if opts.PrintCredits == true then
+				print("GulleUI — OpenAfterValidate → CreateWindow. See GulleUILibrary.md.")
+			end
+			local w = Core.CreateWindow(winOpts)
+			api.Window = w
+			if type(opts.Build) == "function" then
+				local okBuild, errBuild = pcall(opts.Build, w)
+				if not okBuild then
+					warn("[GulleUI] OpenAfterValidate Build failed: ", errBuild)
+				end
+			end
+			return w
+		end
+
+		if type(opts.ValidateAsync) == "function" then
+			task.spawn(function()
+				local doneOnce = false
+				local function done(ok, err)
+					if doneOnce then
+						return
+					end
+					doneOnce = true
+					if ok == true then
+						task.defer(finishOpen)
+					elseif type(opts.OnDenied) == "function" then
+						task.defer(opts.OnDenied, err)
+					end
+				end
+				local okCall, errCall = pcall(opts.ValidateAsync, done)
+				if not okCall then
+					done(false, errCall)
+				end
+			end)
+			return nil
+		end
+
+		if type(opts.Validate) == "function" then
+			local okCall, res = pcall(opts.Validate)
+			if not okCall or res ~= true then
+				if type(opts.OnDenied) == "function" then
+					opts.OnDenied(okCall and res or res)
+				end
+				return nil
+			end
+		end
+
+		return finishOpen()
+	end
+
+	--[[
+		Separat key-UI (egen ScreenGui). Ved succes ødelægges den; derefter CreateWindow + Build — samme som OpenAfterValidate.
+		Validering (første der matcher): KeyValidateAsync(key, done), KeyValidate(key), Validate(key), eller whitelist Keys / Key.
+		Ingen whitelist og ikke AllowAny → afvist. KeyTheme = valgfri { Colors, Tokens } kun til key-skærmen.
+	]]
+	function api.CreateWindowAfterKey(_, opts)
+		opts = opts or {}
+		local winOpts = type(opts.Window) == "table" and opts.Window or {}
+		local guiParent = resolveGuiParent({ UseCoreGui = winOpts.UseCoreGui })
+		local themeStub = { _themeOverride = type(opts.KeyTheme) == "table" and opts.KeyTheme or nil }
+		local C = Core.GetColors(themeStub)
+		local tok = Core.GetTokens(themeStub)
+
+		local titleText = opts.Title or opts.KeyTitle or "Key required"
+		local descText = opts.Description or opts.Subtitle or "Enter your key to continue."
+		local placeholder = opts.Placeholder or "Key"
+		local wrongDefault = opts.WrongText or "Invalid key."
+		local submitLabel = opts.SubmitText or "Continue"
+		local closeLabel = opts.CloseText or "Close"
+		local showClose = opts.ShowClose ~= false
+
+		local opened = false
+
+		local screen = Utils.Create("ScreenGui", {
+			Name = "GulleUI_KeyGate",
+			ResetOnSpawn = false,
+			ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+			DisplayOrder = type(opts.KeyDisplayOrder) == "number" and opts.KeyDisplayOrder or 550,
+			Parent = guiParent,
+		})
+
+		local overlay = Utils.Create("Frame", {
+			Name = "Overlay",
+			BackgroundColor3 = C.Background,
+			BackgroundTransparency = 0.35,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 1),
+			Parent = screen,
+		})
+
+		local card = Utils.Create("Frame", {
+			Name = "Card",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(380, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundColor3 = C.Surface,
+			BorderSizePixel = 0,
+			Parent = overlay,
+		})
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = card })
+		Utils.Create("UIStroke", {
+			Color = C.Border,
+			Thickness = 1,
+			Transparency = 0.5,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			Parent = card,
+		})
+
+		Utils.Create("UIPadding", {
+			PaddingTop = UDim.new(0, 18),
+			PaddingBottom = UDim.new(0, 18),
+			PaddingLeft = UDim.new(0, 18),
+			PaddingRight = UDim.new(0, 18),
+			Parent = card,
+		})
+
+		local stack = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Parent = card,
+		})
+		Utils.Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Vertical,
+			Padding = UDim.new(0, 10),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = stack,
+		})
+
+		Utils.Create("TextLabel", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 22),
+			Font = Enum.Font.GothamBold,
+			TextSize = 18,
+			TextColor3 = C.Text,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Text = titleText,
+			Parent = stack,
+		})
+
+		Utils.Create("TextLabel", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Font = Enum.Font.Gotham,
+			TextSize = 13,
+			TextColor3 = C.TextDim,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextWrapped = true,
+			Text = descText,
+			Parent = stack,
+		})
+
+		local inputWrap = Utils.Create("Frame", {
+			BackgroundColor3 = C.SurfaceMuted,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, 0, 0, tok.Control.InputRowHeight),
+			Parent = stack,
+		})
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Control.DefaultRadius), Parent = inputWrap })
+		Utils.Create("UIStroke", { Color = C.Border, Thickness = 1, Transparency = 0.65, Parent = inputWrap })
+		Utils.Create("UIPadding", {
+			PaddingLeft = UDim.new(0, 10),
+			PaddingRight = UDim.new(0, 10),
+			Parent = inputWrap,
+		})
+
+		local box = Utils.Create("TextBox", {
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			Font = Enum.Font.Gotham,
+			TextSize = 14,
+			TextColor3 = C.Text,
+			PlaceholderColor3 = C.TextDim,
+			PlaceholderText = placeholder,
+			ClearTextOnFocus = false,
+			Text = "",
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Parent = inputWrap,
+		})
+
+		local wrong = Utils.Create("TextLabel", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 0),
+			Visible = false,
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Font = Enum.Font.Gotham,
+			TextSize = 12,
+			TextColor3 = C.Error,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextWrapped = true,
+			Text = wrongDefault,
+			Parent = stack,
+		})
+
+		local btnRow = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, tok.Control.ButtonHeight),
+			Parent = stack,
+		})
+		Utils.Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Right,
+			Padding = UDim.new(0, 8),
+			Parent = btnRow,
+		})
+
+		local function makeTextButton(text, accent)
+			local b = Utils.Create("TextButton", {
+				AutoButtonColor = false,
+				BackgroundColor3 = accent and C.Accent or C.SurfaceHover,
+				Size = UDim2.fromOffset(0, tok.Control.ButtonHeight),
+				AutomaticSize = Enum.AutomaticSize.X,
+				Font = Enum.Font.GothamSemibold,
+				TextSize = 13,
+				TextColor3 = C.Text,
+				Text = text,
+				Parent = btnRow,
+			})
+			Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Control.DefaultRadius), Parent = b })
+			Utils.Create("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16), Parent = b })
+			return b
+		end
+
+		local closeBtn = showClose and makeTextButton(closeLabel, false) or nil
+		local submitBtn = makeTextButton(submitLabel, true)
+
+		local function setBusy(busy)
+			submitBtn.Active = not busy
+			submitBtn.AutoButtonColor = not busy
+			if closeBtn then
+				closeBtn.Active = not busy
+				closeBtn.AutoButtonColor = not busy
+			end
+			box.TextEditable = not busy
+		end
+
+		local function showWrong(msg)
+			wrong.Text = type(msg) == "string" and msg ~= "" and msg or wrongDefault
+			wrong.Visible = true
+		end
+
+		local function hideWrong()
+			wrong.Visible = false
+		end
+
+		local function keyCheckSync(trimmed)
+			if trimmed == "" then
+				return false
+			end
+			if type(opts.KeyValidate) == "function" then
+				local ok, res = pcall(opts.KeyValidate, trimmed)
+				return ok and res == true
+			end
+			if type(opts.Validate) == "function" then
+				local ok, res = pcall(opts.Validate, trimmed)
+				return ok and res == true
+			end
+			local hasWhitelist = false
+			if type(opts.Keys) == "table" then
+				for _ in ipairs(opts.Keys) do
+					hasWhitelist = true
+					break
+				end
+			end
+			if opts.Key ~= nil then
+				hasWhitelist = true
+			end
+			if not hasWhitelist then
+				return opts.AllowAny == true
+			end
+			local ci = opts.CaseInsensitive ~= false
+			local function norm(s)
+				if ci then
+					return string.lower(tostring(s))
+				end
+				return tostring(s)
+			end
+			local allowed = {}
+			if type(opts.Keys) == "table" then
+				for _, k in ipairs(opts.Keys) do
+					allowed[norm(k)] = true
+				end
+			end
+			if opts.Key ~= nil then
+				allowed[norm(opts.Key)] = true
+			end
+			return allowed[norm(trimmed)] == true
+		end
+
+		local function finishOpen(usedKey)
+			if opts.PrintCredits == true then
+				print("GulleUI — CreateWindowAfterKey → CreateWindow. See GulleUILibrary.md.")
+			end
+			local w = Core.CreateWindow(winOpts)
+			api.Window = w
+			if type(opts.OnSuccess) == "function" then
+				pcall(opts.OnSuccess, usedKey)
+			end
+			if type(opts.Build) == "function" then
+				local okBuild, errBuild = pcall(opts.Build, w)
+				if not okBuild then
+					warn("[GulleUI] CreateWindowAfterKey Build failed: ", errBuild)
+				end
+			end
+			return w
+		end
+
+		local function proceedValid(trimmed)
+			if opened then
+				return
+			end
+			opened = true
+			screen:Destroy()
+			task.defer(function()
+				finishOpen(trimmed)
+			end)
+		end
+
+		local function trySubmit()
+			if opened then
+				return
+			end
+			hideWrong()
+			local trimmed = string.gsub(box.Text or "", "^%s*(.-)%s*$", "%1")
+			if trimmed == "" then
+				showWrong()
+				return
+			end
+			if type(opts.KeyValidateAsync) == "function" then
+				setBusy(true)
+				local doneOnce = false
+				local function done(ok, errMsg)
+					if doneOnce then
+						return
+					end
+					doneOnce = true
+					setBusy(false)
+					if ok == true then
+						proceedValid(trimmed)
+					else
+						showWrong(type(errMsg) == "string" and errMsg or wrongDefault)
+					end
+				end
+				local okCall, errCall = pcall(opts.KeyValidateAsync, trimmed, done)
+				if not okCall then
+					done(false, tostring(errCall))
+				end
+				return
+			end
+			if keyCheckSync(trimmed) then
+				proceedValid(trimmed)
+			else
+				showWrong()
+				if type(opts.OnFail) == "function" then
+					pcall(opts.OnFail, trimmed)
+				end
+			end
+		end
+
+		submitBtn.MouseButton1Click:Connect(trySubmit)
+		if closeBtn then
+			closeBtn.MouseButton1Click:Connect(function()
+				if opened then
+					return
+				end
+				screen:Destroy()
+				if type(opts.OnCancel) == "function" then
+					pcall(opts.OnCancel)
+				elseif type(opts.OnDenied) == "function" then
+					pcall(opts.OnDenied, "cancelled")
+				end
+			end)
+		end
+
+		if opts.SubmitOnEnter ~= false then
+			box.FocusLost:Connect(function(enter)
+				if enter and not opened then
+					trySubmit()
+				end
+			end)
+		end
+
+		return {
+			Destroy = function()
+				if screen.Parent then
+					screen:Destroy()
+				end
+			end,
+			Screen = screen,
+		}
 	end
 
 	api.BlockyTheme = Library.BlockyTheme
