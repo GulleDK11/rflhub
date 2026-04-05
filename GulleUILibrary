@@ -317,6 +317,9 @@ local _defaultTokens = {
 		KeyGateCloseScaleEnd = 0.86,
 		KeyGateContentFadeIn = true,
 		KeyGatePauseBeforeHub = 0.2,
+		TabButtonTweenDuration = 0.14,
+		TabContentFadeInDuration = 0.11,
+		TabContentFadeIn = true,
 	},
 	Notification = {
 		Width = 280,
@@ -1437,7 +1440,24 @@ function Core.CreateWindow(opts)
 		_autosaveThread = nil,
 		_tabThemeHooks = {},
 		_themeOverride = windowThemeOverride,
+		_tabAnim = {
+			BtnDur = (tok.Animation or {}).TabButtonTweenDuration or 0.14,
+			ContentFadeDur = (tok.Animation or {}).TabContentFadeInDuration or 0.11,
+			ContentFadeOn = (tok.Animation or {}).TabContentFadeIn ~= false,
+		},
 	}
+
+	function window:_tweenSidebarTab(button, label, bgColor, textColor)
+		local d = self._tabAnim.BtnDur
+		Utils.Tween(button, TweenInfo.new(d, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			BackgroundColor3 = bgColor,
+		})
+		if label then
+			Utils.Tween(label, TweenInfo.new(d, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				TextColor3 = textColor,
+			})
+		end
+	end
 
 	function window:Notify(data)
 		Services.NotificationService:Notify(data)
@@ -1703,18 +1723,11 @@ function Core.CreateWindow(opts)
 		local th = Core.GetColors(window)
 		for _, t in ipairs(self._tabs) do
 			local isOn = self._activeTab == t
+			t._button.BackgroundTransparency = 0
 			if isOn then
-				t._button.BackgroundColor3 = th.SurfaceHover
-				t._button.BackgroundTransparency = 0
-				if t._label then
-					t._label.TextColor3 = th.Text
-				end
+				self:_tweenSidebarTab(t._button, t._label, th.SurfaceHover, th.Text)
 			else
-				t._button.BackgroundColor3 = th.SurfaceMuted
-				t._button.BackgroundTransparency = 0
-				if t._label then
-					t._label.TextColor3 = th.TabInactive
-				end
+				self:_tweenSidebarTab(t._button, t._label, th.SurfaceMuted, th.TabInactive)
 			end
 		end
 	end
@@ -1819,6 +1832,15 @@ function Core.CreateWindow(opts)
 		})
 		Core.AddThemeRef(window, page, "ScrollBarImageColor3", "TextDim")
 
+		local tabPageFade = Utils.TryCreateCanvasGroup({
+			Name = "TabPageFade",
+			GroupTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			Position = UDim2.fromScale(0, 0),
+			Parent = page,
+		})
+		local pageContentMount = tabPageFade or page
+
 		-- Single child under ScrollingFrame + inner padding avoids broken canvas sizing.
 		local pageContent = Utils.Create("Frame", {
 			Name = "PageContent",
@@ -1826,7 +1848,7 @@ function Core.CreateWindow(opts)
 			BorderSizePixel = 0,
 			Size = UDim2.new(1, 0, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
-			Parent = page,
+			Parent = pageContentMount,
 		})
 		local tTab = tok.Tab
 		local pagePT = tTab.PagePaddingTop or 4
@@ -1893,6 +1915,8 @@ function Core.CreateWindow(opts)
 			_button = btn,
 			_label = tabLbl,
 			_page = page,
+			_tabPageFade = tabPageFade,
+			_tabContentTween = nil,
 			_content = leftCol,
 			_contentLeft = leftCol,
 			_contentRight = rightCol,
@@ -1945,20 +1969,49 @@ function Core.CreateWindow(opts)
 
 		local function selectTab()
 			local th = Core.GetColors(window)
+			local ta = window._tabAnim
 			for _, t in ipairs(window._tabs) do
 				t._page.Visible = false
-				t._button.BackgroundTransparency = 0
-				t._button.BackgroundColor3 = th.SurfaceMuted
-				if t._label then
-					t._label.TextColor3 = th.TabInactive
+				local twCt = t._tabContentTween
+				if twCt then
+					pcall(function()
+						twCt:Cancel()
+					end)
+					t._tabContentTween = nil
 				end
+				if t._tabPageFade then
+					t._tabPageFade.GroupTransparency = 1
+				end
+				t._button.BackgroundTransparency = 0
+				window:_tweenSidebarTab(t._button, t._label, th.SurfaceMuted, th.TabInactive)
 			end
 			page.CanvasPosition = Vector2.zero
 			page.Visible = true
 			window._activeTab = tabObj
 			btn.BackgroundTransparency = 0
-			btn.BackgroundColor3 = th.SurfaceHover
-			tabLbl.TextColor3 = th.Text
+			window:_tweenSidebarTab(btn, tabLbl, th.SurfaceHover, th.Text)
+
+			if tabPageFade and ta.ContentFadeOn then
+				tabPageFade.GroupTransparency = 1
+				task.defer(function()
+					if window._activeTab ~= tabObj or not page.Parent then
+						return
+					end
+					local twFade = Utils.Tween(
+						tabPageFade,
+						TweenInfo.new(ta.ContentFadeDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+						{ GroupTransparency = 0 }
+					)
+					tabObj._tabContentTween = twFade
+					twFade.Completed:Connect(function()
+						if tabObj._tabContentTween == twFade then
+							tabObj._tabContentTween = nil
+						end
+					end)
+				end)
+			elseif tabPageFade then
+				tabPageFade.GroupTransparency = 0
+			end
 		end
 
 		btn.MouseButton1Click:Connect(selectTab)
@@ -1966,13 +2019,13 @@ function Core.CreateWindow(opts)
 		btn.MouseEnter:Connect(function()
 			if window._activeTab ~= tabObj then
 				local th = Core.GetColors(window)
-				btn.BackgroundColor3 = th.SurfaceHover
+				window:_tweenSidebarTab(btn, tabLbl, th.SurfaceHover, th.TabInactive)
 			end
 		end)
 		btn.MouseLeave:Connect(function()
 			if window._activeTab ~= tabObj then
 				local th = Core.GetColors(window)
-				btn.BackgroundColor3 = th.SurfaceMuted
+				window:_tweenSidebarTab(btn, tabLbl, th.SurfaceMuted, th.TabInactive)
 			end
 		end)
 
