@@ -6,8 +6,8 @@
     ██████╔╝███████╗╚██████╔╝╚██████╗██║  ██╗╚██████╔╝██║
     ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝
 
-    BlockUI v1.1.0 — Zypher-inspireret layout (teppyboy/RbxScripts)
-    Slice UI + sidebar selector; knap/toggle via ImageButton.
+    BlockUI v1.2.0 — Hub “grunge metal” (monokrom, skarp kant, metal-gradient)
+    Valgfrit logo: CreateWindow{ LogoImage = "rbxassetid://…" } (upload dit emblem til Roblox)
 
     Usage:
         local BlockUI = require(pathToModule)  -- eller dit loadstring-setup
@@ -17,7 +17,7 @@
         Tab     → CreateButton, CreateToggle, CreateSlider,
                   CreateInput, CreateDropdown, CreateLabel
         BlockUI → Notify, LoadConfiguration, SaveConfiguration
-        CreateWindow → ToggleKey (Enum eller liste, default Insert; false = slå fra)
+        CreateWindow → ToggleKey (Enum/liste/false), LogoImage ("rbxassetid://…")
         VIGTIG: Kun én ToggleKey-linje i tabellen — gentagne nøgler overskrives (sidste vinder).
 --]]
 
@@ -34,52 +34,58 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer    = Players.LocalPlayer
 local PlayerGui      = LocalPlayer:WaitForChild("PlayerGui")
 
--- ── Zypher-lignende palette + 9-slice (samme asset som Zypher UI) ──
+-- ── 9-slice panel (Zypher-asset; tones med ImageColor3 = metal/grunge) ──
 local SLICE_ASSET = "rbxassetid://3570695787"
 local SLICE_RECT = Rect.new(100, 100, 100, 100)
-local SLICE_SCALE = 0.04
+local SLICE_SCALE = 0.028
 
 local S = {
-    bg             = Color3.fromRGB(46, 46, 54),
-    grayContrast   = Color3.fromRGB(39, 38, 46),
-    darkContrast   = Color3.fromRGB(29, 29, 35),
-    charcoal       = Color3.fromRGB(21, 21, 26),
-    sectionTone    = Color3.fromRGB(39, 38, 46),
-    text           = Color3.fromRGB(255, 255, 255),
-    muted          = Color3.fromRGB(180, 180, 190),
-    accentCyan     = Color3.fromRGB(0, 220, 220),
-    accentPurple   = Color3.fromRGB(125, 92, 164),
-    toggleOn       = Color3.fromRGB(0, 200, 200),
-    toggleThumb    = Color3.fromRGB(255, 255, 255),
-    sliderFill     = Color3.fromRGB(0, 210, 210),
-    danger         = Color3.fromRGB(232, 90, 90),
-    warning        = Color3.fromRGB(230, 180, 60),
-    success        = Color3.fromRGB(80, 200, 130),
+    -- Monokrom “slagmetall / kul” hub
+    bg             = Color3.fromRGB(22, 22, 24),
+    grayContrast   = Color3.fromRGB(30, 30, 33),
+    darkContrast   = Color3.fromRGB(26, 26, 29),
+    charcoal       = Color3.fromRGB(12, 12, 14),
+    sectionTone    = Color3.fromRGB(36, 36, 40),
+    panelRaised    = Color3.fromRGB(44, 44, 48),
+    text           = Color3.fromRGB(248, 248, 250),
+    muted          = Color3.fromRGB(130, 130, 138),
+    metalHighlight = Color3.fromRGB(210, 210, 216),
+    metalMid       = Color3.fromRGB(110, 110, 118),
+    accentCyan     = Color3.fromRGB(210, 210, 216),
+    accentPurple   = Color3.fromRGB(95, 95, 102),
+    toggleOn       = Color3.fromRGB(92, 92, 98),
+    toggleThumb    = Color3.fromRGB(250, 250, 252),
+    sliderFill     = Color3.fromRGB(188, 188, 196),
+    danger         = Color3.fromRGB(200, 140, 140),
+    warning        = Color3.fromRGB(200, 185, 150),
+    success        = Color3.fromRGB(150, 185, 155),
     font           = Enum.Font.GothamBold,
     fontMono       = Enum.Font.Code,
     fontBody       = Enum.Font.Gotham,
-    radiusS        = UDim.new(0, 4),
-    radiusM        = UDim.new(0, 8),
-    border         = Color3.fromRGB(52, 52, 60),
-    black          = Color3.fromRGB(8, 8, 10),
+    fontTitle      = Enum.Font.GothamBlack,
+    radiusS        = UDim.new(0, 2),
+    radiusM        = UDim.new(0, 3),
+    border         = Color3.fromRGB(58, 58, 64),
+    strokeEtch     = Color3.fromRGB(78, 78, 86),
+    black          = Color3.fromRGB(6, 6, 8),
 }
 -- Bagudkompatibilitet for resten af filen
 S.shell = S.bg
 S.surface = S.darkContrast
 S.surface2 = S.charcoal
 S.surface3 = S.grayContrast
-S.sidebarSel = S.bg
-S.fluentBlue = S.accentCyan
-S.toggleOnGlow = S.accentCyan
-S.accent2 = S.accentPurple
-S.accent = S.accentCyan
-S.accentBar = S.accentCyan
+S.sidebarSel = S.panelRaised
+S.fluentBlue = S.metalHighlight
+S.toggleOnGlow = S.metalMid
+S.accent2 = S.metalMid
+S.accent = S.metalHighlight
+S.accentBar = S.metalHighlight
 
 local MAIN_W, MAIN_H = 700, 460
 local SIDEBAR_W = 152
-local TOP_STRIP = 3
-local HEADER_H = 42
-local CORNER_MAIN = UDim.new(0, 6)
+local TOP_STRIP = 4
+local HEADER_H = 44
+local CORNER_MAIN = UDim.new(0, 2)
 local function corner(inst, r)
     local c = inst:FindFirstChildOfClass("UICorner")
     if not c then
@@ -200,7 +206,7 @@ function BlockUI:Notify(cfg)
     local accentCol = ntype == "success" and S.success
                    or ntype == "warning" and S.warning
                    or ntype == "error"   and S.danger
-                   or S.accent2
+                   or S.metalHighlight
 
     local card = new("Frame", {
         Size             = UDim2.new(1, 0, 0, 0),
@@ -357,6 +363,10 @@ function BlockUI:CreateWindow(cfg)
     cfg = cfg or {}
     local winName  = cfg.Name     or "BlockUI Window"
     local winSub   = cfg.Subtitle or ""
+    local logoImage = cfg.LogoImage
+    if type(logoImage) == "number" then
+        logoImage = "rbxassetid://" .. tostring(logoImage)
+    end
     local saveConfig = cfg.ConfigurationSaving
 
     if saveConfig and saveConfig.Enabled and saveConfig.FileName then
@@ -394,25 +404,34 @@ function BlockUI:CreateWindow(cfg)
         ClipsDescendants = true,
     }, gui)
     corner(main, CORNER_MAIN)
+    new("UIGradient", {
+        Rotation = 90,
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(16, 16, 18)),
+            ColorSequenceKeypoint.new(0.45, Color3.fromRGB(28, 28, 32)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 20, 23)),
+        }),
+    }, main)
     new("UIStroke", {
-        Color            = S.border,
+        Color            = S.strokeEtch,
         Thickness        = 1,
-        Transparency     = 0.28,
+        Transparency     = 0.12,
         ApplyStrokeMode  = Enum.ApplyStrokeMode.Border,
     }, main)
 
     local upline = new("Frame", {
         Name             = "Upline",
         Size             = UDim2.new(1, 0, 0, TOP_STRIP),
-        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BackgroundColor3 = Color3.fromRGB(60, 60, 65),
         BorderSizePixel  = 0,
         ZIndex           = 10,
     }, main)
     new("UIGradient", {
         Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 183, 183)),
-            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(0, 248, 248)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(125, 92, 164)),
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(38, 38, 42)),
+            ColorSequenceKeypoint.new(0.35, Color3.fromRGB(95, 95, 102)),
+            ColorSequenceKeypoint.new(0.7, Color3.fromRGB(72, 72, 78)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(32, 32, 36)),
         }),
     }, upline)
 
@@ -423,10 +442,45 @@ function BlockUI:CreateWindow(cfg)
         BorderSizePixel  = 0,
         ZIndex           = 5,
     }, main)
+    new("UIGradient", {
+        Rotation = 90,
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(36, 36, 40)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(24, 24, 28)),
+        }),
+    }, titlebar)
+
+    local hasLogo = type(logoImage) == "string" and logoImage ~= ""
+    local titleLeft = 14
+    if hasLogo then
+        titleLeft = 56
+        local logoHolder = new("Frame", {
+            Size             = UDim2.fromOffset(40, 40),
+            Position         = UDim2.new(0, 10, 0.5, -20),
+            BackgroundColor3 = S.charcoal,
+            BorderSizePixel  = 0,
+            ZIndex           = 6,
+        }, titlebar)
+        corner(logoHolder, UDim.new(0, 2))
+        new("UIStroke", {
+            Color = S.border,
+            Thickness = 1,
+            Transparency = 0.35,
+        }, logoHolder)
+        new("ImageLabel", {
+            Size             = UDim2.new(1, -6, 1, -6),
+            Position         = UDim2.fromScale(0.5, 0.5),
+            AnchorPoint      = Vector2.new(0.5, 0.5),
+            BackgroundTransparency = 1,
+            Image            = logoImage,
+            ScaleType        = Enum.ScaleType.Fit,
+            ZIndex           = 7,
+        }, logoHolder)
+    end
 
     local titleStack = new("Frame", {
-        Size             = UDim2.new(1, -96, 1, 0),
-        Position         = UDim2.fromOffset(14, 0),
+        Size             = UDim2.new(1, hasLogo and -152 or -96, 1, 0),
+        Position         = UDim2.fromOffset(titleLeft, 0),
         BackgroundTransparency = 1,
         BorderSizePixel  = 0,
     }, titlebar)
@@ -444,7 +498,7 @@ function BlockUI:CreateWindow(cfg)
         BackgroundTransparency = 1,
         Text             = winName,
         TextColor3       = S.text,
-        FontFace         = Font.fromEnum(Enum.Font.GothamBold),
+        FontFace         = Font.fromEnum(S.fontTitle),
         TextSize         = 17,
         TextXAlignment   = Enum.TextXAlignment.Left,
         TextYAlignment   = Enum.TextYAlignment.Center,
@@ -476,7 +530,7 @@ function BlockUI:CreateWindow(cfg)
         TextSize         = 20,
         AutoButtonColor  = false,
     }, titlebar)
-    corner(closeBtn, UDim.new(0, 5))
+    corner(closeBtn, UDim.new(0, 2))
     closeBtn.MouseEnter:Connect(function()
         tween(closeBtn, TweenInfo.new(0.1), { BackgroundTransparency = 0, TextColor3 = S.text })
     end)
@@ -536,12 +590,18 @@ function BlockUI:CreateWindow(cfg)
         Position         = UDim2.fromOffset(8, nextTabY),
         Size             = UDim2.new(1, -16, 0, 30),
         Image            = SLICE_ASSET,
-        ImageColor3      = S.bg,
+        ImageColor3      = S.panelRaised,
         ScaleType        = Enum.ScaleType.Slice,
         SliceCenter      = SLICE_RECT,
         SliceScale       = SLICE_SCALE,
         ZIndex           = 1,
     }, sidebar)
+    new("UIStroke", {
+        Color = S.border,
+        Thickness = 1,
+        Transparency = 0.55,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    }, tabSelector)
 
     new("Frame", {
         Size             = UDim2.new(0, 1, 1, -bodyTop),
@@ -571,7 +631,7 @@ function BlockUI:CreateWindow(cfg)
         for n, entry in pairs(tabs) do
             local isOn = (n == name)
             if type(entry) == "table" and entry.btn then
-                entry.btn.TextColor3 = isOn and S.accentCyan or S.text
+                entry.btn.TextColor3 = isOn and S.metalHighlight or S.muted
                 if isOn and tabSelector and entry.tabY ~= nil then
                     tween(tabSelector, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
                         Position = UDim2.fromOffset(8, entry.tabY),
@@ -612,9 +672,9 @@ function BlockUI:CreateWindow(cfg)
             BackgroundTransparency = 1,
             BorderSizePixel  = 0,
             Text             = tabText,
-            TextColor3       = S.text,
-            FontFace         = Font.fromEnum(Enum.Font.GothamBold),
-            TextSize         = 16,
+            TextColor3       = S.muted,
+            FontFace         = Font.fromEnum(S.fontTitle),
+            TextSize         = 15,
             TextXAlignment   = Enum.TextXAlignment.Left,
             TextYAlignment   = Enum.TextYAlignment.Center,
             AutoButtonColor  = false,
@@ -634,7 +694,7 @@ function BlockUI:CreateWindow(cfg)
             BackgroundTransparency = 1,
             BorderSizePixel  = 0,
             ScrollBarThickness = 3,
-            ScrollBarImageColor3 = S.charcoal,
+            ScrollBarImageColor3 = S.metalMid,
             CanvasSize       = UDim2.new(0, 0, 0, 0),
             AutomaticCanvasSize = Enum.AutomaticSize.Y,
             Visible          = false,
@@ -696,6 +756,12 @@ function BlockUI:CreateWindow(cfg)
                 AutoButtonColor  = false,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
+            new("UIStroke", {
+                Color = S.border,
+                Thickness = 1,
+                Transparency = 0.5,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            }, imgBtn)
 
             local caption = new("TextLabel", {
                 Size             = UDim2.new(1, -24, 1, 0),
@@ -703,7 +769,7 @@ function BlockUI:CreateWindow(cfg)
                 BackgroundTransparency = 1,
                 Text             = labelText,
                 TextColor3       = S.text,
-                FontFace         = Font.fromEnum(Enum.Font.GothamBold),
+                FontFace         = Font.fromEnum(S.fontTitle),
                 TextSize         = 15,
                 TextXAlignment   = Enum.TextXAlignment.Left,
                 TextYAlignment   = Enum.TextYAlignment.Center,
@@ -741,6 +807,12 @@ function BlockUI:CreateWindow(cfg)
                 AutoButtonColor  = false,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
+            new("UIStroke", {
+                Color = S.border,
+                Thickness = 1,
+                Transparency = 0.55,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            }, toggleBtn)
 
             local iconT = (elCfg.Icon and elCfg.Icon ~= "") and (elCfg.Icon .. "  ") or ""
             local titleY = elCfg.Description and 6 or 0
@@ -750,8 +822,8 @@ function BlockUI:CreateWindow(cfg)
                 BackgroundTransparency = 1,
                 Text             = iconT .. (elCfg.Name or "Toggle"),
                 TextColor3       = S.text,
-                FontFace         = Font.fromEnum(Enum.Font.GothamBold),
-                TextSize         = 15,
+                FontFace         = Font.fromEnum(S.fontTitle),
+                TextSize         = 14,
                 TextXAlignment   = Enum.TextXAlignment.Left,
                 TextYAlignment   = Enum.TextYAlignment.Top,
                 Active           = false,
@@ -854,6 +926,12 @@ function BlockUI:CreateWindow(cfg)
                 SliceScale       = SLICE_SCALE,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
+            new("UIStroke", {
+                Color = S.border,
+                Thickness = 1,
+                Transparency = 0.55,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            }, row)
 
             new("TextLabel", {
                 Size             = UDim2.new(1, -80, 0, 20),
@@ -903,7 +981,7 @@ function BlockUI:CreateWindow(cfg)
                 BorderSizePixel  = 0,
             }, trackBg)
             corner(sliderThumb, UDim.new(1, 0))
-            new("UIStroke", { Color = S.fluentBlue, Thickness = 1, Transparency = 0.35 }, sliderThumb)
+            new("UIStroke", { Color = S.metalMid, Thickness = 1, Transparency = 0.25 }, sliderThumb)
 
             local function updateSlider(val, skipCallback)
                 val = math.clamp(math.round(val / inc) * inc, range[1], range[2])
@@ -1218,15 +1296,21 @@ function BlockUI:CreateWindow(cfg)
                 SliceScale       = SLICE_SCALE,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
+            new("UIStroke", {
+                Color = S.border,
+                Thickness = 1,
+                Transparency = 0.6,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+            }, wrap)
 
             new("TextLabel", {
                 Size             = UDim2.new(0.55, 0, 0, 22),
                 Position         = UDim2.fromOffset(6, -6),
                 BackgroundTransparency = 1,
-                Text             = elCfg.Name or "Section",
-                TextColor3       = S.text,
-                FontFace         = Font.fromEnum(Enum.Font.GothamBold),
-                TextSize         = 16,
+                Text             = string.upper(elCfg.Name or "SECTION"),
+                TextColor3       = S.metalHighlight,
+                FontFace         = Font.fromEnum(S.fontTitle),
+                TextSize         = 14,
                 TextXAlignment   = Enum.TextXAlignment.Left,
                 TextYAlignment   = Enum.TextYAlignment.Bottom,
                 Active           = false,
@@ -1272,8 +1356,10 @@ end
 
 local Window = BlockUI:CreateWindow({
     Name     = "Mit Script",
-    Subtitle = "Powered by BlockUI v1.0.4",
+    Subtitle = "Hub · grunge metal",
     ToggleKey = Enum.KeyCode.Insert,
+    -- Upload dit stjerne/crescent-logo til Roblox → brug rbxassetid her:
+    -- LogoImage = "rbxassetid://1234567890",
 })
 
 local Main = Window:CreateTab({ Name = "Main" })
@@ -1283,12 +1369,19 @@ Main:CreateSection({ Name = "Movement" })
 
 Main:CreateToggle({
     Name         = "Speed Hack",
-    Description  = "WalkSpeed × 6",
+    Description  = "Brug slideren når denne er tændt",
     CurrentValue = false,
     Flag         = "SpeedHack",
     Callback     = function(val)
         local h = getHumanoid()
-        if h then h.WalkSpeed = val and 100 or 16 end
+        if not h then
+            return
+        end
+        if val then
+            h.WalkSpeed = BlockUI.Flags["WalkSpeed"] or 16
+        else
+            h.WalkSpeed = 16
+        end
     end,
 })
 
@@ -1300,8 +1393,13 @@ Main:CreateSlider({
     CurrentValue = 16,
     Flag         = "WalkSpeed",
     Callback     = function(val)
+        if not BlockUI.Flags["SpeedHack"] then
+            return
+        end
         local h = getHumanoid()
-        if h then h.WalkSpeed = val end
+        if h then
+            h.WalkSpeed = val
+        end
     end,
 })
 
