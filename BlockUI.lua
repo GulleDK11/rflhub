@@ -6,7 +6,7 @@
     ██████╔╝███████╗╚██████╔╝╚██████╗██║  ██╗╚██████╔╝██║
     ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝
 
-    BlockUI v3.1.0 — Firkantet UI, resize (PC + touch), dropdown-overlay (ingen clipping)
+    BlockUI v3.2.0 — BIGGIE-lignende hub: blå accent, fladt mørkt, sidebar-søgning (valgfrit)
     CreateWindow → Resizable, MinWindowSize, MaxWindowSize, WindowSize, LoadNotify, LogoImage, …
 
     Usage:
@@ -36,29 +36,29 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer    = Players.LocalPlayer
 local PlayerGui      = LocalPlayer:WaitForChild("PlayerGui")
 
--- Palette + spacing (ét samlet designsystem)
+-- Palette — mørk “script hub” + blå accent (inspiration: BIGGIE-lignende layouts)
 local S = {
-    bg             = Color3.fromRGB(12, 12, 14),
-    bgLift         = Color3.fromRGB(22, 22, 26),
-    grayContrast   = Color3.fromRGB(20, 20, 24),
-    darkContrast   = Color3.fromRGB(28, 28, 32),
-    charcoal       = Color3.fromRGB(8, 8, 10),
-    sectionTone    = Color3.fromRGB(30, 30, 34),
-    panelRaised    = Color3.fromRGB(38, 38, 44),
-    sidebarFooter  = Color3.fromRGB(16, 16, 19),
+    bg             = Color3.fromRGB(8, 8, 10),
+    bgLift         = Color3.fromRGB(18, 18, 22),
+    grayContrast   = Color3.fromRGB(16, 16, 20),
+    darkContrast   = Color3.fromRGB(24, 24, 30),
+    charcoal       = Color3.fromRGB(6, 6, 8),
+    sectionTone    = Color3.fromRGB(26, 26, 32),
+    panelRaised    = Color3.fromRGB(32, 34, 42),
+    sidebarFooter  = Color3.fromRGB(12, 12, 15),
     glass          = Color3.fromRGB(255, 255, 255),
-    text           = Color3.fromRGB(248, 248, 250),
-    muted          = Color3.fromRGB(130, 132, 140),
-    accent         = Color3.fromRGB(198, 202, 212),
-    accentSoft     = Color3.fromRGB(120, 124, 136),
-    accentGlow     = Color3.fromRGB(235, 236, 240),
+    text           = Color3.fromRGB(250, 250, 252),
+    muted          = Color3.fromRGB(140, 142, 152),
+    accent         = Color3.fromRGB(52, 152, 255),
+    accentSoft     = Color3.fromRGB(36, 110, 190),
+    accentGlow     = Color3.fromRGB(130, 200, 255),
     metalHighlight = Color3.fromRGB(220, 222, 228),
     metalMid       = Color3.fromRGB(88, 90, 98),
-    accentCyan     = Color3.fromRGB(198, 202, 212),
+    accentCyan     = Color3.fromRGB(52, 152, 255),
     accentPurple   = Color3.fromRGB(160, 165, 180),
-    toggleOn       = Color3.fromRGB(210, 212, 220),
+    toggleOn       = Color3.fromRGB(52, 152, 255),
     toggleThumb    = Color3.fromRGB(255, 255, 255),
-    sliderFill     = Color3.fromRGB(200, 202, 210),
+    sliderFill     = Color3.fromRGB(52, 152, 255),
     tagMember      = Color3.fromRGB(65, 72, 88),
     tagPremium     = Color3.fromRGB(200, 160, 70),
     tagDev         = Color3.fromRGB(95, 88, 120),
@@ -71,15 +71,15 @@ local S = {
     fontTitle      = Enum.Font.GothamBold,
     radiusS        = UDim.new(0, 0),
     radiusM        = UDim.new(0, 0),
-    border         = Color3.fromRGB(48, 50, 56),
-    strokeEtch     = Color3.fromRGB(90, 92, 100),
+    border         = Color3.fromRGB(40, 44, 54),
+    strokeEtch     = Color3.fromRGB(55, 60, 72),
     black          = Color3.fromRGB(6, 6, 8),
-    row            = Color3.fromRGB(20, 21, 26),
-    rowHover       = Color3.fromRGB(28, 29, 36),
-    btn            = Color3.fromRGB(36, 38, 48),
-    btnHover       = Color3.fromRGB(48, 50, 62),
-    trackBg        = Color3.fromRGB(22, 23, 28),
-    tabPill        = Color3.fromRGB(32, 34, 42),
+    row            = Color3.fromRGB(18, 18, 22),
+    rowHover       = Color3.fromRGB(26, 28, 34),
+    btn            = Color3.fromRGB(30, 32, 40),
+    btnHover       = Color3.fromRGB(40, 44, 56),
+    trackBg        = Color3.fromRGB(28, 30, 36),
+    tabPill        = Color3.fromRGB(26, 28, 36),
 }
 -- Bagudkompatibilitet for resten af filen
 S.shell = S.bg
@@ -564,14 +564,6 @@ function BlockUI:CreateWindow(cfg)
         ClipsDescendants = false,
     }, gui)
     corner(main, CORNER_MAIN)
-    new("UIGradient", {
-        Rotation = 90,
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(18, 18, 20)),
-            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(10, 10, 12)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(14, 14, 16)),
-        }),
-    }, main)
     new("UIStroke", {
         Color            = S.strokeEtch,
         Thickness        = 1,
@@ -586,13 +578,6 @@ function BlockUI:CreateWindow(cfg)
         BorderSizePixel  = 0,
         ZIndex           = 10,
     }, main)
-    new("UIGradient", {
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(70, 72, 78)),
-            ColorSequenceKeypoint.new(0.5, S.accentGlow),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(90, 92, 100)),
-        }),
-    }, upline)
 
     local titlebar = new("Frame", {
         Size             = UDim2.new(1, 0, 0, headerH),
@@ -601,13 +586,6 @@ function BlockUI:CreateWindow(cfg)
         BorderSizePixel  = 0,
         ZIndex           = 5,
     }, main)
-    new("UIGradient", {
-        Rotation = 90,
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(28, 28, 32)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(16, 16, 19)),
-        }),
-    }, titlebar)
 
     new("TextLabel", {
         Size             = UDim2.fromOffset(22, 22),
@@ -813,7 +791,8 @@ function BlockUI:CreateWindow(cfg)
         ClipsDescendants = false,
     }, main)
 
-    local nextTabY = 14
+    local searchBarH = 0
+    local sidebarSearchBox = nil
     local sidebar = new("ScrollingFrame", {
         Name             = "Sidebar",
         BackgroundColor3 = S.grayContrast,
@@ -831,6 +810,50 @@ function BlockUI:CreateWindow(cfg)
         PaddingTop  = UDim.new(0, 4),
         PaddingLeft = UDim.new(0, 0),
     }, sidebar)
+
+    if cfg.SidebarSearch ~= false then
+        searchBarH = 42
+        local searchWrap = new("Frame", {
+            Name             = "SidebarSearch",
+            Size             = UDim2.new(1, -16, 0, 30),
+            Position         = UDim2.fromOffset(8, 6),
+            BackgroundColor3 = S.trackBg,
+            BorderSizePixel  = 0,
+            ZIndex           = 4,
+        }, sidebar)
+        corner(searchWrap, CORNER_MAIN)
+        new("UIStroke", {
+            Color = S.border,
+            Thickness = 1,
+            Transparency = 0.55,
+        }, searchWrap)
+        new("TextLabel", {
+            Size             = UDim2.fromOffset(22, 30),
+            Position         = UDim2.fromOffset(4, 0),
+            BackgroundTransparency = 1,
+            Text             = "⌕",
+            TextColor3       = S.muted,
+            TextSize         = 16,
+            FontFace         = Font.fromEnum(Enum.Font.GothamBold),
+            ZIndex           = 5,
+        }, searchWrap)
+        sidebarSearchBox = new("TextBox", {
+            Name             = "BlockUI_SearchBox",
+            Size             = UDim2.new(1, -30, 1, 0),
+            Position         = UDim2.fromOffset(26, 0),
+            BackgroundTransparency = 1,
+            Text             = "",
+            PlaceholderText  = "Search...",
+            PlaceholderColor3 = S.muted,
+            TextColor3       = S.text,
+            TextSize         = 12,
+            FontFace         = Font.fromEnum(S.fontBody),
+            ClearTextOnFocus = false,
+            ZIndex           = 5,
+        }, searchWrap)
+    end
+
+    local nextTabY = 6 + searchBarH
 
     local tabSelector = new("Frame", {
         Name             = "Categoriesselector",
@@ -865,13 +888,6 @@ function BlockUI:CreateWindow(cfg)
             Color = S.border,
             Thickness = 1,
             Transparency = 0.35,
-        }, profilePanel)
-        new("UIGradient", {
-            Rotation = 90,
-            Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(26, 26, 30)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(12, 12, 14)),
-            }),
         }, profilePanel)
         new("Frame", {
             Size             = UDim2.new(1, 0, 0, 1),
@@ -1090,6 +1106,27 @@ function BlockUI:CreateWindow(cfg)
     local tabs      = {}
     local tabFrames = {}
     local activeTab = nil
+    local tabList   = {}
+
+    local function relayoutSidebarTabs()
+        local y = 6 + searchBarH
+        for _, t in ipairs(tabList) do
+            if t.wrap.Visible then
+                t.wrap.Position = UDim2.fromOffset(8, y)
+                local entry = tabs[t.name]
+                if entry then
+                    entry.tabY = y
+                end
+                y = y + 38
+            end
+        end
+        nextTabY = y
+        sidebar.CanvasSize = UDim2.new(0, 0, 0, y + 16)
+        local ae = activeTab and tabs[activeTab]
+        if ae and ae.wrap and ae.wrap.Visible and ae.tabY and tabSelector then
+            tabSelector.Position = UDim2.fromOffset(8, ae.tabY)
+        end
+    end
 
     local function switchToTab(name)
         for n, frame in pairs(tabFrames) do
@@ -1121,6 +1158,26 @@ function BlockUI:CreateWindow(cfg)
         activeTab = name
     end
 
+    if sidebarSearchBox then
+        sidebarSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+            local q = string.lower(sidebarSearchBox.Text)
+            q = string.gsub(q, "%s+", "")
+            for _, t in ipairs(tabList) do
+                local nm = string.lower(t.name)
+                t.wrap.Visible = (q == "" or string.find(nm, q, 1, true) ~= nil)
+            end
+            relayoutSidebarTabs()
+            if activeTab and tabs[activeTab] and tabs[activeTab].wrap and not tabs[activeTab].wrap.Visible then
+                for _, t in ipairs(tabList) do
+                    if t.wrap.Visible then
+                        switchToTab(t.name)
+                        break
+                    end
+                end
+            end
+        end)
+    end
+
     -- ── Window object ────────────────────────────────────────
     local Window = {}
 
@@ -1133,13 +1190,9 @@ function BlockUI:CreateWindow(cfg)
             tabText = tabIcon .. "  " .. tabName
         end
 
-        local tabY = nextTabY
-        nextTabY = nextTabY + 38
-        sidebar.CanvasSize = UDim2.new(0, 0, 0, nextTabY + 16)
-
         local rowWrap = new("Frame", {
             Size             = UDim2.new(1, -16, 0, 32),
-            Position         = UDim2.fromOffset(8, tabY),
+            Position         = UDim2.fromOffset(8, 6 + searchBarH),
             BackgroundTransparency = 1,
             BackgroundColor3 = S.panelRaised,
             BorderSizePixel  = 0,
@@ -1167,7 +1220,9 @@ function BlockUI:CreateWindow(cfg)
             PaddingRight = UDim.new(0, 8),
         }, btn)
 
-        tabs[tabName] = { wrap = rowWrap, btn = btn, tabY = tabY }
+        tabs[tabName] = { wrap = rowWrap, btn = btn, tabY = 0 }
+        table.insert(tabList, { name = tabName, wrap = rowWrap })
+        relayoutSidebarTabs()
 
         rowWrap.MouseEnter:Connect(function()
             tween(rowWrap, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
@@ -1369,7 +1424,7 @@ function BlockUI:CreateWindow(cfg)
                 BorderSizePixel  = 0,
                 Active           = false,
             }, toggleBtn)
-            corner(toggleBack, CORNER_MAIN)
+            corner(toggleBack, UDim.new(0, 14))
             new("UIStroke", {
                 Color = S.border,
                 Thickness = 1,
@@ -1382,7 +1437,7 @@ function BlockUI:CreateWindow(cfg)
                 BackgroundColor3 = Color3.fromRGB(200, 200, 208),
                 BorderSizePixel  = 0,
             }, toggleBack)
-            corner(toggleKnob, CORNER_MAIN)
+            corner(toggleKnob, UDim.new(0, 11))
             new("UIStroke", {
                 Color = S.accentSoft,
                 Thickness = 1,
@@ -1462,11 +1517,20 @@ function BlockUI:CreateWindow(cfg)
                 TextXAlignment   = Enum.TextXAlignment.Left,
             }, row)
 
+            local function sliderValueText(val)
+                if elCfg.ValueDisplay == "ratio" then
+                    local a = math.floor(val + 0.5)
+                    local b = math.floor(range[2] + 0.5)
+                    return string.format("%d/%d", a, b) .. (suffix ~= "" and (" " .. suffix) or "")
+                end
+                return tostring(val) .. (suffix ~= "" and (" " .. suffix) or "")
+            end
+
             local valLabel = new("TextLabel", {
-                Size             = UDim2.new(0, 70, 0, 20),
-                Position         = UDim2.new(1, -84, 0, 10),
+                Size             = UDim2.new(0, 100, 0, 20),
+                Position         = UDim2.new(1, -114, 0, 10),
                 BackgroundTransparency = 1,
-                Text             = tostring(value) .. " " .. suffix,
+                Text             = sliderValueText(value),
                 TextColor3       = S.fluentBlue,
                 FontFace         = Font.fromEnum(S.fontMono),
                 TextSize         = 12,
@@ -1508,7 +1572,7 @@ function BlockUI:CreateWindow(cfg)
                 local pct = (val - range[1]) / (range[2] - range[1])
                 fill.Size = UDim2.new(pct, 0, 1, 0)
                 sliderThumb.Position = UDim2.new(pct, 0, 0.5, 0)
-                valLabel.Text = tostring(val) .. " " .. suffix
+                valLabel.Text = sliderValueText(val)
                 if not skipCallback and elCfg.Callback then
                     runCallback(elCfg.Callback, val)
                 end
@@ -2029,34 +2093,24 @@ end
 -- ── Done ─────────────────────────────────────────────────────
 return BlockUI
 
---[[
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  EKSEMPEL — dækker hele API’et
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  BlockUI:CreateWindow       → Name, Subtitle, ToggleKey, LogoImage,
-                               ShowProfile, DeveloperUserIds, DevBadgeImage,
-                               ProfileTag, ProfileTagColor,
-                               LoadNotify*, ConfigurationSaving,
-                               Resizable, MinWindowSize, MaxWindowSize, WindowSize,
-                               ShowMinButton (default true)
-  Window:CreateTab           → Name, Icon
-  Window:SetTitle, SetSubtitle, SetSize, SetPosition, GetSize, GetPosition,
-           Minimize, IsMinimized, SetEnabled, Toggle
-  Tab:CreateSection, CreateLabel, CreateButton, CreateToggle, CreateSlider,
-      CreateInput, CreateDropdown
-  Retur: Button:Set(name, buttonText?), Button:SetIcon(icon)
-         Toggle/Slider/Input/Label :Set …
-         Dropdown:Refresh, :Set, :Close
-  BlockUI:Notify, SaveConfiguration, LoadConfiguration
-
-  UI er firkantet; resize nederst til højre (mus + touch). Dropdown åbner i top-lag.
-  Inspireret af funktioner fra Dollarware (topitbopit) — ikke 1:1 samme kode/API.
-
-  Raw-URL: https://raw.githubusercontent.com/GulleDK11/rflhub/main/BlockUI.lua
-  Kun én nøgle per felt i tabeller — fx kun én linje ToggleKey.
-
-local BlockUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/GulleDK11/rflhub/main/BlockUI.lua"))()
+--[=[
+-- Fejl "attempt to call a nil value" linje 1 = loadstring/load findes ikke.
+-- Brug nedenstående i stedet for loadstring(...)() direkte.
+local BLOCKUI_URL = "https://raw.githubusercontent.com/GulleDK11/rflhub/main/BlockUI.lua"
+local loadFn = loadstring or load
+if type(loadFn) ~= "function" then
+	error("[BlockUI] Ingen loadstring/load i dette miljø — brug en anden executor eller require(ModuleScript) i Studio.")
+end
+local body = game:HttpGet(BLOCKUI_URL, true)
+local chunk, compileErr = loadFn(body)
+if type(chunk) ~= "function" then
+	error("[BlockUI] Kunne ikke kompilere: " .. tostring(compileErr))
+end
+local ok, lib = pcall(chunk)
+if not ok or type(lib) ~= "table" or type(lib.CreateWindow) ~= "function" then
+	error("[BlockUI] Kørsel fejlede eller forkert retur: " .. tostring(lib))
+end
+local BlockUI = lib
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer
 
@@ -2204,10 +2258,8 @@ Main:CreateButton({
     end,
 })
 
---[[
-    Window:SetEnabled(false)  -- skjul hele hubben
-    Window:Toggle()           -- skjul/vis
-]]
+-- Window:SetEnabled(false)  -- skjul hele hubben
+-- Window:Toggle()           -- skjul/vis
 
 -- ── Label, Input, Dropdown (én + multi) ─────────────────────
 Visuals:CreateSection({ Name = "Formular & lister" })
@@ -2279,4 +2331,31 @@ Visuals:CreateButton({
         })
     end,
 })
-]]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  API-reference + noter
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Studio: loadstring er nil → brug require(ModuleScript). Executor uden loadstring/load: skift executor eller readfile.
+  Eksemplet ovenfor tjekker loadFn før kald — undgår "attempt to call a nil value" på linje 1.
+
+  BlockUI:CreateWindow       → Name, Subtitle, ToggleKey, LogoImage,
+                               ShowProfile, DeveloperUserIds, DevBadgeImage,
+                               ProfileTag, ProfileTagColor,
+                               LoadNotify*, ConfigurationSaving,
+                               Resizable, MinWindowSize, MaxWindowSize, WindowSize,
+                               ShowMinButton (default true),
+                               SidebarSearch (default true; sæt false for at skjule)
+  Window:CreateTab           → Name, Icon
+  Window:SetTitle, SetSubtitle, SetSize, SetPosition, GetSize, GetPosition,
+           Minimize, IsMinimized, SetEnabled, Toggle
+  Tab:CreateSection, CreateLabel, CreateButton, CreateToggle, CreateSlider,
+      CreateInput, CreateDropdown
+  Slider: ValueDisplay = "ratio" → viser val/max (fx 258/1000)
+  Retur: Button:Set(name, buttonText?), Button:SetIcon(icon)
+         Toggle/Slider/Input/Label :Set …
+         Dropdown:Refresh, :Set, :Close
+  BlockUI:Notify, SaveConfiguration, LoadConfiguration
+
+  Raw-URL: https://raw.githubusercontent.com/GulleDK11/rflhub/main/BlockUI.lua
+  UI: resize nederst til højre (mus + touch). Dropdown i top-lag.
+]=]
