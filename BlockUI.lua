@@ -6,11 +6,12 @@
     ██████╔╝███████╗╚██████╔╝╚██████╗██║  ██╗╚██████╔╝██║
     ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝
 
-    BlockUI v3.2.0 — BIGGIE-lignende hub: blå accent, fladt mørkt, sidebar-søgning (valgfrit)
+    BlockUI v4.0.0 — Aurora UI: eget design (soft glass, violet–pink accents, dybde).
+    Inspireret funktionelt af moderne hub-biblioteker — ikke en WindUI-kopi.
     CreateWindow → Resizable, MinWindowSize, MaxWindowSize, WindowSize, LoadNotify, LogoImage, …
 
-    Usage:
-        local BlockUI = require(pathToModule)  -- eller dit loadstring-setup
+    Usage (executor):
+        local BlockUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/GulleDK11/rflhub/main/BlockUI.lua"))()
 
     Docs / Elements:
         Window  → CreateTab
@@ -36,50 +37,51 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer    = Players.LocalPlayer
 local PlayerGui      = LocalPlayer:WaitForChild("PlayerGui")
 
--- Palette — mørk “script hub” + blå accent (inspiration: BIGGIE-lignende layouts)
+-- Palette — “Aurora”: dyb violet base, neon violet + pink highlights (egen identitet)
 local S = {
-    bg             = Color3.fromRGB(8, 8, 10),
-    bgLift         = Color3.fromRGB(18, 18, 22),
-    grayContrast   = Color3.fromRGB(16, 16, 20),
-    darkContrast   = Color3.fromRGB(24, 24, 30),
-    charcoal       = Color3.fromRGB(6, 6, 8),
-    sectionTone    = Color3.fromRGB(26, 26, 32),
-    panelRaised    = Color3.fromRGB(32, 34, 42),
-    sidebarFooter  = Color3.fromRGB(12, 12, 15),
+    bg             = Color3.fromRGB(10, 10, 18),
+    bgLift         = Color3.fromRGB(20, 20, 32),
+    grayContrast   = Color3.fromRGB(14, 14, 24),
+    darkContrast   = Color3.fromRGB(24, 24, 38),
+    charcoal       = Color3.fromRGB(8, 8, 16),
+    sectionTone    = Color3.fromRGB(26, 26, 42),
+    panelRaised    = Color3.fromRGB(36, 34, 56),
+    sidebarFooter  = Color3.fromRGB(12, 12, 22),
     glass          = Color3.fromRGB(255, 255, 255),
-    text           = Color3.fromRGB(250, 250, 252),
-    muted          = Color3.fromRGB(140, 142, 152),
-    accent         = Color3.fromRGB(52, 152, 255),
-    accentSoft     = Color3.fromRGB(36, 110, 190),
-    accentGlow     = Color3.fromRGB(130, 200, 255),
-    metalHighlight = Color3.fromRGB(220, 222, 228),
-    metalMid       = Color3.fromRGB(88, 90, 98),
-    accentCyan     = Color3.fromRGB(52, 152, 255),
-    accentPurple   = Color3.fromRGB(160, 165, 180),
-    toggleOn       = Color3.fromRGB(52, 152, 255),
+    text           = Color3.fromRGB(248, 247, 255),
+    muted          = Color3.fromRGB(148, 140, 170),
+    accent         = Color3.fromRGB(167, 139, 250),
+    accentSoft     = Color3.fromRGB(124, 58, 237),
+    accentGlow     = Color3.fromRGB(230, 204, 255),
+    accentAlt      = Color3.fromRGB(244, 114, 182),
+    metalHighlight = Color3.fromRGB(220, 218, 235),
+    metalMid       = Color3.fromRGB(100, 92, 120),
+    accentCyan     = Color3.fromRGB(94, 234, 212),
+    accentPurple   = Color3.fromRGB(167, 139, 250),
+    toggleOn       = Color3.fromRGB(147, 112, 219),
     toggleThumb    = Color3.fromRGB(255, 255, 255),
-    sliderFill     = Color3.fromRGB(52, 152, 255),
-    tagMember      = Color3.fromRGB(65, 72, 88),
-    tagPremium     = Color3.fromRGB(200, 160, 70),
-    tagDev         = Color3.fromRGB(95, 88, 120),
-    danger         = Color3.fromRGB(210, 95, 105),
-    warning        = Color3.fromRGB(210, 175, 85),
-    success        = Color3.fromRGB(95, 190, 130),
+    sliderFill     = Color3.fromRGB(192, 132, 252),
+    tagMember      = Color3.fromRGB(70, 65, 95),
+    tagPremium     = Color3.fromRGB(212, 175, 75),
+    tagDev         = Color3.fromRGB(120, 95, 160),
+    danger         = Color3.fromRGB(248, 113, 113),
+    warning        = Color3.fromRGB(251, 191, 36),
+    success        = Color3.fromRGB(74, 222, 128),
     font           = Enum.Font.GothamBold,
     fontMono       = Enum.Font.Code,
     fontBody       = Enum.Font.Gotham,
     fontTitle      = Enum.Font.GothamBold,
-    radiusS        = UDim.new(0, 0),
-    radiusM        = UDim.new(0, 0),
-    border         = Color3.fromRGB(40, 44, 54),
-    strokeEtch     = Color3.fromRGB(55, 60, 72),
-    black          = Color3.fromRGB(6, 6, 8),
-    row            = Color3.fromRGB(18, 18, 22),
-    rowHover       = Color3.fromRGB(26, 28, 34),
-    btn            = Color3.fromRGB(30, 32, 40),
-    btnHover       = Color3.fromRGB(40, 44, 56),
-    trackBg        = Color3.fromRGB(28, 30, 36),
-    tabPill        = Color3.fromRGB(26, 28, 36),
+    radiusS        = UDim.new(0, 8),
+    radiusM        = UDim.new(0, 12),
+    border         = Color3.fromRGB(48, 44, 72),
+    strokeEtch     = Color3.fromRGB(72, 64, 110),
+    black          = Color3.fromRGB(6, 6, 12),
+    row            = Color3.fromRGB(22, 22, 36),
+    rowHover       = Color3.fromRGB(30, 28, 48),
+    btn            = Color3.fromRGB(32, 30, 52),
+    btnHover       = Color3.fromRGB(42, 38, 68),
+    trackBg        = Color3.fromRGB(28, 26, 44),
+    tabPill        = Color3.fromRGB(32, 30, 50),
 }
 -- Bagudkompatibilitet for resten af filen
 S.shell = S.bg
@@ -92,16 +94,16 @@ S.toggleOnGlow = S.accentGlow
 S.accent2 = S.accentSoft
 S.accentBar = S.accent
 
-local MAIN_W, MAIN_H = 748, 500
-local SIDEBAR_W = 184
-local PROFILE_H = 102
-local TOP_STRIP = 2
-local HEADER_H = 54
--- Firkantet chrome (0 = ingen afrunding; Dollarware-lignende “kasse”-look)
-local CORNER_MAIN = UDim.new(0, 0)
-local INNER_PAD = 12
-local GAP = 10
-local ROW_R = UDim.new(0, 0)
+local MAIN_W, MAIN_H = 736, 508
+local SIDEBAR_W = 200
+local PROFILE_H = 108
+local TOP_STRIP = 4
+local HEADER_H = 56
+-- Afrundet “premium hub” chrome
+local CORNER_MAIN = UDim.new(0, 16)
+local INNER_PAD = 14
+local GAP = 11
+local ROW_R = UDim.new(0, 11)
 local function corner(inst, r)
     r = r or CORNER_MAIN
     if r.Scale == 0 and r.Offset == 0 then
@@ -188,6 +190,17 @@ end
 
 local function tween(obj, info, props)
     TweenService:Create(obj, info, props):Play()
+end
+
+local function gradientH(inst, cLeft, cRight)
+    local g = inst:FindFirstChildOfClass("UIGradient")
+    if not g then
+        g = Instance.new("UIGradient")
+        g.Parent = inst
+    end
+    g.Rotation = 0
+    g.Color = ColorSequence.new(cLeft, cRight)
+    return g
 end
 
 -- Bruger-callbacks må aldrig stoppe UI-opbygning (nil Character, osv.)
@@ -284,14 +297,14 @@ function BlockUI:Notify(cfg)
         Size             = UDim2.new(1, 0, 0, 0),
         AutomaticSize    = Enum.AutomaticSize.Y,
         BackgroundColor3 = S.bgLift,
-        BackgroundTransparency = 0.08,
+        BackgroundTransparency = 0.06,
         BorderSizePixel  = 0,
     }, notifHolder)
-    corner(card, CORNER_MAIN)
+    corner(card, UDim.new(0, 14))
     new("UIStroke", {
-        Color = S.border,
+        Color = S.strokeEtch,
         Thickness = 1,
-        Transparency = 0.55,
+        Transparency = 0.45,
     }, card)
 
     new("UIListLayout", {
@@ -301,12 +314,13 @@ function BlockUI:Notify(cfg)
     }, card)
 
     local stripe = new("Frame", {
-        Size             = UDim2.new(1, 0, 0, 3),
+        Size             = UDim2.new(1, 0, 0, 4),
         BackgroundColor3 = accentCol,
         BorderSizePixel  = 0,
         LayoutOrder      = 0,
     }, card)
-    corner(stripe, CORNER_MAIN)
+    corner(stripe, UDim.new(0, 14))
+    gradientH(stripe, accentCol, S.accentAlt)
 
     local body = new("Frame", {
         Size             = UDim2.new(1, 0, 0, 0),
@@ -362,7 +376,7 @@ function BlockUI:Notify(cfg)
     card.Position = UDim2.new(1, 40, 0, 0)
     tween(card, TweenInfo.new(0.32, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
         Position = UDim2.new(0, 0, 0, 0),
-        BackgroundTransparency = 0.08,
+        BackgroundTransparency = 0.06,
     })
     tween(stripe, TweenInfo.new(0.32, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
         BackgroundTransparency = 0,
@@ -560,14 +574,14 @@ function BlockUI:CreateWindow(cfg)
         Size             = UDim2.fromOffset(initW, initH),
         BackgroundColor3 = S.bg,
         BorderSizePixel  = 0,
-        -- false: ellers klipper UICorner profilfooteren i venstre bund
         ClipsDescendants = false,
+        ZIndex           = 2,
     }, gui)
     corner(main, CORNER_MAIN)
     new("UIStroke", {
         Color            = S.strokeEtch,
         Thickness        = 1,
-        Transparency     = 0.35,
+        Transparency     = 0.2,
         ApplyStrokeMode  = Enum.ApplyStrokeMode.Border,
     }, main)
 
@@ -578,36 +592,39 @@ function BlockUI:CreateWindow(cfg)
         BorderSizePixel  = 0,
         ZIndex           = 10,
     }, main)
+    gradientH(upline, S.accentSoft, S.accentAlt)
 
     local titlebar = new("Frame", {
         Size             = UDim2.new(1, 0, 0, headerH),
         Position         = UDim2.fromOffset(0, TOP_STRIP),
         BackgroundColor3 = S.grayContrast,
+        BackgroundTransparency = 0.12,
         BorderSizePixel  = 0,
         ZIndex           = 5,
     }, main)
 
     new("TextLabel", {
         Size             = UDim2.fromOffset(22, 22),
-        Position         = UDim2.new(1, -56, 0, 10),
+        Position         = UDim2.new(1, -58, 0, 12),
         BackgroundTransparency = 1,
-        Text             = "✦",
-        TextColor3       = S.accentSoft,
-        TextTransparency = 0.45,
+        Text             = "◆",
+        TextColor3       = S.accent,
+        TextTransparency = 0.35,
         FontFace         = Font.fromEnum(Enum.Font.GothamBold),
-        TextSize         = 14,
+        TextSize         = 12,
         ZIndex           = 7,
     }, titlebar)
 
     local headerGlow = new("Frame", {
-        Size             = UDim2.new(1, -28, 0, 2),
-        Position         = UDim2.new(0, 14, 1, -3),
-        BackgroundColor3 = S.accentGlow,
-        BackgroundTransparency = 0.55,
+        Size             = UDim2.new(1, -32, 0, 2),
+        Position         = UDim2.new(0, 16, 1, -2),
+        BackgroundColor3 = S.accent,
+        BackgroundTransparency = 0.35,
         BorderSizePixel  = 0,
         ZIndex           = 6,
     }, titlebar)
-    corner(headerGlow, CORNER_MAIN)
+    corner(headerGlow, UDim.new(1, 0))
+    gradientH(headerGlow, S.accentSoft, S.accentAlt)
 
     local hasLogo = type(logoImage) == "string" and logoImage ~= ""
     local titleLeft = 14
@@ -620,11 +637,11 @@ function BlockUI:CreateWindow(cfg)
             BorderSizePixel  = 0,
             ZIndex           = 6,
         }, titlebar)
-        corner(logoHolder, CORNER_MAIN)
+        corner(logoHolder, UDim.new(0, 12))
         new("UIStroke", {
-            Color = S.strokeEtch,
+            Color = S.accentSoft,
             Thickness = 1,
-            Transparency = 0.4,
+            Transparency = 0.5,
         }, logoHolder)
         new("ImageLabel", {
             Size             = UDim2.new(1, -6, 1, -6),
@@ -658,16 +675,11 @@ function BlockUI:CreateWindow(cfg)
         Text             = winName,
         TextColor3       = S.text,
         FontFace         = Font.fromEnum(Enum.Font.GothamBold),
-        TextSize         = 19,
+        TextSize         = 20,
         TextXAlignment   = Enum.TextXAlignment.Left,
         TextYAlignment   = Enum.TextYAlignment.Center,
         LayoutOrder      = 1,
     }, titleStack)
-    new("UIStroke", {
-        Color            = S.accentSoft,
-        Thickness        = 1,
-        Transparency     = 0.9,
-    }, titleLbl)
 
     local subtitleLbl = nil
     if winSub ~= "" then
@@ -685,35 +697,33 @@ function BlockUI:CreateWindow(cfg)
     end
 
     local minBtn = new("TextButton", {
-        Size             = UDim2.new(0, 34, 0, 34),
-        Position         = UDim2.new(1, -80, 0.5, -17),
-        BackgroundColor3 = S.darkContrast,
-        BackgroundTransparency = 0.35,
+        Size             = UDim2.new(0, 30, 0, 30),
+        Position         = UDim2.new(1, -80, 0.5, -15),
+        BackgroundColor3 = Color3.fromRGB(234, 179, 8),
+        BackgroundTransparency = 0.25,
         Text             = "−",
-        TextColor3       = S.muted,
-        FontFace         = Font.fromEnum(Enum.Font.GothamMedium),
-        TextSize         = 20,
+        TextColor3       = Color3.fromRGB(40, 35, 20),
+        FontFace         = Font.fromEnum(Enum.Font.GothamBold),
+        TextSize         = 18,
         AutoButtonColor  = false,
         ZIndex           = 8,
     }, titlebar)
-    corner(minBtn, CORNER_MAIN)
+    corner(minBtn, UDim.new(1, 0))
     new("UIStroke", {
-        Color = S.border,
+        Color = Color3.fromRGB(255, 255, 255),
         Thickness = 1,
-        Transparency = 0.5,
+        Transparency = 0.88,
     }, minBtn)
     minBtn.MouseEnter:Connect(function()
         tween(minBtn, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             BackgroundTransparency = 0,
-            BackgroundColor3 = S.panelRaised,
-            TextColor3 = S.accentGlow,
+            TextColor3 = Color3.fromRGB(20, 18, 10),
         })
     end)
     minBtn.MouseLeave:Connect(function()
         tween(minBtn, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            BackgroundTransparency = 0.35,
-            BackgroundColor3 = S.darkContrast,
-            TextColor3 = S.muted,
+            BackgroundTransparency = 0.25,
+            TextColor3 = Color3.fromRGB(40, 35, 20),
         })
     end)
     if cfg.ShowMinButton == false then
@@ -721,35 +731,33 @@ function BlockUI:CreateWindow(cfg)
     end
 
     local closeBtn = new("TextButton", {
-        Size             = UDim2.new(0, 34, 0, 34),
-        Position         = UDim2.new(1, -42, 0.5, -17),
-        BackgroundColor3 = S.darkContrast,
-        BackgroundTransparency = 0.35,
+        Size             = UDim2.new(0, 30, 0, 30),
+        Position         = UDim2.new(1, -42, 0.5, -15),
+        BackgroundColor3 = Color3.fromRGB(239, 68, 68),
+        BackgroundTransparency = 0.2,
         Text             = "×",
-        TextColor3       = S.muted,
+        TextColor3       = Color3.fromRGB(255, 248, 248),
         FontFace         = Font.fromEnum(Enum.Font.GothamMedium),
         TextSize         = 18,
         AutoButtonColor  = false,
         ZIndex           = 8,
     }, titlebar)
-    corner(closeBtn, CORNER_MAIN)
+    corner(closeBtn, UDim.new(1, 0))
     new("UIStroke", {
-        Color = S.border,
+        Color = Color3.fromRGB(255, 255, 255),
         Thickness = 1,
-        Transparency = 0.5,
+        Transparency = 0.88,
     }, closeBtn)
     closeBtn.MouseEnter:Connect(function()
         tween(closeBtn, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             BackgroundTransparency = 0,
-            BackgroundColor3 = S.panelRaised,
-            TextColor3 = S.accentGlow,
+            BackgroundColor3 = Color3.fromRGB(220, 50, 50),
         })
     end)
     closeBtn.MouseLeave:Connect(function()
         tween(closeBtn, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            BackgroundTransparency = 0.35,
-            BackgroundColor3 = S.darkContrast,
-            TextColor3 = S.muted,
+            BackgroundTransparency = 0.2,
+            BackgroundColor3 = Color3.fromRGB(239, 68, 68),
         })
     end)
     local toggleKeyConn = nil
@@ -796,6 +804,7 @@ function BlockUI:CreateWindow(cfg)
     local sidebar = new("ScrollingFrame", {
         Name             = "Sidebar",
         BackgroundColor3 = S.grayContrast,
+        BackgroundTransparency = 0.06,
         BorderSizePixel  = 0,
         Position         = UDim2.new(0, 0, 0, 0),
         Size             = showProfile and UDim2.new(1, 0, 1, -PROFILE_H) or UDim2.new(1, 0, 1, 0),
@@ -821,7 +830,7 @@ function BlockUI:CreateWindow(cfg)
             BorderSizePixel  = 0,
             ZIndex           = 4,
         }, sidebar)
-        corner(searchWrap, CORNER_MAIN)
+        corner(searchWrap, UDim.new(0, 10))
         new("UIStroke", {
             Color = S.border,
             Thickness = 1,
@@ -904,7 +913,7 @@ function BlockUI:CreateWindow(cfg)
             BorderSizePixel  = 0,
             ZIndex           = 3,
         }, profilePanel)
-        corner(avWrap, CORNER_MAIN)
+        corner(avWrap, UDim.new(1, 0))
         new("UIStroke", {
             Color = S.accentGlow,
             Thickness = 1,
@@ -923,7 +932,7 @@ function BlockUI:CreateWindow(cfg)
             ScaleType        = Enum.ScaleType.Fit,
             ZIndex           = 4,
         }, avWrap)
-        corner(avImg, CORNER_MAIN)
+        corner(avImg, UDim.new(1, 0))
 
         new("TextLabel", {
             Size             = UDim2.new(1, -82, 0, 18),
@@ -1012,17 +1021,24 @@ function BlockUI:CreateWindow(cfg)
     local splitX = INNER_PAD + SIDEBAR_W
     local splitBar = new("Frame", {
         Name             = "SplitBar",
-        Size             = UDim2.new(0, 1, 1, -bodyBottomPad),
-        Position         = UDim2.fromOffset(splitX, bodyTop),
+        Size             = UDim2.new(0, 2, 1, -bodyBottomPad),
+        Position         = UDim2.fromOffset(splitX - 1, bodyTop),
         BackgroundColor3 = S.border,
         BorderSizePixel  = 0,
+        BackgroundTransparency = 0.35,
         ZIndex           = 4,
     }, main)
+    gradientH(splitBar, S.accentSoft, S.border)
+    local splitGrad = splitBar:FindFirstChildOfClass("UIGradient")
+    if splitGrad then
+        splitGrad.Rotation = 90
+    end
 
     local contentArea = new("Frame", {
-        Size             = UDim2.new(1, -(splitX + 1 + INNER_PAD), 1, -bodyBottomPad),
-        Position         = UDim2.fromOffset(splitX + 1, bodyTop),
+        Size             = UDim2.new(1, -(splitX + 2 + INNER_PAD), 1, -bodyBottomPad),
+        Position         = UDim2.fromOffset(splitX + 2, bodyTop),
         BackgroundColor3 = S.bg,
+        BackgroundTransparency = 0.04,
         BorderSizePixel  = 0,
         -- false: dropdowns m.m. må ikke klippes (scroll + overlay)
         ClipsDescendants = false,
@@ -1544,15 +1560,16 @@ function BlockUI:CreateWindow(cfg)
                 BackgroundColor3 = S.trackBg,
                 BorderSizePixel  = 0,
             }, row)
-            corner(trackBg, CORNER_MAIN)
+            corner(trackBg, UDim.new(0, 3))
 
             -- Fill
             local fill = new("Frame", {
                 Size             = UDim2.new(0, 0, 1, 0),
-                BackgroundColor3 = S.fluentBlue,
+                BackgroundColor3 = S.sliderFill,
                 BorderSizePixel  = 0,
             }, trackBg)
-            corner(fill, CORNER_MAIN)
+            corner(fill, UDim.new(0, 3))
+            gradientH(fill, S.accentSoft, S.accentAlt)
 
             -- Thumb
             local sliderThumb = new("Frame", {
@@ -1562,7 +1579,7 @@ function BlockUI:CreateWindow(cfg)
                 BackgroundColor3 = S.text,
                 BorderSizePixel  = 0,
             }, trackBg)
-            corner(sliderThumb, CORNER_MAIN)
+            corner(sliderThumb, UDim.new(1, 0))
             new("UIStroke", { Color = S.accent, Thickness = 1, Transparency = 0.35 }, sliderThumb)
 
             local function updateSlider(val, skipCallback)
@@ -1969,7 +1986,8 @@ function BlockUI:CreateWindow(cfg)
                 Rotation = 90,
                 Color = ColorSequence.new({
                     ColorSequenceKeypoint.new(0, S.accentSoft),
-                    ColorSequenceKeypoint.new(1, S.accentGlow),
+                    ColorSequenceKeypoint.new(0.55, S.accent),
+                    ColorSequenceKeypoint.new(1, S.accentAlt),
                 }),
             }, accentBar)
 
@@ -2094,23 +2112,7 @@ end
 return BlockUI
 
 --[=[
--- Fejl "attempt to call a nil value" linje 1 = loadstring/load findes ikke.
--- Brug nedenstående i stedet for loadstring(...)() direkte.
-local BLOCKUI_URL = "https://raw.githubusercontent.com/GulleDK11/rflhub/main/BlockUI.lua"
-local loadFn = loadstring or load
-if type(loadFn) ~= "function" then
-	error("[BlockUI] Ingen loadstring/load i dette miljø — brug en anden executor eller require(ModuleScript) i Studio.")
-end
-local body = game:HttpGet(BLOCKUI_URL, true)
-local chunk, compileErr = loadFn(body)
-if type(chunk) ~= "function" then
-	error("[BlockUI] Kunne ikke kompilere: " .. tostring(compileErr))
-end
-local ok, lib = pcall(chunk)
-if not ok or type(lib) ~= "table" or type(lib.CreateWindow) ~= "function" then
-	error("[BlockUI] Kørsel fejlede eller forkert retur: " .. tostring(lib))
-end
-local BlockUI = lib
+local BlockUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/GulleDK11/rflhub/main/BlockUI.lua"))()
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer
 
@@ -2335,8 +2337,7 @@ Visuals:CreateButton({
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   API-reference + noter
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Studio: loadstring er nil → brug require(ModuleScript). Executor uden loadstring/load: skift executor eller readfile.
-  Eksemplet ovenfor tjekker loadFn før kald — undgår "attempt to call a nil value" på linje 1.
+  Studio: loadstring er typisk nil → brug require(ModuleScript). Executor: linje 1 som ovenfor (HttpGet + loadstring).
 
   BlockUI:CreateWindow       → Name, Subtitle, ToggleKey, LogoImage,
                                ShowProfile, DeveloperUserIds, DevBadgeImage,
