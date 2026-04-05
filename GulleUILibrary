@@ -158,11 +158,12 @@ local _defaultTheme = {
 	Background = Color3.fromRGB(26, 26, 26),
 	BackgroundElevated = Color3.fromRGB(30, 30, 30),
 	Surface = Color3.fromRGB(38, 38, 38),
-	SurfaceMuted = Color3.fromRGB(18, 18, 18),
-	SurfaceHover = Color3.fromRGB(48, 48, 48),
-	Accent = Color3.fromRGB(37, 99, 235),
-	AccentHover = Color3.fromRGB(59, 130, 246),
-	AccentMuted = Color3.fromRGB(29, 78, 216),
+	SurfaceMuted = Color3.fromRGB(34, 34, 34),
+	SurfaceHover = Color3.fromRGB(42, 42, 42),
+	RowBackground = Color3.fromRGB(33, 33, 33),
+	Accent = Color3.fromRGB(59, 130, 246),
+	AccentHover = Color3.fromRGB(96, 165, 250),
+	AccentMuted = Color3.fromRGB(37, 99, 235),
 	Text = Color3.fromRGB(255, 255, 255),
 	TextDim = Color3.fromRGB(170, 170, 178),
 	Border = Color3.fromRGB(55, 55, 55),
@@ -202,18 +203,20 @@ local _defaultTokens = {
 	Section = {
 		HeaderTextSize = 13,
 		DescriptionTextSize = 12,
-		TitleSpacing = 6,
+		TitleSpacing = 8,
 		BoxRadius = 6,
-		InnerPadding = 10,
-		RowSpacing = 5,
+		InnerPadding = 0,
+		RowSpacing = 6,
+		RowPaddingX = 12,
+		RowPaddingY = 8,
 	},
 	Control = {
 		DefaultRadius = 6,
 		TogglePill = true,
 		LabelTextSize = 14,
 		SecondaryTextSize = 13,
-		ButtonHeight = 32,
-		ToggleRowHeight = 30,
+		ButtonHeight = 36,
+		ToggleRowHeight = 38,
 		SliderBlockHeight = 46,
 		SliderTrackThickness = 6,
 		InputRowHeight = 56,
@@ -942,10 +945,20 @@ function Core.CreateWindow(opts)
 		Transparency = 0.55,
 		Parent = searchWrap,
 	})
+	local searchIcon = Utils.Create("ImageLabel", {
+		BackgroundTransparency = 1,
+		Image = "rbxassetid://6031094678",
+		ImageColor3 = colors.TextDim,
+		ScaleType = Enum.ScaleType.Fit,
+		Size = UDim2.fromOffset(15, 15),
+		Position = UDim2.new(0, 10, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		Parent = searchWrap,
+	})
 	local searchBox = Utils.Create("TextBox", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -16, 1, 0),
-		Position = UDim2.fromOffset(8, 0),
+		Size = UDim2.new(1, -36, 1, 0),
+		Position = UDim2.fromOffset(30, 0),
 		Font = Enum.Font.Gotham,
 		TextSize = 13,
 		TextColor3 = colors.Text,
@@ -1167,6 +1180,7 @@ function Core.CreateWindow(opts)
 	Core.AddThemeRef(window, sidebar, "BackgroundColor3", "SurfaceMuted")
 	Core.AddThemeRef(window, searchWrap, "BackgroundColor3", "BackgroundElevated")
 	Core.AddThemeRef(window, searchStroke, "Color", "Border")
+	Core.AddThemeRef(window, searchIcon, "ImageColor3", "TextDim")
 	Core.AddThemeRef(window, searchBox, "TextColor3", "Text")
 	Core.AddThemeRef(window, sideStroke, "Color", "Border")
 	Core.AddThemeRef(window, tabList, "ScrollBarImageColor3", "Accent")
@@ -1298,24 +1312,17 @@ function Core.CreateWindow(opts)
 		local th = Core.GetColors(window)
 		for _, t in ipairs(self._tabs) do
 			local isOn = self._activeTab == t
-			local u = t._underline
 			if isOn then
 				t._button.BackgroundColor3 = th.SurfaceHover
 				t._button.BackgroundTransparency = 0
 				if t._label then
 					t._label.TextColor3 = th.Text
 				end
-				if u then
-					u.Visible = true
-				end
 			else
 				t._button.BackgroundColor3 = th.SurfaceMuted
-				t._button.BackgroundTransparency = 0.25
+				t._button.BackgroundTransparency = 0
 				if t._label then
 					t._label.TextColor3 = th.TabInactive
-				end
-				if u then
-					u.Visible = false
 				end
 			end
 		end
@@ -1361,7 +1368,7 @@ function Core.CreateWindow(opts)
 			TextSize = 14,
 			TextColor3 = wc.TabInactive,
 			BackgroundColor3 = wc.SurfaceMuted,
-			BackgroundTransparency = 0.25,
+			BackgroundTransparency = 0,
 			Size = UDim2.new(1, 0, 0, tok.Tab.ItemHeight),
 			AutoButtonColor = false,
 			BorderSizePixel = 0,
@@ -1404,18 +1411,6 @@ function Core.CreateWindow(opts)
 			Parent = row,
 		})
 
-		local underline = Utils.Create("Frame", {
-			AnchorPoint = Vector2.new(0, 1),
-			Position = UDim2.new(0, 0, 1, 0),
-			Size = UDim2.new(1, 0, 0, 2),
-			BackgroundColor3 = wc.Accent,
-			BorderSizePixel = 0,
-			Visible = false,
-			ZIndex = 2,
-			Parent = btn,
-		})
-		Core.AddThemeRef(window, underline, "BackgroundColor3", "Accent")
-
 		local page = Utils.Create("ScrollingFrame", {
 			Name = tostring(tabName),
 			BackgroundTransparency = 1,
@@ -1424,24 +1419,35 @@ function Core.CreateWindow(opts)
 			Position = UDim2.fromOffset(0, 0),
 			CanvasSize = UDim2.new(0, 0, 0, 0),
 			ScrollBarThickness = tok.Tab.PageScrollBarThickness,
-			ScrollBarImageColor3 = wc.Accent,
+			ScrollBarImageColor3 = wc.TextDim,
 			Visible = false,
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
 			ScrollingDirection = Enum.ScrollingDirection.Y,
+			ClipsDescendants = true,
 			Parent = pages,
 		})
-		Core.AddThemeRef(window, page, "ScrollBarImageColor3", "Accent")
-		Utils.Create("UIPadding", {
-			PaddingTop = UDim.new(0, 6),
-			PaddingBottom = UDim.new(0, 14),
-			PaddingLeft = UDim.new(0, 4),
-			PaddingRight = UDim.new(0, 6),
+		Core.AddThemeRef(window, page, "ScrollBarImageColor3", "TextDim")
+
+		-- Single child under ScrollingFrame + inner padding avoids broken canvas sizing.
+		local pageContent = Utils.Create("Frame", {
+			Name = "PageContent",
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
 			Parent = page,
 		})
+		Utils.Create("UIPadding", {
+			PaddingTop = UDim.new(0, 8),
+			PaddingBottom = UDim.new(0, 12),
+			PaddingLeft = UDim.new(0, 8),
+			PaddingRight = UDim.new(0, 10),
+			Parent = pageContent,
+		})
 		local pageList = Utils.Create("UIListLayout", {
-			Padding = UDim.new(0, 12),
+			Padding = UDim.new(0, 10),
 			SortOrder = Enum.SortOrder.LayoutOrder,
-			Parent = page,
+			Parent = pageContent,
 		})
 
 		local tabObj = {
@@ -1449,8 +1455,8 @@ function Core.CreateWindow(opts)
 			_button = btn,
 			_label = tabLbl,
 			_page = page,
+			_content = pageContent,
 			_layout = pageList,
-			_underline = underline,
 			_searchText = string.lower(tostring(tabName)),
 		}
 
@@ -1470,39 +1476,31 @@ function Core.CreateWindow(opts)
 			local th = Core.GetColors(window)
 			for _, t in ipairs(window._tabs) do
 				t._page.Visible = false
-				Utils.Tween(t._button, TweenInfo.new(0.22, Enum.EasingStyle.Quart), {
-					BackgroundTransparency = 0.25,
-				})
+				t._button.BackgroundTransparency = 0
 				t._button.BackgroundColor3 = th.SurfaceMuted
 				if t._label then
 					t._label.TextColor3 = th.TabInactive
 				end
-				if t._underline then
-					t._underline.Visible = false
-				end
 			end
 			page.Visible = true
 			window._activeTab = tabObj
-			Utils.Tween(btn, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-				BackgroundTransparency = 0,
-			})
+			btn.BackgroundTransparency = 0
 			btn.BackgroundColor3 = th.SurfaceHover
 			tabLbl.TextColor3 = th.Text
-			if underline then
-				underline.Visible = true
-			end
 		end
 
 		btn.MouseButton1Click:Connect(selectTab)
 
 		btn.MouseEnter:Connect(function()
 			if window._activeTab ~= tabObj then
-				Utils.Tween(btn, TweenInfo.new(0.16), { BackgroundTransparency = 0.08 })
+				local th = Core.GetColors(window)
+				btn.BackgroundColor3 = th.SurfaceHover
 			end
 		end)
 		btn.MouseLeave:Connect(function()
 			if window._activeTab ~= tabObj then
-				Utils.Tween(btn, TweenInfo.new(0.16), { BackgroundTransparency = 0.25 })
+				local th = Core.GetColors(window)
+				btn.BackgroundColor3 = th.SurfaceMuted
 			end
 		end)
 
@@ -1567,14 +1565,46 @@ local function ElemCtx(windowRef)
 	return Services.ThemeService.Current, Services.ThemeService.Tokens
 end
 
+local function createControlRowCard(list, theme, etok, win)
+	local padX = etok.Section.RowPaddingX or 12
+	local padY = etok.Section.RowPaddingY or 8
+	local card = Utils.Create("Frame", {
+		BackgroundColor3 = theme.RowBackground,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = list,
+	})
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, etok.Section.BoxRadius), Parent = card })
+	local stroke = Utils.Create("UIStroke", {
+		Color = theme.Border,
+		Thickness = 1,
+		Transparency = 0.93,
+		Parent = card,
+	})
+	Utils.Create("UIPadding", {
+		PaddingTop = UDim.new(0, padY),
+		PaddingBottom = UDim.new(0, padY),
+		PaddingLeft = UDim.new(0, padX),
+		PaddingRight = UDim.new(0, padX),
+		Parent = card,
+	})
+	if win then
+		Core.AddThemeRef(win, card, "BackgroundColor3", "RowBackground")
+		Core.AddThemeRef(win, stroke, "Color", "Border")
+	end
+	return card
+end
+
 function Elements.CreateSection(tab, titleText, descriptionText)
 	local win = tab._window
 	local theme, etok = ElemCtx(win)
+	local host = tab._content or tab._page
 	local wrap = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
-		Parent = tab._page,
+		Parent = host,
 	})
 	Utils.Create("UIListLayout", {
 		Padding = UDim.new(0, etok.Section.TitleSpacing),
@@ -1617,40 +1647,23 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 		lo = lo + 1
 	end
 
-	local box = Utils.Create("Frame", {
-		BackgroundColor3 = theme.Surface,
+	local rowsHost = Utils.Create("Frame", {
+		BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		LayoutOrder = lo,
 		Parent = wrap,
 	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, etok.Section.BoxRadius), Parent = box })
-	local boxStroke = Utils.Create("UIStroke", {
-		Color = theme.Border,
-		Thickness = 1,
-		Transparency = 0.88,
-		Parent = box,
-	})
-	if win then
-		Core.AddThemeRef(win, header, "TextColor3", "TextDim")
-		Core.AddThemeRef(win, box, "BackgroundColor3", "Surface")
-		Core.AddThemeRef(win, boxStroke, "Color", "Border")
-	end
-	local ip = etok.Section.InnerPadding
-	Utils.Create("UIPadding", {
-		PaddingTop = UDim.new(0, ip),
-		PaddingBottom = UDim.new(0, ip),
-		PaddingLeft = UDim.new(0, ip),
-		PaddingRight = UDim.new(0, ip),
-		Parent = box,
-	})
 	local list = Utils.Create("UIListLayout", {
 		Padding = UDim.new(0, etok.Section.RowSpacing),
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		Parent = box,
+		Parent = rowsHost,
 	})
+	if win then
+		Core.AddThemeRef(win, header, "TextColor3", "TextDim")
+	end
 
-	local section = { _box = box, _list = list, _tab = tab, _wrap = wrap }
+	local section = { _box = rowsHost, _list = rowsHost, _tab = tab, _wrap = wrap }
 
 	function section:Remove()
 		if wrap.Parent then
@@ -1668,10 +1681,11 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 		end
 		local value = flag and Services.StateService:GetFlag(flag) or def
 
+		local card = createControlRowCard(list, theme, etok, win)
 		local row = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, etok.Control.ToggleRowHeight),
-			Parent = list,
+			Parent = card,
 		})
 		local name = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
@@ -1693,7 +1707,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			Parent = row,
 		})
 		local track = Utils.Create("Frame", {
-			BackgroundColor3 = value and theme.Accent or theme.SurfaceHover,
+			BackgroundColor3 = value and theme.Accent or theme.Surface,
 			Size = UDim2.fromScale(1, 1),
 			BorderSizePixel = 0,
 			Parent = switch,
@@ -1717,7 +1731,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			local th = select(1, ElemCtx(win))
 			if animate then
 				Utils.Tween(track, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-					BackgroundColor3 = v and th.Accent or th.SurfaceHover,
+					BackgroundColor3 = v and th.Accent or th.Surface,
 				})
 				Utils.Tween(
 					knob,
@@ -1725,7 +1739,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 					{ Position = v and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9) }
 				)
 			else
-				track.BackgroundColor3 = v and th.Accent or th.SurfaceHover
+				track.BackgroundColor3 = v and th.Accent or th.Surface
 				knob.Position = v and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
 			end
 			if opts.Callback then
@@ -1745,7 +1759,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			end)
 		end
 
-		return elementApi(row, {
+		return elementApi(card, {
 			Set = function(_, v)
 				setState(v, true)
 			end,
@@ -1758,16 +1772,17 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 	function section:CreateButton(opts)
 		opts = opts or {}
 		local theme, etok = ElemCtx(win)
+		local card = createControlRowCard(list, theme, etok, win)
 		local btnStroke
 		local btn = Utils.Create("TextButton", {
-			BackgroundColor3 = theme.SurfaceHover,
+			BackgroundColor3 = theme.Surface,
 			Font = Enum.Font.GothamMedium,
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			Text = opts.Name or "Button",
 			Size = UDim2.new(1, 0, 0, etok.Control.ButtonHeight),
 			AutoButtonColor = false,
-			Parent = list,
+			Parent = card,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, etok.Control.DefaultRadius), Parent = btn })
 		btnStroke = Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.55, Parent = btn })
@@ -1787,10 +1802,10 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 		end)
 		btn.MouseLeave:Connect(function()
 			local th = select(1, ElemCtx(win))
-			Utils.Tween(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = th.SurfaceHover })
+			Utils.Tween(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = th.Surface })
 		end)
 
-		return elementApi(btn, {
+		return elementApi(card, {
 			Set = function(_, text)
 				btn.Text = tostring(text)
 			end,
@@ -1813,10 +1828,11 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 		local value = flag and Services.StateService:GetFlag(flag) or def
 		value = Utils.Clamp(tonumber(value) or def, minv, maxv)
 
+		local card = createControlRowCard(list, theme, etok, win)
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, etok.Control.SliderBlockHeight),
-			Parent = list,
+			Parent = card,
 		})
 		local top = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
@@ -1848,7 +1864,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 		local tr = etok.Control.DefaultRadius
 		local thk = etok.Control.SliderTrackThickness
 		local track = Utils.Create("Frame", {
-			BackgroundColor3 = theme.SurfaceHover,
+			BackgroundColor3 = theme.Surface,
 			Position = UDim2.fromOffset(0, 24),
 			Size = UDim2.new(1, 0, 0, thk),
 			BorderSizePixel = 0,
@@ -1916,7 +1932,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			end)
 		end
 
-		return elementApi(wrap, {
+		return elementApi(card, {
 			Set = function(_, v)
 				value = Utils.Clamp(tonumber(v) or value, minv, maxv)
 				fill.Size = UDim2.new((value - minv) / (maxv - minv), 0, 1, 0)
@@ -1942,11 +1958,12 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 		end
 		local current = flag and Services.StateService:GetFlag(flag) or def
 
+		local card = createControlRowCard(list, theme, etok, win)
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
-			Parent = list,
+			Parent = card,
 		})
 		Utils.Create("UIListLayout", {
 			Padding = UDim.new(0, 6),
@@ -1966,7 +1983,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 		})
 		local dr = etok.Control.DefaultRadius
 		local openBtn = Utils.Create("TextButton", {
-			BackgroundColor3 = theme.SurfaceHover,
+			BackgroundColor3 = theme.Surface,
 			Size = UDim2.new(1, 0, 0, etok.Control.DropdownRowOpen),
 			LayoutOrder = 1,
 			Font = Enum.Font.GothamMedium,
@@ -2021,7 +2038,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 					Font = Enum.Font.Gotham,
 					TextSize = etok.Control.SecondaryTextSize,
 					TextColor3 = theme.Text,
-					BackgroundColor3 = theme.SurfaceHover,
+					BackgroundColor3 = theme.Surface,
 					Size = UDim2.new(1, 0, 0, etok.Control.ToggleRowHeight),
 					AutoButtonColor = false,
 					ZIndex = 6,
@@ -2062,7 +2079,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			end)
 		end
 
-		return elementApi(wrap, {
+		return elementApi(card, {
 			Refresh = function(_, newOpts)
 				options = newOpts or options
 				rebuild()
@@ -2089,10 +2106,11 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			Services.StateService:SetFlag(flag, Services.StateService:GetFlag(flag) ~= nil and Services.StateService:GetFlag(flag) or def)
 		end
 
+		local card = createControlRowCard(list, theme, etok, win)
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, etok.Control.InputRowHeight),
-			Parent = list,
+			Parent = card,
 		})
 		Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
@@ -2156,7 +2174,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			end)
 		end
 
-		return elementApi(wrap, {
+		return elementApi(card, {
 			Set = function(_, text)
 				box.Text = tostring(text)
 				if flag then
@@ -2195,11 +2213,12 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 		end
 		local col = getColor()
 
+		local card = createControlRowCard(list, theme, etok, win)
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
-			Parent = list,
+			Parent = card,
 		})
 		Utils.Create("UIListLayout", {
 			Padding = UDim.new(0, 6),
@@ -2266,7 +2285,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 				Parent = sw,
 			})
 			local track = Utils.Create("Frame", {
-				BackgroundColor3 = theme.SurfaceHover,
+				BackgroundColor3 = theme.Surface,
 				Position = UDim2.fromOffset(28, 11),
 				Size = UDim2.new(1, -28, 0, thk),
 				BorderSizePixel = 0,
@@ -2323,7 +2342,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			end)
 		end
 
-		return elementApi(wrap, {
+		return elementApi(card, {
 			Get = getColor,
 			Set = function(_, c)
 				if typeof(c) == "Color3" then
@@ -2358,10 +2377,11 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			end
 		end
 
+		local card = createControlRowCard(list, theme, etok, win)
 		local row = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, etok.Control.KeybindRowHeight + 2),
-			Parent = list,
+			Parent = card,
 		})
 		Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
@@ -2374,7 +2394,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			Parent = row,
 		})
 		local bindBtn = Utils.Create("TextButton", {
-			BackgroundColor3 = theme.SurfaceHover,
+			BackgroundColor3 = theme.Surface,
 			Size = UDim2.fromOffset(112, etok.Control.KeybindRowHeight),
 			Position = UDim2.new(1, -112, 0.5, 0),
 			AnchorPoint = Vector2.new(0, 0.5),
@@ -2428,7 +2448,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			end)
 		end)
 
-		return elementApi(row, {
+		return elementApi(card, {
 			Set = function(_, kc)
 				if typeof(kc) == "EnumItem" and kc.EnumType == Enum.KeyCode then
 					key = kc
