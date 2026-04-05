@@ -3434,30 +3434,9 @@ function Library:Init(opts)
 		local animTok = tok.Animation or {}
 		local keyOpenDur = animTok.KeyGateOpenDuration or animTok.WindowOpenDuration or 0.32
 		local keyCloseDur = animTok.KeyGateCloseDuration or (animTok.WindowOpenDuration or 0.32) * 0.85
-		local keyOpenStart = animTok.KeyGateOpenScaleStart
-		if keyOpenStart == nil then
-			keyOpenStart = animTok.WindowOpenScaleStart
-		end
-		if keyOpenStart == nil then
-			keyOpenStart = 0.92
-		end
-		local keyCloseEndScale = animTok.KeyGateCloseScaleEnd
-		if keyCloseEndScale == nil then
-			keyCloseEndScale = animTok.WindowOpenScaleStart
-		end
-		if keyCloseEndScale == nil then
-			keyCloseEndScale = 0.86
-		end
 		local keyPauseBeforeHub = animTok.KeyGatePauseBeforeHub
 		if keyPauseBeforeHub == nil then
 			keyPauseBeforeHub = 0.1
-		end
-		local keyCardPadY = 36
-		local keyCardResizeDur = (animTok.KeyGateOpenDuration or animTok.WindowOpenDuration or 0.32) * 0.5
-		if keyCardResizeDur < 0.14 then
-			keyCardResizeDur = 0.14
-		elseif keyCardResizeDur > 0.26 then
-			keyCardResizeDur = 0.26
 		end
 
 		local titleText = opts.Title or opts.KeyTitle or "Key required"
@@ -3500,19 +3479,18 @@ function Library:Init(opts)
 			Name = "Card",
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromOffset(380, 200),
-			AutomaticSize = Enum.AutomaticSize.None,
+			Size = UDim2.fromOffset(380, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
 			BackgroundColor3 = C.Surface,
 			BorderSizePixel = 0,
 			Parent = overlay,
 		})
-		local cardUIScale = Utils.Create("UIScale", { Scale = keyOpenStart, Parent = card })
 		local cardStrokeTargetT = 0.5
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = card })
 		local cardStroke = Utils.Create("UIStroke", {
 			Color = C.Border,
 			Thickness = 1,
-			Transparency = 1,
+			Transparency = cardStrokeTargetT,
 			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 			Parent = card,
 		})
@@ -3532,7 +3510,7 @@ function Library:Init(opts)
 			AutomaticSize = Enum.AutomaticSize.Y,
 			Parent = card,
 		})
-		local stackListLayout = Utils.Create("UIListLayout", {
+		Utils.Create("UIListLayout", {
 			FillDirection = Enum.FillDirection.Vertical,
 			Padding = UDim.new(0, 10),
 			SortOrder = Enum.SortOrder.LayoutOrder,
@@ -3656,48 +3634,6 @@ function Library:Init(opts)
 			wrong.Visible = false
 		end
 
-		local cardHeightTween = nil
-		local function targetKeyCardHeight()
-			return math.max(math.ceil(keyCardPadY + stack.AbsoluteContentSize.Y), 96)
-		end
-		local function syncKeyCardHeight(animate)
-			if not card.Parent then
-				return
-			end
-			local h = targetKeyCardHeight()
-			if not animate then
-				if cardHeightTween then
-					pcall(function()
-						cardHeightTween:Cancel()
-					end)
-					cardHeightTween = nil
-				end
-				card.Size = UDim2.fromOffset(380, h)
-				return
-			end
-			if cardHeightTween then
-				pcall(function()
-					cardHeightTween:Cancel()
-				end)
-				cardHeightTween = nil
-			end
-			local curY = card.Size.Y.Offset
-			if math.abs(curY - h) < 1.5 then
-				card.Size = UDim2.fromOffset(380, h)
-				return
-			end
-			cardHeightTween = Utils.Tween(
-				card,
-				TweenInfo.new(keyCardResizeDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ Size = UDim2.fromOffset(380, h) }
-			)
-			cardHeightTween.Completed:Connect(function()
-				if cardHeightTween then
-					cardHeightTween = nil
-				end
-			end)
-		end
-
 		local function keyCheckSync(trimmed)
 			if trimmed == "" then
 				return false
@@ -3773,17 +3709,18 @@ function Library:Init(opts)
 
 		local function runKeyExitAnimations(afterDone)
 			local ti = TweenInfo.new(keyCloseDur, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-			local twScale = Utils.Tween(cardUIScale, ti, { Scale = keyCloseEndScale })
-			if cardStroke then
-				Utils.Tween(cardStroke, ti, { Transparency = 1 })
-			end
 			if keyFadeRoot and keyFadeRoot:IsA("CanvasGroup") and animTok.KeyGateContentFadeIn ~= false then
-				Utils.Tween(keyFadeRoot, ti, { GroupTransparency = 1 })
+				local tw = Utils.Tween(keyFadeRoot, ti, { GroupTransparency = 1 })
+				task.spawn(function()
+					tw.Completed:Wait()
+					afterDone()
+				end)
+			else
+				if keyFadeRoot and keyFadeRoot:IsA("CanvasGroup") then
+					keyFadeRoot.GroupTransparency = 1
+				end
+				task.defer(afterDone)
 			end
-			task.spawn(function()
-				twScale.Completed:Wait()
-				afterDone()
-			end)
 		end
 
 		local function proceedValid(trimmed)
@@ -3874,11 +3811,6 @@ function Library:Init(opts)
 		end
 
 		task.defer(function()
-			task.wait()
-			syncKeyCardHeight(false)
-			stackListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-				syncKeyCardHeight(true)
-			end)
 			if keyFadeRoot and keyFadeRoot:IsA("CanvasGroup") and animTok.KeyGateContentFadeIn ~= false then
 				keyFadeRoot.GroupTransparency = 1
 				Utils.Tween(
@@ -3888,18 +3820,6 @@ function Library:Init(opts)
 				)
 			elseif keyFadeRoot and keyFadeRoot:IsA("CanvasGroup") then
 				keyFadeRoot.GroupTransparency = 0
-			end
-			Utils.Tween(
-				cardUIScale,
-				TweenInfo.new(keyOpenDur, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-				{ Scale = 1 }
-			)
-			if cardStroke then
-				Utils.Tween(
-					cardStroke,
-					TweenInfo.new(keyOpenDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-					{ Transparency = cardStrokeTargetT }
-				)
 			end
 			Services.NotificationService:Notify({
 				Title = "UI loaded",
