@@ -951,7 +951,6 @@ function Core.CreateWindow(opts)
 		Position = UDim2.fromScale(0.5, 0.5),
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		ZIndex = 1,
-		Visible = not keyGateActive,
 		Parent = screen,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = main })
@@ -1283,7 +1282,7 @@ function Core.CreateWindow(opts)
 		BackgroundTransparency = 0,
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = 50,
-		Visible = true,
+		Visible = not keyGateActive,
 		Parent = main,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = loading })
@@ -1935,6 +1934,16 @@ function Core.CreateWindow(opts)
 		end)
 	end
 
+	local function resetLoadingLayerForReveal()
+		loading.BackgroundTransparency = 0
+		loadTitle.TextTransparency = 0
+		loadSub.TextTransparency = 0
+		loadBarBg.BackgroundTransparency = 0
+		loadBarFill.BackgroundTransparency = 0
+		loadBarFill.Size = UDim2.new(0, 0, 1, 0)
+		loading.Visible = true
+	end
+
 	if keyGateActive then
 		local noCase = keyOpts.CaseInsensitive == true
 		local function norm(s)
@@ -1945,14 +1954,16 @@ function Core.CreateWindow(opts)
 			return s
 		end
 
+		-- Same hub window: titel/minimize/close synlige; nøgle fylder body (sidebar+indhold skjules indtil success).
 		local dim = Utils.Create("Frame", {
 			Name = "KeyGateRoot",
-			BackgroundColor3 = Color3.new(0, 0, 0),
-			BackgroundTransparency = 0.5,
+			BackgroundColor3 = colors.Background,
+			BackgroundTransparency = 0,
 			BorderSizePixel = 0,
 			Size = UDim2.fromScale(1, 1),
-			ZIndex = 500,
-			Parent = screen,
+			Position = UDim2.fromOffset(0, 0),
+			ZIndex = 20,
+			Parent = body,
 		})
 
 		local card = Utils.Create("Frame", {
@@ -1962,7 +1973,7 @@ function Core.CreateWindow(opts)
 			AutomaticSize = Enum.AutomaticSize.Y,
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
-			ZIndex = 501,
+			ZIndex = 21,
 			Parent = dim,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = card })
@@ -2145,7 +2156,7 @@ function Core.CreateWindow(opts)
 				pcall(keyOpts.OnSuccess, trimmed)
 			end
 			dim:Destroy()
-			main.Visible = true
+			resetLoadingLayerForReveal()
 			beginStartupLoadingAnimation()
 		end
 
