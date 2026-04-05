@@ -765,6 +765,53 @@ function Services.ConfigService:LoadFromPath(folder, fileName)
 	end
 	return true
 end
+
+function Services.ConfigService:SanitizeConfigName(name)
+	local s = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	s = s:gsub("%.json$", ""):gsub("%.JSON$", "")
+	s = s:gsub("[/\\:%*%?\"<>|]", "")
+	if s == "" then
+		return "config"
+	end
+	return s
+end
+
+-- Returns config stems (no .json), sorted. Requires executor `listfiles`. Empty folder = workspace root.
+function Services.ConfigService:ListConfigJsonFiles(folder)
+	local out = {}
+	if not listfiles then
+		return out
+	end
+	local folderPath = folder
+	if folderPath == nil or folderPath == "." then
+		folderPath = ""
+	end
+	local ok, files = pcall(listfiles, folderPath)
+	if not ok or type(files) ~= "table" then
+		return out
+	end
+	for _, entry in ipairs(files) do
+		local name = tostring(entry)
+		local leaf = name:match("[^/\\]+$") or name
+		local lower = leaf:lower()
+		if #leaf > 5 and lower:sub(-5) == ".json" then
+			local stem = leaf:sub(1, #leaf - 5)
+			if stem:find("%S") then
+				table.insert(out, stem)
+			end
+		end
+	end
+	table.sort(out)
+	local seen = {}
+	local uniq = {}
+	for _, s in ipairs(out) do
+		if not seen[s] then
+			seen[s] = true
+			table.insert(uniq, s)
+		end
+	end
+	return uniq
+end
 -- #endregion
 
 -- #region DependencyService
@@ -1402,6 +1449,20 @@ function Core.CreateWindow(opts)
 
 	function window:LoadConfiguration()
 		return Services.ConfigService:LoadFromPath(self._configFolder, self._configFileName)
+	end
+
+	function window:SaveConfigurationAs(name)
+		local stem = Services.ConfigService:SanitizeConfigName(name)
+		return Services.ConfigService:SaveToPath(self._configFolder, stem)
+	end
+
+	function window:LoadConfigurationAs(name)
+		local stem = Services.ConfigService:SanitizeConfigName(name)
+		return Services.ConfigService:LoadFromPath(self._configFolder, stem)
+	end
+
+	function window:ListConfigurationFiles()
+		return Services.ConfigService:ListConfigJsonFiles(self._configFolder)
 	end
 
 	function window:_applyTabSearch(q)
@@ -2394,8 +2455,24 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 
 		return elementApi(card, {
 			Refresh = function(_, newOpts)
-				options = newOpts or options
+				if type(newOpts) == "table" then
+					options = newOpts
+				end
 				rebuild()
+				local found = false
+				for _, o in ipairs(options) do
+					if o == current then
+						found = true
+						break
+					end
+				end
+				if not found then
+					current = options[1] or ""
+					openBtn.Text = tostring(current)
+					if flag then
+						Services.StateService:SetFlag(flag, current)
+					end
+				end
 			end,
 			Set = function(_, v)
 				current = v
