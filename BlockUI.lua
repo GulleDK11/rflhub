@@ -6,8 +6,17 @@
     ██████╔╝███████╗╚██████╔╝╚██████╗██║  ██╗╚██████╔╝██║
     ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝
 
-    BlockUI v1.1.0 — Modern Blocky Roblox UI Library
-    Fixed: dragging, executor compat, tab rendering
+    BlockUI v1.0.1 — Modern Blocky Roblox UI Library
+    Sharp. Fast. Clean.
+
+    Usage:
+        local BlockUI = require(pathToModule)  -- eller dit loadstring-setup
+
+    Docs / Elements:
+        Window  → CreateTab
+        Tab     → CreateButton, CreateToggle, CreateSlider,
+                  CreateInput, CreateDropdown, CreateLabel
+        BlockUI → Notify, LoadConfiguration, SaveConfiguration
 --]]
 
 local BlockUI = {}
@@ -15,895 +24,1091 @@ BlockUI.Flags = {}
 BlockUI._windows = {}
 BlockUI._configFile = nil
 
-local Players           = game:GetService("Players")
-local TweenService      = game:GetService("TweenService")
-local UserInputService  = game:GetService("UserInputService")
-local HttpService       = game:GetService("HttpService")
-local LocalPlayer       = Players.LocalPlayer
-local PlayerGui         = LocalPlayer:WaitForChild("PlayerGui")
+-- ── Services ────────────────────────────────────────────────
+local Players        = game:GetService("Players")
+local TweenService   = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
+local RunService     = game:GetService("RunService")
+local LocalPlayer    = Players.LocalPlayer
+local PlayerGui      = LocalPlayer:WaitForChild("PlayerGui")
+
+-- ── Style (modern dark + sharp accent) ─────────────────────
 local S = {
-    bg       = Color3.fromRGB(13,  13,  15),
-    surface  = Color3.fromRGB(20,  20,  24),
-    surface2 = Color3.fromRGB(28,  28,  34),
-    accent   = Color3.fromRGB(200, 241, 53),
-    accent2  = Color3.fromRGB(91,  143, 255),
-    text     = Color3.fromRGB(235, 235, 235),
-    muted    = Color3.fromRGB(100, 100, 115),
-    border   = Color3.fromRGB(40,  40,  50),
-    danger   = Color3.fromRGB(255, 95,  87),
-    warning  = Color3.fromRGB(254, 188, 46),
-    success  = Color3.fromRGB(40,  200, 64),
-    black    = Color3.fromRGB(10,  10,  10),
-    font     = Enum.Font.Code,
+    bg       = Color3.fromRGB(10,  11,  14),
+    surface  = Color3.fromRGB(20,  21,  26),
+    surface2 = Color3.fromRGB(28,  29,  36),
+    surface3 = Color3.fromRGB(36,  38,  48),
+    accent   = Color3.fromRGB(196, 255, 97),
+    accentMuted = Color3.fromRGB(120, 160, 55),
+    accent2  = Color3.fromRGB(99,  155, 255),
+    text     = Color3.fromRGB(245, 246, 250),
+    muted    = Color3.fromRGB(120, 122, 138),
+    border   = Color3.fromRGB(48,  50,  62),
+    danger   = Color3.fromRGB(255, 99,  99),
+    warning  = Color3.fromRGB(255, 196, 61),
+    success  = Color3.fromRGB(52,  211, 120),
+    black    = Color3.fromRGB(8,   9,   12),
+    font     = Enum.Font.GothamMedium,
+    fontMono = Enum.Font.Code,
     fontBody = Enum.Font.Gotham,
+    radiusS  = UDim.new(0, 6),
+    radiusM  = UDim.new(0, 10),
 }
 
--- ── Helpers ──────────────────────────────────────────────────
+local CORNER_MAIN = UDim.new(0, 8)
+local function corner(inst, r)
+    local c = inst:FindFirstChildOfClass("UICorner")
+    if not c then
+        c = Instance.new("UICorner")
+        c.Parent = inst
+    end
+    c.CornerRadius = r or CORNER_MAIN
+end
+
+-- ── Utility ─────────────────────────────────────────────────
 local function new(cls, props, parent)
-    local ok, obj = pcall(Instance.new, cls)
-    if not ok then return nil end
+    local obj = Instance.new(cls)
     for k, v in pairs(props or {}) do
-        pcall(function() obj[k] = v end)
+        obj[k] = v
     end
     if parent then obj.Parent = parent end
     return obj
 end
 
-local function tw(obj, t, props)
-    pcall(function()
-        TweenService:Create(obj, TweenInfo.new(t, Enum.EasingStyle.Quad), props):Play()
-    end)
+local function tween(obj, info, props)
+    TweenService:Create(obj, info, props):Play()
 end
 
-local function stroke(parent, color, thickness)
-    local s = new("UIStroke", { Color = color or S.border, Thickness = thickness or 1 }, parent)
-    pcall(function() s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border end)
-    return s
-end
-
--- ── Draggable ─────────────────────────────────────────────────
 local function makeDraggable(frame, handle)
-    local dragging = false
-    local dragStart, startPos
-
+    local dragging, dragInput, dragStart, startPos
     handle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging  = true
             dragStart = input.Position
             startPos  = frame.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
         end
     end)
-
+    handle.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
     UserInputService.InputChanged:Connect(function(input)
-        if not dragging then return end
-        if input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch then
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
             local delta = input.Position - dragStart
             frame.Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X,
-                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
             )
         end
     end)
 end
 
--- ── Notification ──────────────────────────────────────────────
+local function divider(parent)
+    new("Frame", {
+        Size            = UDim2.new(1, -24, 0, 1),
+        Position        = UDim2.fromOffset(12, 0),
+        BackgroundColor3 = S.border,
+        BorderSizePixel = 0,
+    }, parent)
+end
+
+-- ── Notification System ──────────────────────────────────────
 local notifGui = new("ScreenGui", {
-    Name = "BlockUI_Notifs", ResetOnSpawn = false, DisplayOrder = 999,
+    Name            = "BlockUI_Notifs",
+    ResetOnSpawn    = false,
+    IgnoreGuiInset  = true,
+    DisplayOrder    = 999,
+    ZIndexBehavior  = Enum.ZIndexBehavior.Sibling,
 }, PlayerGui)
-pcall(function() notifGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling end)
 
 local notifHolder = new("Frame", {
-    Size = UDim2.new(0, 270, 1, 0),
-    Position = UDim2.new(1, -285, 0, 12),
+    Size              = UDim2.new(0, 280, 1, 0),
+    Position          = UDim2.new(1, -295, 0, 16),
     BackgroundTransparency = 1,
+    AnchorPoint       = Vector2.new(0, 0),
 }, notifGui)
+
 new("UIListLayout", {
-    SortOrder = Enum.SortOrder.LayoutOrder,
+    SortOrder        = Enum.SortOrder.LayoutOrder,
     VerticalAlignment = Enum.VerticalAlignment.Top,
-    Padding = UDim.new(0, 6),
-    FillDirection = Enum.FillDirection.Vertical,
+    Padding          = UDim.new(0, 8),
+    FillDirection    = Enum.FillDirection.Vertical,
 }, notifHolder)
 
 function BlockUI:Notify(cfg)
     cfg = cfg or {}
-    local ntype = cfg.Type or "info"
-    local dur   = cfg.Duration or 4
+    local title   = cfg.Title   or "Notification"
+    local content = cfg.Content or ""
+    local ntype   = cfg.Type    or "info"
+    local duration = cfg.Duration or 4
 
-    local bar = ntype == "success" and S.success
-             or ntype == "warning" and S.warning
-             or ntype == "error"   and S.danger
-             or S.accent2
+    local accentCol = ntype == "success" and S.success
+                   or ntype == "warning" and S.warning
+                   or ntype == "error"   and S.danger
+                   or S.accent2
 
     local card = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 58),
+        Size             = UDim2.new(1, 0, 0, 0),
+        AutomaticSize    = Enum.AutomaticSize.Y,
         BackgroundColor3 = S.surface,
-        BorderSizePixel = 0,
-        Position = UDim2.new(1, 20, 0, 0),
+        BorderSizePixel  = 0,
         ClipsDescendants = true,
     }, notifHolder)
-    stroke(card, S.border, 1)
+    corner(card, S.radiusS)
+    new("UIStroke", { Color = S.border, Thickness = 1, Transparency = 0.4 }, card)
 
-    new("Frame", { Size = UDim2.new(0, 3, 1, 0), BackgroundColor3 = bar, BorderSizePixel = 0 }, card)
-
-    new("TextLabel", {
-        Size = UDim2.new(1, -14, 0, 18),
-        Position = UDim2.fromOffset(11, 9),
-        BackgroundTransparency = 1,
-        Text = cfg.Title or "Notification",
-        TextColor3 = S.text,
-        Font = S.font,
-        TextSize = 13,
-        TextXAlignment = Enum.TextXAlignment.Left,
+    new("UIListLayout", {
+        SortOrder              = Enum.SortOrder.LayoutOrder,
+        FillDirection          = Enum.FillDirection.Vertical,
+        HorizontalAlignment    = Enum.HorizontalAlignment.Center,
+        Padding                = UDim.new(0, 0),
     }, card)
 
-    new("TextLabel", {
-        Size = UDim2.new(1, -14, 0, 18),
-        Position = UDim2.fromOffset(11, 30),
-        BackgroundTransparency = 1,
-        Text = cfg.Content or "",
-        TextColor3 = S.muted,
-        Font = S.fontBody,
-        TextSize = 11,
-        TextXAlignment = Enum.TextXAlignment.Left,
+    new("Frame", {
+        Name             = "AccentTop",
+        Size             = UDim2.new(1, 0, 0, 3),
+        BackgroundColor3 = accentCol,
+        BorderSizePixel  = 0,
+        LayoutOrder      = 0,
     }, card)
 
-    tw(card, 0.22, { Position = UDim2.new(0, 0, 0, 0) })
+    local textCol = new("Frame", {
+        Size             = UDim2.new(1, 0, 0, 0),
+        AutomaticSize    = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        BorderSizePixel  = 0,
+        LayoutOrder      = 1,
+    }, card)
 
-    task.delay(dur, function()
-        tw(card, 0.18, { Position = UDim2.new(1, 20, 0, 0) })
-        task.wait(0.2)
-        card:Destroy()
+    new("UIPadding", {
+        PaddingTop    = UDim.new(0, 10),
+        PaddingBottom = UDim.new(0, 12),
+        PaddingLeft   = UDim.new(0, 14),
+        PaddingRight  = UDim.new(0, 14),
+    }, textCol)
+
+    new("UIListLayout", {
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding   = UDim.new(0, 4),
+    }, textCol)
+
+    new("TextLabel", {
+        Size             = UDim2.new(1, 0, 0, 0),
+        AutomaticSize    = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        Text             = title,
+        TextColor3       = S.text,
+        FontFace         = Font.fromEnum(S.font),
+        TextSize         = 14,
+        TextXAlignment   = Enum.TextXAlignment.Left,
+        TextWrapped      = true,
+        LayoutOrder      = 1,
+    }, textCol)
+
+    new("TextLabel", {
+        Size             = UDim2.new(1, 0, 0, 0),
+        AutomaticSize    = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        Text             = content,
+        TextColor3       = S.muted,
+        FontFace         = Font.fromEnum(S.fontBody),
+        TextSize         = 12,
+        TextXAlignment   = Enum.TextXAlignment.Left,
+        TextWrapped      = true,
+        LayoutOrder      = 2,
+    }, textCol)
+
+    -- slide in
+    card.Position = UDim2.new(1, 24, 0, 0)
+    tween(card, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        Position = UDim2.new(0, 0, 0, 0),
+    })
+
+    task.delay(duration, function()
+        if not card.Parent then
+            return
+        end
+        tween(card, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+            Position = UDim2.new(1, 28, 0, 0),
+            BackgroundTransparency = 1,
+        })
+        task.wait(0.24)
+        if card.Parent then
+            card:Destroy()
+        end
     end)
+
+    return card
 end
 
--- ── Config ────────────────────────────────────────────────────
+-- ── Configuration ────────────────────────────────────────────
+local function configWrite(path, data)
+    local fn
+    pcall(function()
+        fn = writefile
+    end)
+    if type(fn) ~= "function" then
+        return false
+    end
+    return select(1, pcall(fn, path, data))
+end
+
+local function configRead(path)
+    local fn
+    pcall(function()
+        fn = readfile
+    end)
+    if type(fn) ~= "function" then
+        return nil
+    end
+    local ok, res = pcall(fn, path)
+    if ok and type(res) == "string" then
+        return res
+    end
+    return nil
+end
+
 function BlockUI:SaveConfiguration()
     if not self._configFile then return end
-    local ok, encoded = pcall(HttpService.JSONEncode, HttpService, self.Flags)
-    if ok then pcall(writefile, self._configFile..".json", encoded) end
+    local data = {}
+    for flag, val in pairs(self.Flags) do
+        data[flag] = val
+    end
+    local ok, encoded = pcall(function()
+        return game:GetService("HttpService"):JSONEncode(data)
+    end)
+    if ok and encoded then
+        configWrite(self._configFile .. ".json", encoded)
+    end
 end
 
 function BlockUI:LoadConfiguration()
     if not self._configFile then return end
-    local ok, raw = pcall(readfile, self._configFile..".json")
-    if not ok or not raw then return end
-    local ok2, data = pcall(HttpService.JSONDecode, HttpService, raw)
+    local raw = configRead(self._configFile .. ".json")
+    if not raw then return end
+    local ok2, data = pcall(function()
+        return game:GetService("HttpService"):JSONDecode(raw)
+    end)
     if not ok2 or type(data) ~= "table" then return end
-    for k, v in pairs(data) do
-        if self.Flags[k] ~= nil then self.Flags[k] = v end
+    for flag, val in pairs(data) do
+        if self.Flags[flag] ~= nil then
+            self.Flags[flag] = val
+        end
     end
 end
 
--- ── CreateWindow ──────────────────────────────────────────────
+-- ── CreateWindow ─────────────────────────────────────────────
 function BlockUI:CreateWindow(cfg)
     cfg = cfg or {}
-    local winName = cfg.Name or "BlockUI"
-    local winSub  = cfg.Subtitle or ""
-    local saveCfg = cfg.ConfigurationSaving
-    if saveCfg and saveCfg.Enabled and saveCfg.FileName then
-        self._configFile = saveCfg.FileName
+    local winName  = cfg.Name     or "BlockUI Window"
+    local winSub   = cfg.Subtitle or ""
+    local saveConfig = cfg.ConfigurationSaving
+
+    if saveConfig and saveConfig.Enabled and saveConfig.FileName then
+        self._configFile = saveConfig.FileName
     end
 
-    -- Destroy old gui if exists
-    local existing = PlayerGui:FindFirstChild("BlockUI_"..winName)
-    if existing then existing:Destroy() end
-
+    -- Root ScreenGui
     local gui = new("ScreenGui", {
-        Name = "BlockUI_"..winName,
-        ResetOnSpawn = false,
-        DisplayOrder = 100,
+        Name           = "BlockUI_" .. winName,
+        ResetOnSpawn   = false,
+        IgnoreGuiInset = true,
+        DisplayOrder   = 100,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
     }, PlayerGui)
-    pcall(function() gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling end)
 
-    -- Main window — NOT ClipsDescendants so dropdown works
+    -- Main frame
     local main = new("Frame", {
-        Size = UDim2.new(0, 430, 0, 490),
-        Position = UDim2.new(0.5, -215, 0.5, -245),
+        Size             = UDim2.new(0, 440, 0, 500),
+        Position         = UDim2.new(0.5, -220, 0.5, -250),
         BackgroundColor3 = S.bg,
-        BorderSizePixel = 0,
-        ClipsDescendants = false,
+        BorderSizePixel  = 0,
+        ClipsDescendants = true,
     }, gui)
-    stroke(main, S.border, 1)
+    corner(main, CORNER_MAIN)
+    new("UIStroke", {
+        Color       = S.border,
+        Thickness   = 1,
+        Transparency = 0.2,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    }, main)
 
-    -- Inner clip frame for content (prevents overflow inside window)
-    local clipFrame = new("Frame", {
-        Size = UDim2.new(1, 0, 1, 0),
+    -- ── Titlebar ────────────────────────────────────────────
+    local titlebar = new("Frame", {
+        Size             = UDim2.new(1, 0, 0, 40),
+        BackgroundColor3 = S.surface,
+        BorderSizePixel  = 0,
+    }, main)
+
+    -- Window dots
+    local dotColors = { S.danger, S.warning, S.success }
+    for i, col in ipairs(dotColors) do
+        local d = new("Frame", {
+            Size             = UDim2.new(0, 8, 0, 8),
+            Position         = UDim2.fromOffset(12 + (i - 1) * 13, 16),
+            BackgroundColor3 = col,
+            BorderSizePixel  = 0,
+        }, titlebar)
+        new("UICorner", { CornerRadius = UDim.new(1, 0) }, d)
+    end
+
+    -- Title text
+    new("TextLabel", {
+        Size             = UDim2.new(1, 0, 1, 0),
         BackgroundTransparency = 1,
-        BorderSizePixel = 0,
+        Text             = winName:upper(),
+        TextColor3       = S.muted,
+        FontFace         = Font.fromEnum(S.fontMono),
+        TextSize         = 11,
+        LetterSpacing    = 1.6,
+    }, titlebar)
+
+    -- Close button
+    local closeBtn = new("TextButton", {
+        Size             = UDim2.new(0, 36, 1, 0),
+        Position         = UDim2.new(1, -36, 0, 0),
+        BackgroundTransparency = 1,
+        Text             = "✕",
+        TextColor3       = S.muted,
+        FontFace         = Font.fromEnum(S.fontBody),
+        TextSize         = 14,
+        AutoButtonColor  = false,
+    }, titlebar)
+    closeBtn.MouseEnter:Connect(function()
+        tween(closeBtn, TweenInfo.new(0.12), { TextColor3 = S.danger })
+    end)
+    closeBtn.MouseLeave:Connect(function()
+        tween(closeBtn, TweenInfo.new(0.12), { TextColor3 = S.muted })
+    end)
+    closeBtn.MouseButton1Click:Connect(function()
+        gui:Destroy()
+    end)
+
+    -- Bottom border of titlebar
+    new("Frame", {
+        Size             = UDim2.new(1, 0, 0, 1),
+        Position         = UDim2.new(0, 0, 1, -1),
+        BackgroundColor3 = S.border,
+        BorderSizePixel  = 0,
+    }, titlebar)
+
+    makeDraggable(main, titlebar)
+
+    -- Subtitle strip
+    if winSub ~= "" then
+        local subBar = new("Frame", {
+            Size             = UDim2.new(1, 0, 0, 26),
+            Position         = UDim2.fromOffset(0, 40),
+            BackgroundColor3 = S.surface2,
+            BorderSizePixel  = 0,
+        }, main)
+        new("TextLabel", {
+            Size             = UDim2.new(1, -16, 1, 0),
+            Position         = UDim2.fromOffset(8, 0),
+            BackgroundTransparency = 1,
+            Text             = "// " .. winSub,
+            TextColor3       = S.muted,
+            FontFace         = Font.fromEnum(S.fontMono),
+            TextSize         = 10,
+            TextXAlignment   = Enum.TextXAlignment.Left,
+        }, subBar)
+        new("Frame", {
+            Size             = UDim2.new(1, 0, 0, 1),
+            Position         = UDim2.new(0, 0, 1, -1),
+            BackgroundColor3 = S.border,
+            BorderSizePixel  = 0,
+        }, subBar)
+    end
+
+    local tabBarY = (winSub ~= "") and 66 or 40
+
+    -- ── Tab Bar ─────────────────────────────────────────────
+    local tabBar = new("Frame", {
+        Size             = UDim2.new(1, 0, 0, 34),
+        Position         = UDim2.fromOffset(0, tabBarY),
+        BackgroundColor3 = S.surface2,
+        BorderSizePixel  = 0,
         ClipsDescendants = true,
     }, main)
 
-    -- ── Titlebar ──────────────────────────────────────────────
-    local titlebar = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 42),
-        BackgroundColor3 = S.surface,
-        BorderSizePixel = 0,
-    }, clipFrame)
-
-    -- Dots
-    for i, col in ipairs({S.danger, S.warning, S.success}) do
-        local dot = new("Frame", {
-            Size = UDim2.new(0, 10, 0, 10),
-            Position = UDim2.fromOffset(10 + (i-1)*16, 16),
-            BackgroundColor3 = col,
-            BorderSizePixel = 0,
-        }, titlebar)
-        new("UICorner", { CornerRadius = UDim.new(1, 0) }, dot)
-    end
-
-    -- Title
-    new("TextLabel", {
-        Size = UDim2.new(1, 0, 1, 0),
-        BackgroundTransparency = 1,
-        Text = winName:upper(),
-        TextColor3 = S.muted,
-        Font = S.font,
-        TextSize = 12,
-    }, titlebar)
-
-    -- Close btn
-    local closeBtn = new("TextButton", {
-        Size = UDim2.new(0, 32, 1, 0),
-        Position = UDim2.new(1, -32, 0, 0),
-        BackgroundTransparency = 1,
-        Text = "✕",
-        TextColor3 = S.muted,
-        Font = S.font,
-        TextSize = 13,
-        BorderSizePixel = 0,
-    }, titlebar)
-    closeBtn.MouseEnter:Connect(function() closeBtn.TextColor3 = S.danger end)
-    closeBtn.MouseLeave:Connect(function() closeBtn.TextColor3 = S.muted end)
-    closeBtn.MouseButton1Click:Connect(function() gui:Destroy() end)
-
-    -- Bottom border
-    new("Frame", {
-        Size = UDim2.new(1, 0, 0, 1),
-        Position = UDim2.new(0, 0, 1, -1),
-        BackgroundColor3 = S.border,
-        BorderSizePixel = 0,
-    }, titlebar)
-
-    -- Make MAIN draggable via titlebar
-    makeDraggable(main, titlebar)
-
-    -- ── Subtitle ──────────────────────────────────────────────
-    local titlebarH = 42
-    if winSub ~= "" then
-        local sub = new("Frame", {
-            Size = UDim2.new(1, 0, 0, 24),
-            Position = UDim2.fromOffset(0, 42),
-            BackgroundColor3 = S.surface2,
-            BorderSizePixel = 0,
-        }, clipFrame)
-        new("TextLabel", {
-            Size = UDim2.new(1, -12, 1, 0),
-            Position = UDim2.fromOffset(8, 0),
-            BackgroundTransparency = 1,
-            Text = "// "..winSub,
-            TextColor3 = S.muted,
-            Font = S.font,
-            TextSize = 10,
-            TextXAlignment = Enum.TextXAlignment.Left,
-        }, sub)
-        new("Frame", {
-            Size = UDim2.new(1, 0, 0, 1),
-            Position = UDim2.new(0, 0, 1, -1),
-            BackgroundColor3 = S.border,
-            BorderSizePixel = 0,
-        }, sub)
-        titlebarH = 66
-    end
-
-    -- ── Tab Bar ───────────────────────────────────────────────
-    local tabBar = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 36),
-        Position = UDim2.fromOffset(0, titlebarH),
-        BackgroundColor3 = S.surface2,
-        BorderSizePixel = 0,
-    }, clipFrame)
     new("UIListLayout", {
         FillDirection = Enum.FillDirection.Horizontal,
-        SortOrder = Enum.SortOrder.LayoutOrder,
-        VerticalAlignment = Enum.VerticalAlignment.Center,
+        SortOrder     = Enum.SortOrder.LayoutOrder,
     }, tabBar)
+
     new("Frame", {
-        Size = UDim2.new(1, 0, 0, 1),
-        Position = UDim2.new(0, 0, 1, -1),
+        Size             = UDim2.new(1, 0, 0, 1),
+        Position         = UDim2.new(0, 0, 1, -1),
         BackgroundColor3 = S.border,
-        BorderSizePixel = 0,
+        BorderSizePixel  = 0,
     }, tabBar)
 
-    local contentY = titlebarH + 36
+    local contentY = tabBarY + 34
 
-    -- Content clip
-    local contentClip = new("Frame", {
-        Size = UDim2.new(1, 0, 1, -contentY),
-        Position = UDim2.fromOffset(0, contentY),
+    -- Content area
+    local contentArea = new("Frame", {
+        Size             = UDim2.new(1, 0, 1, -contentY),
+        Position         = UDim2.fromOffset(0, contentY),
         BackgroundTransparency = 1,
-        BorderSizePixel = 0,
+        BorderSizePixel  = 0,
         ClipsDescendants = true,
-    }, clipFrame)
+    }, main)
 
     local tabs      = {}
     local tabFrames = {}
     local activeTab = nil
 
     local function switchToTab(name)
-        for n, f in pairs(tabFrames) do f.Visible = (n == name) end
-        for n, b in pairs(tabs) do
-            if n == name then
-                b.TextColor3 = S.accent
-                local ul = b:FindFirstChild("UL")
-                if ul then ul.BackgroundTransparency = 0 end
-            else
-                b.TextColor3 = S.muted
-                local ul = b:FindFirstChild("UL")
-                if ul then ul.BackgroundTransparency = 1 end
+        for n, frame in pairs(tabFrames) do
+            frame.Visible = (n == name)
+        end
+        for n, btn in pairs(tabs) do
+            local u = btn:FindFirstChild("Underline")
+            if u and u:IsA("Frame") then
+                if n == name then
+                    btn.TextColor3 = S.accent
+                    u.BackgroundColor3 = S.accent
+                    u.BackgroundTransparency = 0
+                else
+                    btn.TextColor3 = S.muted
+                    u.BackgroundTransparency = 1
+                end
             end
         end
         activeTab = name
     end
 
+    -- ── Window object ────────────────────────────────────────
     local Window = {}
 
-    function Window:CreateTab(tcfg)
-        tcfg = tcfg or {}
-        local tabName = tcfg.Name or "Tab"
+    function Window:CreateTab(tabCfg)
+        tabCfg = tabCfg or {}
+        local tabName = tabCfg.Name or "Tab"
 
-        -- Tab button — fixed width instead of AutomaticSize
-        local tabW = math.max(60, #tabName * 10 + 24)
-        local tbtn = new("TextButton", {
-            Size = UDim2.new(0, tabW, 1, 0),
+        -- Tab button
+        local btn = new("TextButton", {
+            Size             = UDim2.new(0, 0, 1, 0),
+            AutomaticSize    = Enum.AutomaticSize.X,
             BackgroundTransparency = 1,
-            Text = tabName:upper(),
-            TextColor3 = S.muted,
-            Font = S.font,
-            TextSize = 11,
-            BorderSizePixel = 0,
+            Text             = tabName:upper(),
+            TextColor3       = S.muted,
+            FontFace         = Font.fromEnum(S.fontMono),
+            TextSize         = 11,
+            LetterSpacing    = 1.2,
+            AutoButtonColor  = false,
         }, tabBar)
 
-        -- Underline indicator
-        new("Frame", {
-            Name = "UL",
-            Size = UDim2.new(1, -8, 0, 2),
-            Position = UDim2.new(0, 4, 1, -2),
+        -- Underline
+        local underline = new("Frame", {
+            Name             = "Underline",
+            Size             = UDim2.new(1, -8, 0, 2),
+            Position         = UDim2.new(0, 4, 1, -2),
             BackgroundColor3 = S.accent,
             BackgroundTransparency = 1,
-            BorderSizePixel = 0,
-        }, tbtn)
+            BorderSizePixel  = 0,
+        }, btn)
+        new("UICorner", { CornerRadius = UDim.new(1, 0) }, underline)
 
-        tabs[tabName] = tbtn
+        new("UIPadding", {
+            PaddingLeft  = UDim.new(0, 16),
+            PaddingRight = UDim.new(0, 16),
+        }, btn)
 
-        -- Scrolling content
+        tabs[tabName] = btn
+
+        -- Tab content frame with scrolling
         local tabFrame = new("ScrollingFrame", {
-            Size = UDim2.new(1, 0, 1, 0),
+            Size             = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
-            BorderSizePixel = 0,
+            BorderSizePixel  = 0,
             ScrollBarThickness = 2,
             ScrollBarImageColor3 = S.accent,
-            CanvasSize = UDim2.new(0, 0, 0, 0),
-            Visible = false,
-        }, contentClip)
-        pcall(function()
-            tabFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        end)
+            CanvasSize       = UDim2.new(0, 0, 0, 0),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            Visible          = false,
+        }, contentArea)
 
-        new("UIListLayout", {
-            SortOrder = Enum.SortOrder.LayoutOrder,
-            Padding = UDim.new(0, 0),
+        local layout = new("UIListLayout", {
+            SortOrder        = Enum.SortOrder.LayoutOrder,
+            Padding          = UDim.new(0, 0),
         }, tabFrame)
+
         new("UIPadding", {
-            PaddingTop = UDim.new(0, 6),
+            PaddingTop    = UDim.new(0, 8),
             PaddingBottom = UDim.new(0, 8),
         }, tabFrame)
 
         tabFrames[tabName] = tabFrame
 
-        tbtn.MouseButton1Click:Connect(function()
+        btn.MouseButton1Click:Connect(function()
             switchToTab(tabName)
         end)
 
+        -- Auto-activate first tab
         if not activeTab then
             switchToTab(tabName)
         end
 
-        -- ── Tab API ───────────────────────────────────────────
+        -- ── Tab object ───────────────────────────────────────
         local Tab = {}
         local order = 0
-        local function no() order = order + 1; return order end
+        local function nextOrder() order = order + 1; return order end
 
-        local function rowBase(h)
-            local r = new("Frame", {
-                Size = UDim2.new(1, 0, 0, h),
+        -- ── Button ───────────────────────────────────────────
+        function Tab:CreateButton(elCfg)
+            elCfg = elCfg or {}
+            local row = new("Frame", {
+                Size             = UDim2.new(1, 0, 0, 46),
                 BackgroundColor3 = S.surface,
-                BorderSizePixel = 0,
-                LayoutOrder = no(),
+                BorderSizePixel  = 0,
+                LayoutOrder      = nextOrder(),
             }, tabFrame)
             new("Frame", {
                 Size = UDim2.new(1, 0, 0, 1),
-                Position = UDim2.new(0, 0, 1, -1),
+                Position = UDim2.new(0,0,1,-1),
                 BackgroundColor3 = S.border,
                 BorderSizePixel = 0,
-            }, r)
-            return r
-        end
+            }, row)
 
-        -- BUTTON
-        function Tab:CreateButton(e)
-            e = e or {}
-            local row = rowBase(48)
             new("TextLabel", {
-                Size = UDim2.new(1, -110, 1, 0),
-                Position = UDim2.fromOffset(14, 0),
+                Size             = UDim2.new(1, -100, 1, 0),
+                Position         = UDim2.fromOffset(14, 0),
                 BackgroundTransparency = 1,
-                Text = e.Name or "Button",
-                TextColor3 = S.text,
-                Font = S.fontBody,
-                TextSize = 13,
-                TextXAlignment = Enum.TextXAlignment.Left,
+                Text             = elCfg.Name or "Button",
+                TextColor3       = S.text,
+                Font             = S.fontBody,
+                TextSize         = 13,
+                TextXAlignment   = Enum.TextXAlignment.Left,
             }, row)
 
-            local btn = new("TextButton", {
-                Size = UDim2.new(0, 76, 0, 28),
-                Position = UDim2.new(1, -90, 0.5, -14),
+            local btn2 = new("TextButton", {
+                Size             = UDim2.new(0, 80, 0, 26),
+                Position         = UDim2.new(1, -92, 0.5, -13),
                 BackgroundColor3 = S.surface2,
-                Text = "RUN",
-                TextColor3 = S.accent,
-                Font = S.font,
-                TextSize = 11,
-                BorderSizePixel = 0,
+                BorderSizePixel  = 0,
+                Text             = "RUN",
+                TextColor3       = S.accent,
+                FontFace         = Font.fromEnum(S.fontMono),
+                TextSize         = 11,
             }, row)
-            stroke(btn, S.border, 1)
+            new("UIStroke", { Color = S.border, Thickness = 1, Transparency = 0.25 }, btn2)
+            corner(btn2, S.radiusS)
 
-            btn.MouseEnter:Connect(function()
-                tw(btn, 0.1, { BackgroundColor3 = S.accent, TextColor3 = S.black })
+            btn2.MouseEnter:Connect(function()
+                tween(btn2, TweenInfo.new(0.1), { BackgroundColor3 = S.accent, TextColor3 = S.black })
             end)
-            btn.MouseLeave:Connect(function()
-                tw(btn, 0.1, { BackgroundColor3 = S.surface2, TextColor3 = S.accent })
+            btn2.MouseLeave:Connect(function()
+                tween(btn2, TweenInfo.new(0.1), { BackgroundColor3 = S.surface2, TextColor3 = S.accent })
             end)
-            btn.MouseButton1Click:Connect(function()
-                if e.Callback then task.spawn(e.Callback) end
+            btn2.MouseButton1Click:Connect(function()
+                if elCfg.Callback then
+                    task.spawn(elCfg.Callback)
+                end
             end)
 
-            local B = {}
-            function B:Set(n) btn.Text = n end
-            return B
+            local Button = {}
+            function Button:Set(name)
+                btn2.Text = tostring(name)
+            end
+            return Button
         end
 
-        -- TOGGLE
-        function Tab:CreateToggle(e)
-            e = e or {}
-            local flag  = e.Flag
-            local value = e.CurrentValue or false
+        -- ── Toggle ───────────────────────────────────────────
+        function Tab:CreateToggle(elCfg)
+            elCfg = elCfg or {}
+            local flag = elCfg.Flag
+            local value = elCfg.CurrentValue or false
             if flag then BlockUI.Flags[flag] = value end
 
-            local rowH = e.Description and 56 or 48
-            local row  = rowBase(rowH)
+            local row = new("Frame", {
+                Size             = UDim2.new(1, 0, 0, 54),
+                BackgroundColor3 = S.surface,
+                BorderSizePixel  = 0,
+                LayoutOrder      = nextOrder(),
+            }, tabFrame)
+            new("Frame", { Size = UDim2.new(1,0,0,1), Position = UDim2.new(0,0,1,-1), BackgroundColor3 = S.border, BorderSizePixel = 0 }, row)
 
             new("TextLabel", {
-                Size = UDim2.new(1, -70, 0, 20),
-                Position = UDim2.fromOffset(14, e.Description and 9 or 14),
+                Size             = UDim2.new(1, -70, 0, 20),
+                Position         = UDim2.fromOffset(14, 10),
                 BackgroundTransparency = 1,
-                Text = e.Name or "Toggle",
-                TextColor3 = S.text,
-                Font = S.fontBody,
-                TextSize = 13,
-                TextXAlignment = Enum.TextXAlignment.Left,
+                Text             = elCfg.Name or "Toggle",
+                TextColor3       = S.text,
+                Font             = S.fontBody,
+                TextSize         = 13,
+                TextXAlignment   = Enum.TextXAlignment.Left,
             }, row)
 
-            if e.Description then
+            if elCfg.Description then
                 new("TextLabel", {
-                    Size = UDim2.new(1, -70, 0, 14),
-                    Position = UDim2.fromOffset(14, 31),
+                    Size             = UDim2.new(1, -70, 0, 16),
+                    Position         = UDim2.fromOffset(14, 30),
                     BackgroundTransparency = 1,
-                    Text = e.Description,
-                    TextColor3 = S.muted,
-                    Font = S.fontBody,
-                    TextSize = 11,
-                    TextXAlignment = Enum.TextXAlignment.Left,
+                    Text             = elCfg.Description,
+                    TextColor3       = S.muted,
+                    Font             = S.fontBody,
+                    TextSize         = 11,
+                    TextXAlignment   = Enum.TextXAlignment.Left,
                 }, row)
             end
 
+            -- Track
             local track = new("Frame", {
-                Size = UDim2.new(0, 40, 0, 22),
-                Position = UDim2.new(1, -54, 0.5, -11),
+                Size             = UDim2.new(0, 38, 0, 20),
+                Position         = UDim2.new(1, -52, 0.5, -10),
                 BackgroundColor3 = S.surface2,
-                BorderSizePixel = 0,
+                BorderSizePixel  = 0,
             }, row)
             new("UICorner", { CornerRadius = UDim.new(1, 0) }, track)
-            local tStroke = stroke(track, S.border, 1)
+            new("UIStroke", { Color = S.border, Thickness = 1 }, track)
 
+            -- Thumb
             local thumb = new("Frame", {
-                Size = UDim2.new(0, 15, 0, 15),
-                Position = UDim2.fromOffset(3, 3),
+                Size             = UDim2.new(0, 14, 0, 14),
+                Position         = UDim2.fromOffset(2, 3),
                 BackgroundColor3 = S.muted,
-                BorderSizePixel = 0,
+                BorderSizePixel  = 0,
             }, track)
             new("UICorner", { CornerRadius = UDim.new(1, 0) }, thumb)
 
             local function setState(val, silent)
                 value = val
                 if flag then BlockUI.Flags[flag] = val end
+                local stro = track:FindFirstChildOfClass("UIStroke")
                 if val then
-                    tw(track, 0.15, { BackgroundColor3 = Color3.fromRGB(35, 55, 0) })
-                    tw(thumb, 0.15, { Position = UDim2.fromOffset(22, 3), BackgroundColor3 = S.accent })
-                    pcall(function() tStroke.Color = S.accent end)
+                    tween(track, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
+                        BackgroundColor3 = Color3.fromRGB(45, 58, 22),
+                    })
+                    tween(thumb, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
+                        Position = UDim2.fromOffset(22, 3),
+                        BackgroundColor3 = S.accent,
+                    })
+                    if stro then
+                        stro.Color = S.accent
+                    end
                 else
-                    tw(track, 0.15, { BackgroundColor3 = S.surface2 })
-                    tw(thumb, 0.15, { Position = UDim2.fromOffset(3, 3), BackgroundColor3 = S.muted })
-                    pcall(function() tStroke.Color = S.border end)
+                    tween(track, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = S.surface2 })
+                    tween(thumb, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
+                        Position = UDim2.fromOffset(2, 3),
+                        BackgroundColor3 = S.muted,
+                    })
+                    if stro then
+                        stro.Color = S.border
+                    end
                 end
-                if not silent and e.Callback then task.spawn(e.Callback, val) end
+                if not silent and elCfg.Callback then
+                    task.spawn(elCfg.Callback, val)
+                end
             end
+
             setState(value, true)
 
-            row.InputBegan:Connect(function(i)
-                if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            local function toggleClick(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 then
                     setState(not value)
                 end
-            end)
-
-            local T = {}
-            function T:Set(v) setState(v, false) end
-            return T
-        end
-
-        -- SLIDER
-        function Tab:CreateSlider(e)
-            e = e or {}
-            local flag   = e.Flag
-            local range  = e.Range or {0, 100}
-            local inc    = e.Increment or 1
-            local suffix = e.Suffix or ""
-            local value  = e.CurrentValue or range[1]
-            if flag then BlockUI.Flags[flag] = value end
-
-            local row = rowBase(64)
-
-            new("TextLabel", {
-                Size = UDim2.new(1, -90, 0, 20),
-                Position = UDim2.fromOffset(14, 10),
-                BackgroundTransparency = 1,
-                Text = e.Name or "Slider",
-                TextColor3 = S.text,
-                Font = S.fontBody,
-                TextSize = 13,
-                TextXAlignment = Enum.TextXAlignment.Left,
-            }, row)
-
-            local valLbl = new("TextLabel", {
-                Size = UDim2.new(0, 80, 0, 20),
-                Position = UDim2.new(1, -94, 0, 10),
-                BackgroundTransparency = 1,
-                Text = tostring(value).." "..suffix,
-                TextColor3 = S.accent,
-                Font = S.font,
-                TextSize = 12,
-                TextXAlignment = Enum.TextXAlignment.Right,
-            }, row)
-
-            local trackBg = new("Frame", {
-                Size = UDim2.new(1, -28, 0, 4),
-                Position = UDim2.fromOffset(14, 46),
-                BackgroundColor3 = S.surface2,
-                BorderSizePixel = 0,
-            }, row)
-            local fill = new("Frame", {
-                Size = UDim2.new(0, 0, 1, 0),
-                BackgroundColor3 = S.accent,
-                BorderSizePixel = 0,
-            }, trackBg)
-            local handle = new("Frame", {
-                Size = UDim2.new(0, 12, 0, 12),
-                AnchorPoint = Vector2.new(0.5, 0.5),
-                Position = UDim2.new(0, 0, 0.5, 0),
-                BackgroundColor3 = S.accent,
-                BorderSizePixel = 0,
-            }, trackBg)
-
-            local function setVal(v)
-                v = math.clamp(math.round(v / inc) * inc, range[1], range[2])
-                value = v
-                if flag then BlockUI.Flags[flag] = v end
-                local pct = (range[2] - range[1]) == 0 and 0
-                    or (v - range[1]) / (range[2] - range[1])
-                fill.Size = UDim2.new(pct, 0, 1, 0)
-                handle.Position = UDim2.new(pct, 0, 0.5, 0)
-                valLbl.Text = tostring(v).." "..suffix
-                if e.Callback then task.spawn(e.Callback, v) end
             end
-            setVal(value)
+            track.InputBegan:Connect(toggleClick)
+            thumb.InputBegan:Connect(toggleClick)
 
-            local sliding = false
-            trackBg.InputBegan:Connect(function(i)
-                if i.UserInputType == Enum.UserInputType.MouseButton1 then
-                    sliding = true
-                    local abs = trackBg.AbsolutePosition
-                    local sz  = trackBg.AbsoluteSize
-                    local pct = math.clamp((i.Position.X - abs.X) / sz.X, 0, 1)
-                    setVal(range[1] + pct * (range[2] - range[1]))
-                end
-            end)
-            UserInputService.InputEnded:Connect(function(i)
-                if i.UserInputType == Enum.UserInputType.MouseButton1 then sliding = false end
-            end)
-            UserInputService.InputChanged:Connect(function(i)
-                if sliding and i.UserInputType == Enum.UserInputType.MouseMovement then
-                    local abs = trackBg.AbsolutePosition
-                    local sz  = trackBg.AbsoluteSize
-                    local pct = math.clamp((i.Position.X - abs.X) / sz.X, 0, 1)
-                    setVal(range[1] + pct * (range[2] - range[1]))
-                end
-            end)
-
-            local Sl = {}
-            function Sl:Set(v) setVal(v) end
-            return Sl
+            local Toggle = {}
+            function Toggle:Set(val)
+                setState(val, false)
+            end
+            return Toggle
         end
 
-        -- INPUT
-        function Tab:CreateInput(e)
-            e = e or {}
-            local flag  = e.Flag
-            local value = e.CurrentValue or ""
+        -- ── Slider ───────────────────────────────────────────
+        function Tab:CreateSlider(elCfg)
+            elCfg = elCfg or {}
+            local flag    = elCfg.Flag
+            local range   = elCfg.Range or {0, 100}
+            local inc     = elCfg.Increment or 1
+            local suffix  = elCfg.Suffix or ""
+            local value   = elCfg.CurrentValue or range[1]
             if flag then BlockUI.Flags[flag] = value end
 
-            local row = rowBase(64)
+            local row = new("Frame", {
+                Size             = UDim2.new(1, 0, 0, 64),
+                BackgroundColor3 = S.surface,
+                BorderSizePixel  = 0,
+                LayoutOrder      = nextOrder(),
+            }, tabFrame)
+            new("Frame", { Size = UDim2.new(1,0,0,1), Position = UDim2.new(0,0,1,-1), BackgroundColor3 = S.border, BorderSizePixel = 0 }, row)
 
             new("TextLabel", {
-                Size = UDim2.new(1, -16, 0, 16),
-                Position = UDim2.fromOffset(14, 7),
+                Size             = UDim2.new(1, -80, 0, 20),
+                Position         = UDim2.fromOffset(14, 10),
                 BackgroundTransparency = 1,
-                Text = (e.Name or "Input"):upper(),
-                TextColor3 = S.muted,
-                Font = S.font,
-                TextSize = 9,
-                TextXAlignment = Enum.TextXAlignment.Left,
+                Text             = elCfg.Name or "Slider",
+                TextColor3       = S.text,
+                Font             = S.fontBody,
+                TextSize         = 13,
+                TextXAlignment   = Enum.TextXAlignment.Left,
+            }, row)
+
+            local valLabel = new("TextLabel", {
+                Size             = UDim2.new(0, 70, 0, 20),
+                Position         = UDim2.new(1, -84, 0, 10),
+                BackgroundTransparency = 1,
+                Text             = tostring(value) .. " " .. suffix,
+                TextColor3       = S.accent,
+                FontFace         = Font.fromEnum(S.fontMono),
+                TextSize         = 12,
+                TextXAlignment   = Enum.TextXAlignment.Right,
+            }, row)
+
+            -- Track bg
+            local trackBg = new("Frame", {
+                Size             = UDim2.new(1, -28, 0, 6),
+                Position         = UDim2.fromOffset(14, 40),
+                BackgroundColor3 = S.surface2,
+                BorderSizePixel  = 0,
+            }, row)
+            corner(trackBg, UDim.new(1, 0))
+
+            -- Fill
+            local fill = new("Frame", {
+                Size             = UDim2.new(0, 0, 1, 0),
+                BackgroundColor3 = S.accent,
+                BorderSizePixel  = 0,
+            }, trackBg)
+            corner(fill, UDim.new(1, 0))
+
+            -- Thumb
+            local sliderThumb = new("Frame", {
+                Size             = UDim2.new(0, 14, 0, 14),
+                AnchorPoint      = Vector2.new(0.5, 0.5),
+                Position         = UDim2.new(0, 0, 0.5, 0),
+                BackgroundColor3 = S.text,
+                BorderSizePixel  = 0,
+            }, trackBg)
+            corner(sliderThumb, UDim.new(1, 0))
+            new("UIStroke", { Color = S.accent, Thickness = 1, Transparency = 0.35 }, sliderThumb)
+
+            local function updateSlider(val)
+                val = math.clamp(math.round(val / inc) * inc, range[1], range[2])
+                value = val
+                if flag then BlockUI.Flags[flag] = val end
+                local pct = (val - range[1]) / (range[2] - range[1])
+                fill.Size = UDim2.new(pct, 0, 1, 0)
+                sliderThumb.Position = UDim2.new(pct, 0, 0.5, 0)
+                valLabel.Text = tostring(val) .. " " .. suffix
+                if elCfg.Callback then
+                    task.spawn(elCfg.Callback, val)
+                end
+            end
+
+            updateSlider(value)
+
+            local draggingSlider = false
+            local function sliderFromInput(inp)
+                local abs = trackBg.AbsolutePosition
+                local size = trackBg.AbsoluteSize
+                if size.X <= 0 then
+                    return
+                end
+                local pct = math.clamp((inp.Position.X - abs.X) / size.X, 0, 1)
+                local v = range[1] + pct * (range[2] - range[1])
+                updateSlider(v)
+            end
+            trackBg.InputBegan:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                    draggingSlider = true
+                    sliderFromInput(inp)
+                end
+            end)
+            sliderThumb.InputBegan:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                    draggingSlider = true
+                    sliderFromInput(inp)
+                end
+            end)
+            UserInputService.InputEnded:Connect(function(inp)
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                    draggingSlider = false
+                end
+            end)
+            UserInputService.InputChanged:Connect(function(inp)
+                if draggingSlider and inp.UserInputType == Enum.UserInputType.MouseMovement then
+                    sliderFromInput(inp)
+                end
+            end)
+
+            local Slider = {}
+            function Slider:Set(val)
+                updateSlider(val)
+            end
+            return Slider
+        end
+
+        -- ── Input ────────────────────────────────────────────
+        function Tab:CreateInput(elCfg)
+            elCfg = elCfg or {}
+            local flag = elCfg.Flag
+            local value = elCfg.CurrentValue or ""
+            if flag then BlockUI.Flags[flag] = value end
+
+            local row = new("Frame", {
+                Size             = UDim2.new(1, 0, 0, 62),
+                BackgroundColor3 = S.surface,
+                BorderSizePixel  = 0,
+                LayoutOrder      = nextOrder(),
+            }, tabFrame)
+            new("Frame", { Size = UDim2.new(1,0,0,1), Position = UDim2.new(0,0,1,-1), BackgroundColor3 = S.border, BorderSizePixel = 0 }, row)
+
+            new("TextLabel", {
+                Size             = UDim2.new(1, -16, 0, 18),
+                Position         = UDim2.fromOffset(14, 8),
+                BackgroundTransparency = 1,
+                Text             = (elCfg.Name or "Input"):upper(),
+                TextColor3       = S.muted,
+                FontFace         = Font.fromEnum(S.fontMono),
+                TextSize         = 9,
+                TextXAlignment   = Enum.TextXAlignment.Left,
             }, row)
 
             local box = new("TextBox", {
-                Size = UDim2.new(1, -28, 0, 28),
-                Position = UDim2.fromOffset(14, 27),
+                Size             = UDim2.new(1, -28, 0, 26),
+                Position         = UDim2.fromOffset(14, 28),
                 BackgroundColor3 = S.surface2,
-                BorderSizePixel = 0,
-                Text = value,
-                PlaceholderText = e.PlaceholderText or "Type here...",
-                TextColor3 = S.text,
+                BorderSizePixel  = 0,
+                Text             = value,
+                PlaceholderText  = elCfg.PlaceholderText or "Type here...",
+                TextColor3       = S.text,
                 PlaceholderColor3 = S.muted,
-                Font = S.font,
-                TextSize = 12,
-                TextXAlignment = Enum.TextXAlignment.Left,
+                FontFace         = Font.fromEnum(S.fontMono),
+                TextSize         = 12,
+                TextXAlignment   = Enum.TextXAlignment.Left,
                 ClearTextOnFocus = false,
             }, row)
-            new("UIPadding", { PaddingLeft = UDim.new(0, 8) }, box)
-            local bStroke = stroke(box, S.border, 1)
+            new("UIPadding", { PaddingLeft = UDim.new(0,8) }, box)
+            new("UIStroke", { Color = S.border, Thickness = 1, Transparency = 0.25 }, box)
+            corner(box, S.radiusS)
 
             box.Focused:Connect(function()
-                pcall(function() bStroke.Color = S.accent end)
+                local s = box:FindFirstChildOfClass("UIStroke")
+                if s then
+                    tween(s, TweenInfo.new(0.1), { Color = S.accent })
+                end
             end)
             box.FocusLost:Connect(function()
-                pcall(function() bStroke.Color = S.border end)
+                local s = box:FindFirstChildOfClass("UIStroke")
+                if s then
+                    tween(s, TweenInfo.new(0.1), { Color = S.border })
+                end
                 value = box.Text
                 if flag then BlockUI.Flags[flag] = value end
-                if e.Callback then task.spawn(e.Callback, value) end
-                if e.RemoveTextAfterFocusLost then box.Text = "" end
+                if elCfg.Callback then task.spawn(elCfg.Callback, value) end
+                if elCfg.RemoveTextAfterFocusLost then box.Text = "" end
             end)
 
-            local I = {}
-            function I:Set(t)
-                box.Text = t; value = t
-                if flag then BlockUI.Flags[flag] = t end
+            local Input = {}
+            function Input:Set(text)
+                box.Text = text
+                value = text
+                if flag then BlockUI.Flags[flag] = text end
             end
-            return I
+            return Input
         end
 
-        -- DROPDOWN
-        function Tab:CreateDropdown(e)
-            e = e or {}
-            local flag     = e.Flag
-            local options  = e.Options or {}
-            local selected = e.CurrentOption or (options[1] and {options[1]} or {})
-            local multi    = e.MultipleOptions or false
+        -- ── Dropdown ─────────────────────────────────────────
+        function Tab:CreateDropdown(elCfg)
+            elCfg = elCfg or {}
+            local flag     = elCfg.Flag
+            local options  = elCfg.Options or {}
+            local firstOpt = options[1]
+            local selected = elCfg.CurrentOption
+            if not selected or type(selected) ~= "table" then
+                selected = firstOpt ~= nil and { firstOpt } or {}
+            end
+            local multi    = elCfg.MultipleOptions or false
             if flag then BlockUI.Flags[flag] = selected end
 
-            local row = rowBase(48)
+            local container = new("Frame", {
+                Size             = UDim2.new(1, 0, 0, 46),
+                BackgroundColor3 = S.surface,
+                BorderSizePixel  = 0,
+                LayoutOrder      = nextOrder(),
+                ClipsDescendants = false,
+            }, tabFrame)
+            new("Frame", { Size = UDim2.new(1,0,0,1), Position = UDim2.new(0,0,1,-1), BackgroundColor3 = S.border, BorderSizePixel = 0 }, container)
 
             new("TextLabel", {
-                Size = UDim2.new(1, -16, 0, 16),
-                Position = UDim2.fromOffset(14, 5),
+                Size             = UDim2.new(1, -16, 0, 18),
+                Position         = UDim2.fromOffset(14, 4),
                 BackgroundTransparency = 1,
-                Text = (e.Name or "Dropdown"):upper(),
-                TextColor3 = S.muted,
-                Font = S.font,
-                TextSize = 9,
-                TextXAlignment = Enum.TextXAlignment.Left,
-            }, row)
+                Text             = (elCfg.Name or "Dropdown"):upper(),
+                TextColor3       = S.muted,
+                FontFace         = Font.fromEnum(S.fontMono),
+                TextSize         = 9,
+                TextXAlignment   = Enum.TextXAlignment.Left,
+            }, container)
 
             local selBtn = new("TextButton", {
-                Size = UDim2.new(1, -28, 0, 26),
-                Position = UDim2.fromOffset(14, 19),
+                Size             = UDim2.new(1, -28, 0, 24),
+                Position         = UDim2.fromOffset(14, 18),
                 BackgroundColor3 = S.surface2,
-                Text = "",
-                AutoButtonColor = false,
-                BorderSizePixel = 0,
-            }, row)
-            local dStroke = stroke(selBtn, S.border, 1)
+                BorderSizePixel  = 0,
+                Text             = "",
+                AutoButtonColor  = false,
+            }, container)
+            new("UIStroke", { Color = S.border, Thickness = 1, Transparency = 0.25 }, selBtn)
+            corner(selBtn, S.radiusS)
 
-            local selLbl = new("TextLabel", {
-                Size = UDim2.new(1, -22, 1, 0),
-                Position = UDim2.fromOffset(8, 0),
+            local selLabel = new("TextLabel", {
+                Size             = UDim2.new(1, -24, 1, 0),
+                Position         = UDim2.fromOffset(8, 0),
                 BackgroundTransparency = 1,
-                Text = table.concat(selected, ", "),
-                TextColor3 = S.text,
-                Font = S.font,
-                TextSize = 11,
-                TextXAlignment = Enum.TextXAlignment.Left,
+                Text             = #selected > 0 and table.concat(selected, ", ") or "—",
+                TextColor3       = S.text,
+                FontFace         = Font.fromEnum(S.fontMono),
+                TextSize         = 11,
+                TextXAlignment   = Enum.TextXAlignment.Left,
             }, selBtn)
 
             new("TextLabel", {
-                Size = UDim2.new(0, 18, 1, 0),
-                Position = UDim2.new(1, -18, 0, 0),
+                Size             = UDim2.new(0, 20, 1, 0),
+                Position         = UDim2.new(1, -20, 0, 0),
                 BackgroundTransparency = 1,
-                Text = "▾",
-                TextColor3 = S.muted,
-                Font = S.font,
-                TextSize = 10,
+                Text             = "▼",
+                TextColor3       = S.muted,
+                FontFace         = Font.fromEnum(S.fontBody),
+                TextSize         = 10,
             }, selBtn)
 
-            -- Dropdown list — parented to main so it layers above everything
-            local listFrame = new("Frame", {
+            -- Dropdown list (absolute, layered on top)
+            local dropList = new("Frame", {
+                Size             = UDim2.new(1, -28, 0, 0),
+                Position         = UDim2.fromOffset(14, 46),
                 BackgroundColor3 = S.surface2,
-                BorderSizePixel = 0,
-                Visible = false,
-                ZIndex = 20,
-                Size = UDim2.new(0, 1, 0, 1), -- set dynamically
-            }, main)
-            stroke(listFrame, S.accent, 1)
-            new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, listFrame)
+                BorderSizePixel  = 0,
+                Visible          = false,
+                ZIndex           = 10,
+            }, container)
+            new("UIStroke", { Color = S.border, Thickness = 1, Transparency = 0.25 }, dropList)
+            corner(dropList, S.radiusS)
+            new("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder }, dropList)
 
             local isOpen = false
 
-            local function closeList()
-                isOpen = false
-                listFrame.Visible = false
-                pcall(function() dStroke.Color = S.border end)
-            end
-
-            local function buildList(opts)
-                for _, c in pairs(listFrame:GetChildren()) do
+            local function refreshOptions(opts)
+                for _, c in pairs(dropList:GetChildren()) do
                     if c:IsA("TextButton") then c:Destroy() end
                 end
                 for _, opt in ipairs(opts) do
-                    local ob = new("TextButton", {
-                        Size = UDim2.new(1, 0, 0, 28),
+                    local optBtn = new("TextButton", {
+                        Size             = UDim2.new(1, 0, 0, 28),
                         BackgroundColor3 = S.surface2,
-                        Text = opt,
-                        TextColor3 = S.text,
-                        Font = S.font,
-                        TextSize = 11,
-                        AutoButtonColor = false,
-                        BorderSizePixel = 0,
-                        ZIndex = 21,
-                    }, listFrame)
-                    new("Frame", {
-                        Size = UDim2.new(1, 0, 0, 1),
-                        Position = UDim2.new(0, 0, 1, -1),
-                        BackgroundColor3 = S.border,
-                        BorderSizePixel = 0,
-                        ZIndex = 21,
-                    }, ob)
-                    ob.MouseEnter:Connect(function()
-                        tw(ob, 0.08, { BackgroundColor3 = S.surface })
+                        BorderSizePixel  = 0,
+                        Text             = opt,
+                        TextColor3       = S.text,
+                        FontFace         = Font.fromEnum(S.fontBody),
+                        TextSize         = 12,
+                        AutoButtonColor  = false,
+                        ZIndex           = 11,
+                    }, dropList)
+                    new("Frame", { Size = UDim2.new(1,0,0,1), Position = UDim2.new(0,0,1,-1), BackgroundColor3 = S.border, BorderSizePixel = 0, ZIndex = 11 }, optBtn)
+                    optBtn.MouseEnter:Connect(function()
+                        tween(optBtn, TweenInfo.new(0.08), { BackgroundColor3 = S.surface })
                     end)
-                    ob.MouseLeave:Connect(function()
-                        tw(ob, 0.08, { BackgroundColor3 = S.surface2 })
+                    optBtn.MouseLeave:Connect(function()
+                        tween(optBtn, TweenInfo.new(0.08), { BackgroundColor3 = S.surface2 })
                     end)
-                    ob.MouseButton1Click:Connect(function()
+                    optBtn.MouseButton1Click:Connect(function()
                         if multi then
                             local idx = table.find(selected, opt)
                             if idx then table.remove(selected, idx)
                             else table.insert(selected, opt) end
                         else
-                            selected = {opt}
-                            closeList()
+                            selected = { opt }
+                            isOpen = false
+                            dropList.Visible = false
                         end
-                        selLbl.Text = table.concat(selected, ", ")
+                        selLabel.Text = #selected > 0 and table.concat(selected, ", ") or "—"
                         if flag then BlockUI.Flags[flag] = selected end
-                        if e.Callback then task.spawn(e.Callback, selected) end
+                        if elCfg.Callback then task.spawn(elCfg.Callback, selected) end
                     end)
                 end
-                listFrame.Size = UDim2.new(0, selBtn.AbsoluteSize.X, 0, #opts * 28)
+                local n = #opts
+                dropList.Size = UDim2.new(1, 0, 0, n * 28)
             end
 
-            buildList(options)
+            refreshOptions(options)
 
             selBtn.MouseButton1Click:Connect(function()
-                if isOpen then
-                    closeList()
-                else
-                    isOpen = true
-                    -- Position relative to main frame
-                    local abs = selBtn.AbsolutePosition
-                    local mainAbs = main.AbsolutePosition
-                    local rx = abs.X - mainAbs.X
-                    local ry = abs.Y - mainAbs.Y + selBtn.AbsoluteSize.Y
-                    listFrame.Position = UDim2.fromOffset(rx, ry)
-                    listFrame.Size = UDim2.new(0, selBtn.AbsoluteSize.X, 0, #options * 28)
-                    listFrame.Visible = true
-                    pcall(function() dStroke.Color = S.accent end)
-                end
+                isOpen = not isOpen
+                dropList.Visible = isOpen
             end)
 
-            local D = {}
-            function D:Refresh(opts)
+            local Dropdown = {}
+            function Dropdown:Refresh(opts)
                 options = opts
-                buildList(opts)
+                refreshOptions(opts)
             end
-            function D:Set(opts)
+            function Dropdown:Set(opts)
                 selected = opts
-                selLbl.Text = table.concat(selected, ", ")
+                selLabel.Text = #selected > 0 and table.concat(selected, ", ") or "—"
                 if flag then BlockUI.Flags[flag] = selected end
-                if e.Callback then task.spawn(e.Callback, selected) end
+                if elCfg.Callback then task.spawn(elCfg.Callback, selected) end
             end
-            return D
+            return Dropdown
         end
 
-        -- LABEL
-        function Tab:CreateLabel(e)
-            e = e or {}
+        -- ── Label ────────────────────────────────────────────
+        function Tab:CreateLabel(elCfg)
+            elCfg = elCfg or {}
             local row = new("Frame", {
-                Size = UDim2.new(1, 0, 0, 32),
+                Size             = UDim2.new(1, 0, 0, 36),
                 BackgroundTransparency = 1,
-                BorderSizePixel = 0,
-                LayoutOrder = no(),
+                BorderSizePixel  = 0,
+                LayoutOrder      = nextOrder(),
             }, tabFrame)
+
             local lbl = new("TextLabel", {
-                Size = UDim2.new(1, -28, 1, 0),
-                Position = UDim2.fromOffset(14, 0),
+                Size             = UDim2.new(1, -28, 1, 0),
+                Position         = UDim2.fromOffset(14, 0),
                 BackgroundTransparency = 1,
-                Text = e.Text or "",
-                TextColor3 = S.muted,
-                Font = S.font,
-                TextSize = 11,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                TextWrapped = true,
+                Text             = elCfg.Text or "",
+                TextColor3       = S.muted,
+                FontFace         = Font.fromEnum(S.fontBody),
+                TextSize         = 12,
+                TextXAlignment   = Enum.TextXAlignment.Left,
+                TextWrapped      = true,
             }, row)
-            local L = {}
-            function L:Set(t) lbl.Text = t end
-            return L
+
+            local Label = {}
+            function Label:Set(text)
+                lbl.Text = text
+            end
+            return Label
         end
 
-        -- SECTION
-        function Tab:CreateSection(e)
-            e = e or {}
+        -- ── Section divider ───────────────────────────────────
+        function Tab:CreateSection(elCfg)
+            elCfg = elCfg or {}
             local row = new("Frame", {
-                Size = UDim2.new(1, 0, 0, 28),
+                Size             = UDim2.new(1, 0, 0, 30),
                 BackgroundColor3 = S.surface2,
-                BorderSizePixel = 0,
-                LayoutOrder = no(),
+                BorderSizePixel  = 0,
+                LayoutOrder      = nextOrder(),
             }, tabFrame)
-            new("Frame", { Size = UDim2.new(1,0,0,1), BackgroundColor3 = S.border, BorderSizePixel = 0 }, row)
-            new("Frame", { Size = UDim2.new(1,0,0,1), Position = UDim2.new(0,0,1,-1), BackgroundColor3 = S.border, BorderSizePixel = 0 }, row)
-            -- Accent left bar
-            new("Frame", { Size = UDim2.new(0,3,1,0), BackgroundColor3 = S.accent, BorderSizePixel = 0 }, row)
+            new("Frame", { Size=UDim2.new(1,0,0,1), BackgroundColor3=S.border, BorderSizePixel=0 }, row)
+            new("Frame", { Size=UDim2.new(1,0,0,1), Position=UDim2.new(0,0,1,-1), BackgroundColor3=S.border, BorderSizePixel=0 }, row)
+
             new("TextLabel", {
-                Size = UDim2.new(1, -16, 1, 0),
-                Position = UDim2.fromOffset(10, 0),
+                Size             = UDim2.new(1, -16, 1, 0),
+                Position         = UDim2.fromOffset(8, 0),
                 BackgroundTransparency = 1,
-                Text = "// "..(e.Name or "Section"):upper(),
-                TextColor3 = Color3.fromRGB(160, 160, 170),
-                Font = S.font,
-                TextSize = 9,
-                TextXAlignment = Enum.TextXAlignment.Left,
+                Text             = "// " .. (elCfg.Name or "Section"):upper(),
+                TextColor3       = S.muted,
+                FontFace         = Font.fromEnum(S.fontMono),
+                TextSize         = 9,
+                TextXAlignment   = Enum.TextXAlignment.Left,
             }, row)
         end
 
@@ -914,56 +1119,77 @@ function BlockUI:CreateWindow(cfg)
     return Window
 end
 
--- Boot notify
-task.delay(0.5, function()
-    BlockUI:Notify({
-        Title   = "BlockUI v1.1.0",
-        Content = "Library loaded successfully.",
-        Type    = "success",
-        Duration = 3,
-    })
-end)
-
+-- ── Done ─────────────────────────────────────────────────────
 return BlockUI
 
 --[[
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  EXAMPLE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  EXAMPLE USAGE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-local BlockUI = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/GulleDK11/rflhub/refs/heads/main/BlockUI.lua"
-))()
+local BlockUI = require(script.Parent.BlockUI) -- eller dit modul
 
-local Win = BlockUI:CreateWindow({
+local Window = BlockUI:CreateWindow({
     Name     = "My Script",
-    Subtitle = "BlockUI v1.1.0",
+    Subtitle = "Made with BlockUI v1.0.1",
+    ConfigurationSaving = {
+        Enabled  = true,
+        FileName = "MyScript_Config",
+    },
 })
 
-local Main = Win:CreateTab({ Name = "Main" })
+local Tab = Window:CreateTab({ Name = "Main" })
+local Tab2 = Window:CreateTab({ Name = "Visuals" })
 
-Main:CreateSection({ Name = "Player" })
+Tab:CreateSection({ Name = "Movement" })
 
-Main:CreateToggle({
-    Name = "Speed", Description = "x6 walkspeed",
-    CurrentValue = false, Flag = "speed",
-    Callback = function(v)
-        game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = v and 100 or 16
+Tab:CreateToggle({
+    Name         = "Speed Hack",
+    Description  = "Sets WalkSpeed to 100",
+    CurrentValue = false,
+    Flag         = "SpeedHack",
+    Callback     = function(val)
+        game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = val and 100 or 16
     end,
 })
 
-Main:CreateSlider({
-    Name = "Jump Power", Range = {0, 200}, Increment = 5,
-    Suffix = "pow", CurrentValue = 50, Flag = "jump",
-    Callback = function(v)
-        game.Players.LocalPlayer.Character.Humanoid.JumpPower = v
+Tab:CreateSlider({
+    Name         = "Walk Speed",
+    Range        = {0, 200},
+    Increment    = 5,
+    Suffix       = "studs/s",
+    CurrentValue = 16,
+    Flag         = "WalkSpeed",
+    Callback     = function(val)
+        game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = val
     end,
 })
 
-Main:CreateButton({
-    Name = "Rejoin",
+Tab:CreateButton({
+    Name     = "Teleport to Spawn",
     Callback = function()
-        game:GetService("TeleportService"):Teleport(game.PlaceId)
+        game.Players.LocalPlayer.Character:MoveTo(Vector3.new(0,5,0))
+        BlockUI:Notify({ Title = "Teleported", Content = "Moved to spawn.", Type = "success" })
+    end,
+})
+
+Tab:CreateInput({
+    Name                  = "Player Name",
+    PlaceholderText       = "Enter username...",
+    RemoveTextAfterFocusLost = false,
+    Flag                  = "TargetPlayer",
+    Callback              = function(text)
+        print("Target set to:", text)
+    end,
+})
+
+Tab:CreateDropdown({
+    Name          = "Game Mode",
+    Options       = {"Normal", "Hard", "Insane"},
+    CurrentOption = {"Normal"},
+    Flag          = "GameMode",
+    Callback      = function(opts)
+        print("Selected:", opts[1])
     end,
 })
 
