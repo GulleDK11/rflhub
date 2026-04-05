@@ -6,8 +6,8 @@
     ██████╔╝███████╗╚██████╔╝╚██████╗██║  ██╗╚██████╔╝██║
     ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝
 
-    BlockUI v2.0.0 — Custom hub (monokrom “stjerne/metal” efter logo, sølv-accent)
-    CreateWindow → LogoImage, ShowProfile (default true), DeveloperUserIds, DevBadgeImage (rbxasset ved DEV)
+    BlockUI v3.0.0 — Nyt layout (ingen Zypher-slice): rene kort/rækker, ens spacing, glidende notify
+    CreateWindow → LoadNotify (default true), LoadNotifyTitle/Text/Duration, + LogoImage, ShowProfile, DeveloperUserIds …
 
     Usage:
         local BlockUI = require(pathToModule)  -- eller dit loadstring-setup
@@ -17,7 +17,8 @@
         Tab     → CreateButton, CreateToggle, CreateSlider,
                   CreateInput, CreateDropdown, CreateLabel
         BlockUI → Notify, LoadConfiguration, SaveConfiguration
-        CreateWindow → ToggleKey, LogoImage, ShowProfile, DeveloperUserIds, DevBadgeImage, ProfileTag
+        CreateWindow → ToggleKey, LogoImage, ShowProfile, DeveloperUserIds, DevBadgeImage, ProfileTag,
+                       LoadNotify (default true), LoadNotifyTitle, LoadNotifyText, LoadNotifyDuration, LoadNotifyType
         VIGTIG: Kun én ToggleKey-linje i tabellen — gentagne nøgler overskrives (sidste vinder).
 --]]
 
@@ -34,12 +35,7 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer    = Players.LocalPlayer
 local PlayerGui      = LocalPlayer:WaitForChild("PlayerGui")
 
--- ── 9-slice panel (Zypher-asset) ──
-local SLICE_ASSET = "rbxassetid://3570695787"
-local SLICE_RECT = Rect.new(100, 100, 100, 100)
-local SLICE_SCALE = 0.042
-
--- Palette: kul/stål som dit stjerne-logo — sølv/hvid som “mejslet” accent (ikke lilla UI)
+-- Palette + spacing (ét samlet designsystem)
 local S = {
     bg             = Color3.fromRGB(12, 12, 14),
     bgLift         = Color3.fromRGB(22, 22, 26),
@@ -77,6 +73,12 @@ local S = {
     border         = Color3.fromRGB(48, 50, 56),
     strokeEtch     = Color3.fromRGB(90, 92, 100),
     black          = Color3.fromRGB(6, 6, 8),
+    row            = Color3.fromRGB(20, 21, 26),
+    rowHover       = Color3.fromRGB(28, 29, 36),
+    btn            = Color3.fromRGB(36, 38, 48),
+    btnHover       = Color3.fromRGB(48, 50, 62),
+    trackBg        = Color3.fromRGB(22, 23, 28),
+    tabPill        = Color3.fromRGB(32, 34, 42),
 }
 -- Bagudkompatibilitet for resten af filen
 S.shell = S.bg
@@ -89,13 +91,15 @@ S.toggleOnGlow = S.accentGlow
 S.accent2 = S.accentSoft
 S.accentBar = S.accent
 
-local MAIN_W, MAIN_H = 736, 492
-local SIDEBAR_W = 178
-local PROFILE_H = 100
-local TOP_STRIP = 4
-local HEADER_H = 52
-local CORNER_MAIN = UDim.new(0, 16)
-local INNER_PAD = 10
+local MAIN_W, MAIN_H = 748, 500
+local SIDEBAR_W = 184
+local PROFILE_H = 102
+local TOP_STRIP = 2
+local HEADER_H = 54
+local CORNER_MAIN = UDim.new(0, 18)
+local INNER_PAD = 12
+local GAP = 10
+local ROW_R = UDim.new(0, 12)
 local function corner(inst, r)
     local c = inst:FindFirstChildOfClass("UICorner")
     if not c then
@@ -220,57 +224,60 @@ local notifGui = new("ScreenGui", {
 }, PlayerGui)
 
 local notifHolder = new("Frame", {
-    Size              = UDim2.new(0, 280, 1, 0),
-    Position          = UDim2.new(1, -295, 0, 16),
+    Size              = UDim2.new(0, 320, 1, 0),
+    Position          = UDim2.new(1, -336, 0, 20),
     BackgroundTransparency = 1,
     AnchorPoint       = Vector2.new(0, 0),
 }, notifGui)
 
 new("UIListLayout", {
-    SortOrder        = Enum.SortOrder.LayoutOrder,
+    SortOrder         = Enum.SortOrder.LayoutOrder,
     VerticalAlignment = Enum.VerticalAlignment.Top,
-    Padding          = UDim.new(0, 8),
-    FillDirection    = Enum.FillDirection.Vertical,
+    Padding           = UDim.new(0, GAP),
+    FillDirection     = Enum.FillDirection.Vertical,
 }, notifHolder)
 
 function BlockUI:Notify(cfg)
     cfg = cfg or {}
-    local title   = cfg.Title   or "Notification"
-    local content = cfg.Content or ""
-    local ntype   = cfg.Type    or "info"
-    local duration = cfg.Duration or 4
+    local title    = cfg.Title    or "Notifikation"
+    local content  = cfg.Content  or ""
+    local ntype    = cfg.Type     or "info"
+    local duration = cfg.Duration or 4.2
 
     local accentCol = ntype == "success" and S.success
                    or ntype == "warning" and S.warning
                    or ntype == "error"   and S.danger
-                   or S.metalHighlight
+                   or S.accentGlow
 
     local card = new("Frame", {
         Size             = UDim2.new(1, 0, 0, 0),
         AutomaticSize    = Enum.AutomaticSize.Y,
-        BackgroundColor3 = S.surface,
+        BackgroundColor3 = S.bgLift,
+        BackgroundTransparency = 0.08,
         BorderSizePixel  = 0,
-        ClipsDescendants = true,
     }, notifHolder)
-    corner(card, S.radiusS)
-    new("UIStroke", { Color = S.border, Thickness = 1, Transparency = 0.4 }, card)
-
-    new("UIListLayout", {
-        SortOrder              = Enum.SortOrder.LayoutOrder,
-        FillDirection          = Enum.FillDirection.Vertical,
-        HorizontalAlignment    = Enum.HorizontalAlignment.Center,
-        Padding                = UDim.new(0, 0),
+    corner(card, UDim.new(0, 14))
+    new("UIStroke", {
+        Color = S.border,
+        Thickness = 1,
+        Transparency = 0.55,
     }, card)
 
-    new("Frame", {
-        Name             = "AccentTop",
+    new("UIListLayout", {
+        SortOrder       = Enum.SortOrder.LayoutOrder,
+        Padding         = UDim.new(0, 0),
+        HorizontalAlignment = Enum.HorizontalAlignment.Center,
+    }, card)
+
+    local stripe = new("Frame", {
         Size             = UDim2.new(1, 0, 0, 3),
         BackgroundColor3 = accentCol,
         BorderSizePixel  = 0,
         LayoutOrder      = 0,
     }, card)
+    corner(stripe, UDim.new(0, 2))
 
-    local textCol = new("Frame", {
+    local body = new("Frame", {
         Size             = UDim2.new(1, 0, 0, 0),
         AutomaticSize    = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1,
@@ -279,31 +286,31 @@ function BlockUI:Notify(cfg)
     }, card)
 
     new("UIPadding", {
-        PaddingTop    = UDim.new(0, 10),
-        PaddingBottom = UDim.new(0, 12),
-        PaddingLeft   = UDim.new(0, 14),
-        PaddingRight  = UDim.new(0, 14),
-    }, textCol)
+        PaddingTop    = UDim.new(0, 12),
+        PaddingBottom = UDim.new(0, 14),
+        PaddingLeft   = UDim.new(0, 16),
+        PaddingRight  = UDim.new(0, 16),
+    }, body)
 
     new("UIListLayout", {
         SortOrder = Enum.SortOrder.LayoutOrder,
         Padding   = UDim.new(0, 4),
-    }, textCol)
+    }, body)
 
-    new("TextLabel", {
+    local t1 = new("TextLabel", {
         Size             = UDim2.new(1, 0, 0, 0),
         AutomaticSize    = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1,
         Text             = title,
         TextColor3       = S.text,
-        FontFace         = Font.fromEnum(S.font),
-        TextSize         = 14,
+        FontFace         = Font.fromEnum(Enum.Font.GothamBold),
+        TextSize         = 15,
         TextXAlignment   = Enum.TextXAlignment.Left,
         TextWrapped      = true,
         LayoutOrder      = 1,
-    }, textCol)
+    }, body)
 
-    new("TextLabel", {
+    local t2 = new("TextLabel", {
         Size             = UDim2.new(1, 0, 0, 0),
         AutomaticSize    = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1,
@@ -314,23 +321,38 @@ function BlockUI:Notify(cfg)
         TextXAlignment   = Enum.TextXAlignment.Left,
         TextWrapped      = true,
         LayoutOrder      = 2,
-    }, textCol)
+    }, body)
 
-    -- slide in
-    card.Position = UDim2.new(1, 24, 0, 0)
-    tween(card, TweenInfo.new(0.28, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+    t1.TextTransparency = 1
+    t2.TextTransparency = 1
+    card.BackgroundTransparency = 1
+    stripe.BackgroundTransparency = 1
+
+    card.Position = UDim2.new(1, 40, 0, 0)
+    tween(card, TweenInfo.new(0.32, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
         Position = UDim2.new(0, 0, 0, 0),
+        BackgroundTransparency = 0.08,
     })
+    tween(stripe, TweenInfo.new(0.32, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        BackgroundTransparency = 0,
+    })
+    tween(t1, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { TextTransparency = 0 })
+    tween(t2, TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { TextTransparency = 0 })
 
     task.delay(duration, function()
         if not card.Parent then
             return
         end
-        tween(card, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
-            Position = UDim2.new(1, 28, 0, 0),
+        tween(card, TweenInfo.new(0.26, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+            Position = UDim2.new(1, 48, 0, 0),
             BackgroundTransparency = 1,
         })
-        task.wait(0.24)
+        tween(stripe, TweenInfo.new(0.26, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+            BackgroundTransparency = 1,
+        })
+        tween(t1, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { TextTransparency = 1 })
+        tween(t2, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { TextTransparency = 1 })
+        task.wait(0.28)
         if card.Parent then
             card:Destroy()
         end
@@ -678,22 +700,20 @@ function BlockUI:CreateWindow(cfg)
         PaddingLeft = UDim.new(0, 0),
     }, sidebar)
 
-    local tabSelector = new("ImageLabel", {
+    local tabSelector = new("Frame", {
         Name             = "Categoriesselector",
-        BackgroundTransparency = 1,
+        BackgroundColor3 = S.tabPill,
+        BackgroundTransparency = 0.2,
+        BorderSizePixel  = 0,
         Position         = UDim2.fromOffset(8, nextTabY),
         Size             = UDim2.new(1, -16, 0, 32),
-        Image            = SLICE_ASSET,
-        ImageColor3      = S.panelRaised,
-        ScaleType        = Enum.ScaleType.Slice,
-        SliceCenter      = SLICE_RECT,
-        SliceScale       = SLICE_SCALE,
         ZIndex           = 1,
     }, sidebar)
+    corner(tabSelector, UDim.new(0, 10))
     new("UIStroke", {
         Color = S.strokeEtch,
         Thickness = 1,
-        Transparency = 0.45,
+        Transparency = 0.5,
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
     }, tabSelector)
 
@@ -970,7 +990,7 @@ function BlockUI:CreateWindow(cfg)
 
         local layout = new("UIListLayout", {
             SortOrder        = Enum.SortOrder.LayoutOrder,
-            Padding          = UDim.new(0, 10),
+            Padding          = UDim.new(0, GAP),
         }, tabFrame)
 
         new("UIPadding", {
@@ -1003,7 +1023,7 @@ function BlockUI:CreateWindow(cfg)
         local order = 0
         local function nextOrder() order = order + 1; return order end
 
-        -- ── Button (Zypher-lignende 9-slice ImageButton) ───────
+        -- ── Button (kort med UICorner) ─────────────────────────
         function Tab:CreateButton(elCfg)
             elCfg = elCfg or {}
             local iconPrefix = (elCfg.Icon and elCfg.Icon ~= "") and (elCfg.Icon .. "  ") or ""
@@ -1012,23 +1032,20 @@ function BlockUI:CreateWindow(cfg)
                 labelText = labelText .. "  ·  " .. elCfg.ButtonText
             end
 
-            local imgBtn = new("ImageButton", {
-                Size             = UDim2.new(1, 0, 0, 38),
-                BackgroundTransparency = 1,
+            local imgBtn = new("TextButton", {
+                Size             = UDim2.new(1, 0, 0, 40),
+                BackgroundColor3 = S.btn,
+                BackgroundTransparency = 0,
                 BorderSizePixel  = 0,
-                Image            = SLICE_ASSET,
-                ImageColor3      = S.darkContrast,
-                ScaleType        = Enum.ScaleType.Slice,
-                SliceCenter      = SLICE_RECT,
-                SliceScale       = SLICE_SCALE,
+                Text             = "",
                 AutoButtonColor  = false,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
-            corner(imgBtn, S.radiusS)
+            corner(imgBtn, ROW_R)
             new("UIStroke", {
-                Color = S.accent,
+                Color = S.border,
                 Thickness = 1,
-                Transparency = 0.68,
+                Transparency = 0.55,
                 ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
             }, imgBtn)
 
@@ -1047,12 +1064,12 @@ function BlockUI:CreateWindow(cfg)
 
             imgBtn.MouseEnter:Connect(function()
                 tween(imgBtn, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                    ImageColor3 = S.sectionTone,
+                    BackgroundColor3 = S.btnHover,
                 })
             end)
             imgBtn.MouseLeave:Connect(function()
                 tween(imgBtn, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                    ImageColor3 = S.darkContrast,
+                    BackgroundColor3 = S.btn,
                 })
             end)
 
@@ -1067,39 +1084,36 @@ function BlockUI:CreateWindow(cfg)
             return Button
         end
 
-        -- ── Toggle (Zypher-lignende række + slice-switch) ─────
+        -- ── Toggle (række + pill-switch) ───────────────────────
         function Tab:CreateToggle(elCfg)
             elCfg = elCfg or {}
             local flag = elCfg.Flag
             local value = elCfg.CurrentValue or false
             if flag then BlockUI.Flags[flag] = value end
 
-            local rowH = elCfg.Description and 56 or 36
-            local toggleBtn = new("ImageButton", {
+            local rowH = elCfg.Description and 58 or 40
+            local toggleBtn = new("TextButton", {
                 Size             = UDim2.new(1, 0, 0, rowH),
-                BackgroundTransparency = 1,
+                BackgroundColor3 = S.row,
+                BackgroundTransparency = 0,
                 BorderSizePixel  = 0,
-                Image            = SLICE_ASSET,
-                ImageColor3      = S.darkContrast,
-                ScaleType        = Enum.ScaleType.Slice,
-                SliceCenter      = SLICE_RECT,
-                SliceScale       = SLICE_SCALE,
+                Text             = "",
                 AutoButtonColor  = false,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
-            corner(toggleBtn, S.radiusS)
+            corner(toggleBtn, ROW_R)
             new("UIStroke", {
-                Color = S.accent,
+                Color = S.border,
                 Thickness = 1,
-                Transparency = 0.72,
+                Transparency = 0.55,
                 ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
             }, toggleBtn)
 
             local iconT = (elCfg.Icon and elCfg.Icon ~= "") and (elCfg.Icon .. "  ") or ""
-            local titleY = elCfg.Description and 6 or 0
+            local titleY = elCfg.Description and 8 or 0
             new("TextLabel", {
                 Size             = UDim2.new(1, -80, 0, 22),
-                Position         = UDim2.new(0, 12, 0, titleY + (elCfg.Description and 0 or 7)),
+                Position         = UDim2.new(0, 14, 0, titleY + (elCfg.Description and 0 or 9)),
                 BackgroundTransparency = 1,
                 Text             = iconT .. (elCfg.Name or "Toggle"),
                 TextColor3       = S.text,
@@ -1113,7 +1127,7 @@ function BlockUI:CreateWindow(cfg)
             if elCfg.Description then
                 new("TextLabel", {
                     Size             = UDim2.new(1, -80, 0, 18),
-                    Position         = UDim2.fromOffset(12, 30),
+                    Position         = UDim2.fromOffset(14, 32),
                     BackgroundTransparency = 1,
                     Text             = elCfg.Description,
                     TextColor3       = S.muted,
@@ -1124,48 +1138,51 @@ function BlockUI:CreateWindow(cfg)
                 }, toggleBtn)
             end
 
-            local toggleBack = new("ImageLabel", {
-                Size             = UDim2.new(0, 54, 0, 26),
-                Position         = UDim2.new(1, -62, 0.5, -13),
-                BackgroundTransparency = 1,
-                Image            = SLICE_ASSET,
-                ImageColor3      = S.charcoal,
-                ScaleType        = Enum.ScaleType.Slice,
-                SliceCenter      = SLICE_RECT,
-                SliceScale       = SLICE_SCALE,
+            local toggleBack = new("Frame", {
+                Size             = UDim2.new(0, 52, 0, 28),
+                Position         = UDim2.new(1, -66, 0.5, -14),
+                BackgroundColor3 = S.trackBg,
+                BorderSizePixel  = 0,
                 Active           = false,
             }, toggleBtn)
-
-            local toggleKnob = new("ImageLabel", {
-                Size             = UDim2.new(0, 24, 0, 18),
-                Position         = UDim2.fromOffset(4, 4),
-                BackgroundTransparency = 1,
-                Image            = SLICE_ASSET,
-                ImageColor3      = Color3.fromRGB(200, 200, 208),
-                ScaleType        = Enum.ScaleType.Slice,
-                SliceCenter      = SLICE_RECT,
-                SliceScale       = SLICE_SCALE,
-                Active           = false,
+            corner(toggleBack, UDim.new(1, 0))
+            new("UIStroke", {
+                Color = S.border,
+                Thickness = 1,
+                Transparency = 0.45,
             }, toggleBack)
+
+            local toggleKnob = new("Frame", {
+                Size             = UDim2.new(0, 22, 0, 22),
+                Position         = UDim2.fromOffset(3, 3),
+                BackgroundColor3 = Color3.fromRGB(200, 200, 208),
+                BorderSizePixel  = 0,
+            }, toggleBack)
+            corner(toggleKnob, UDim.new(1, 0))
+            new("UIStroke", {
+                Color = S.accentSoft,
+                Thickness = 1,
+                Transparency = 0.4,
+            }, toggleKnob)
 
             local function setState(val, silent)
                 value = val
                 if flag then BlockUI.Flags[flag] = val end
                 if val then
-                    tween(toggleBack, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                        ImageColor3 = S.toggleOn,
+                    tween(toggleBack, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        BackgroundColor3 = S.toggleOn,
                     })
-                    tween(toggleKnob, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                        Position = UDim2.fromOffset(26, 4),
-                        ImageColor3 = S.toggleThumb,
+                    tween(toggleKnob, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        Position = UDim2.fromOffset(27, 3),
+                        BackgroundColor3 = S.toggleThumb,
                     })
                 else
-                    tween(toggleBack, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                        ImageColor3 = S.charcoal,
+                    tween(toggleBack, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        BackgroundColor3 = S.trackBg,
                     })
-                    tween(toggleKnob, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                        Position = UDim2.fromOffset(4, 4),
-                        ImageColor3 = Color3.fromRGB(200, 200, 208),
+                    tween(toggleKnob, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        Position = UDim2.fromOffset(3, 3),
+                        BackgroundColor3 = Color3.fromRGB(200, 200, 208),
                     })
                 end
                 if not silent and elCfg.Callback then
@@ -1196,22 +1213,17 @@ function BlockUI:CreateWindow(cfg)
             local value   = elCfg.CurrentValue or range[1]
             if flag then BlockUI.Flags[flag] = value end
 
-            local row = new("ImageLabel", {
-                Size             = UDim2.new(1, 0, 0, 64),
-                BackgroundTransparency = 1,
+            local row = new("Frame", {
+                Size             = UDim2.new(1, 0, 0, 66),
+                BackgroundColor3 = S.row,
                 BorderSizePixel  = 0,
-                Image            = SLICE_ASSET,
-                ImageColor3      = S.darkContrast,
-                ScaleType        = Enum.ScaleType.Slice,
-                SliceCenter      = SLICE_RECT,
-                SliceScale       = SLICE_SCALE,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
-            corner(row, S.radiusS)
+            corner(row, ROW_R)
             new("UIStroke", {
-                Color = S.accent,
+                Color = S.border,
                 Thickness = 1,
-                Transparency = 0.72,
+                Transparency = 0.55,
                 ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
             }, row)
 
@@ -1240,8 +1252,8 @@ function BlockUI:CreateWindow(cfg)
             -- Track bg
             local trackBg = new("Frame", {
                 Size             = UDim2.new(1, -28, 0, 6),
-                Position         = UDim2.fromOffset(14, 40),
-                BackgroundColor3 = S.surface2,
+                Position         = UDim2.fromOffset(14, 42),
+                BackgroundColor3 = S.trackBg,
                 BorderSizePixel  = 0,
             }, row)
             corner(trackBg, UDim.new(1, 0))
@@ -1630,6 +1642,24 @@ function BlockUI:CreateWindow(cfg)
         })
     end
 
+    if cfg.LoadNotify ~= false then
+        task.defer(function()
+            if not gui.Parent then
+                return
+            end
+            local dur = cfg.LoadNotifyDuration
+            if type(dur) ~= "number" then
+                dur = 4.5
+            end
+            BlockUI:Notify({
+                Title    = cfg.LoadNotifyTitle or winName,
+                Content  = cfg.LoadNotifyText or "Scriptet er klar.",
+                Type     = cfg.LoadNotifyType or "success",
+                Duration = dur,
+            })
+        end)
+    end
+
     table.insert(BlockUI._windows, Window)
     return Window
 end
@@ -1660,6 +1690,11 @@ local Window = BlockUI:CreateWindow({
     Name     = "Mit Script",
     Subtitle = "Powered by BlockUI",
     ToggleKey = Enum.KeyCode.RightControl,
+    -- LoadNotify = false,  -- slå start-notify fra
+    -- LoadNotifyTitle = "Hub",
+    -- LoadNotifyText = "Indlæst.",
+    -- LoadNotifyDuration = 5,
+    -- LoadNotifyType = "success",  -- info | warning | error
     LogoImage = 74523675899900,
     -- Dit Roblox UserId (tal) — ikke det samme som et billede-id
     DeveloperUserIds = { 10770498428 },
