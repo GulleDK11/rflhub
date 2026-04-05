@@ -221,8 +221,8 @@ local _defaultDeveloperUserIds = {
 
 local _defaultTokens = {
 	Window = {
-		Width = 720,
-		Height = 520,
+		Width = 760,
+		Height = 540,
 		MinWidth = 380,
 		MinHeight = 280,
 		ResizeGripSize = 18,
@@ -239,7 +239,7 @@ local _defaultTokens = {
 	},
 	Tab = {
 		SidebarWidth = 168,
-		ContentGap = 12,
+		ContentGap = 14,
 		ItemHeight = 34,
 		ItemRadius = 6,
 		SidebarPadding = 10,
@@ -248,16 +248,23 @@ local _defaultTokens = {
 		PageScrollBarThickness = 3,
 		SearchHeight = 32,
 		SidebarFooterHeight = 56,
+		-- Fanens scroll-indhold: luft omkring to-kolonne layout
+		PagePaddingTop = 10,
+		PagePaddingBottom = 14,
+		PagePaddingLeft = 10,
+		PagePaddingRight = 12,
+		ColumnGap = 16,
+		SectionStackPadding = 14,
 	},
 	Section = {
 		HeaderTextSize = 12,
 		DescriptionTextSize = 11,
-		TitleSpacing = 6,
+		TitleSpacing = 8,
 		BoxRadius = 6,
 		InnerPadding = 0,
-		RowSpacing = 5,
-		RowPaddingX = 10,
-		RowPaddingY = 6,
+		RowSpacing = 8,
+		RowPaddingX = 12,
+		RowPaddingY = 8,
 		RowStrokeTransparency = 0.93,
 	},
 	Control = {
@@ -265,14 +272,14 @@ local _defaultTokens = {
 		TogglePill = true,
 		LabelTextSize = 13,
 		SecondaryTextSize = 12,
-		ButtonHeight = 32,
-		ToggleRowHeight = 34,
-		SliderBlockHeight = 40,
+		ButtonHeight = 34,
+		ToggleRowHeight = 38,
+		SliderBlockHeight = 44,
 		SliderTrackThickness = 5,
-		InputRowHeight = 50,
-		InputHeight = 28,
-		KeybindRowHeight = 28,
-		DropdownRowOpen = 28,
+		InputRowHeight = 54,
+		InputHeight = 30,
+		KeybindRowHeight = 32,
+		DropdownRowOpen = 30,
 	},
 	Animation = {
 		WindowOpenDuration = 0.25,
@@ -1238,10 +1245,10 @@ function Core.CreateWindow(opts)
 		Parent = contentShell,
 	})
 	Utils.Create("UIPadding", {
-		PaddingTop = UDim.new(0, 8),
-		PaddingBottom = UDim.new(0, 8),
-		PaddingLeft = UDim.new(0, 10),
-		PaddingRight = UDim.new(0, 10),
+		PaddingTop = UDim.new(0, 10),
+		PaddingBottom = UDim.new(0, 10),
+		PaddingLeft = UDim.new(0, 12),
+		PaddingRight = UDim.new(0, 12),
 		Parent = contentShell,
 	})
 
@@ -1736,11 +1743,16 @@ function Core.CreateWindow(opts)
 			AutomaticSize = Enum.AutomaticSize.Y,
 			Parent = page,
 		})
+		local tTab = tok.Tab
+		local pagePT = tTab.PagePaddingTop or 6
+		local pagePB = tTab.PagePaddingBottom or 10
+		local pagePL = tTab.PagePaddingLeft or 6
+		local pagePR = tTab.PagePaddingRight or 8
 		Utils.Create("UIPadding", {
-			PaddingTop = UDim.new(0, 6),
-			PaddingBottom = UDim.new(0, 10),
-			PaddingLeft = UDim.new(0, 6),
-			PaddingRight = UDim.new(0, 8),
+			PaddingTop = UDim.new(0, pagePT),
+			PaddingBottom = UDim.new(0, pagePB),
+			PaddingLeft = UDim.new(0, pagePL),
+			PaddingRight = UDim.new(0, pagePR),
 			Parent = pageContent,
 		})
 		local splitRow = Utils.Create("Frame", {
@@ -1751,15 +1763,15 @@ function Core.CreateWindow(opts)
 			AutomaticSize = Enum.AutomaticSize.Y,
 			Parent = pageContent,
 		})
+		local colGap = tTab.ColumnGap or 10
 		Utils.Create("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
 			HorizontalAlignment = Enum.HorizontalAlignment.Center,
 			VerticalAlignment = Enum.VerticalAlignment.Top,
-			Padding = UDim.new(0, 10),
+			Padding = UDim.new(0, colGap),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = splitRow,
 		})
-		local colGap = 10
 		local colW = UDim2.new(0.5, -math.floor(colGap / 2), 0, 0)
 		local leftCol = Utils.Create("Frame", {
 			Name = "ColumnLeft",
@@ -1770,8 +1782,9 @@ function Core.CreateWindow(opts)
 			LayoutOrder = 0,
 			Parent = splitRow,
 		})
+		local sectStack = tTab.SectionStackPadding or 8
 		Utils.Create("UIListLayout", {
-			Padding = UDim.new(0, 8),
+			Padding = UDim.new(0, sectStack),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = leftCol,
 		})
@@ -1785,7 +1798,7 @@ function Core.CreateWindow(opts)
 			Parent = splitRow,
 		})
 		Utils.Create("UIListLayout", {
-			Padding = UDim.new(0, 8),
+			Padding = UDim.new(0, sectStack),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = rightCol,
 		})
