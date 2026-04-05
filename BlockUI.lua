@@ -6,7 +6,7 @@
     ██████╔╝███████╗╚██████╔╝╚██████╗██║  ██╗╚██████╔╝██║
     ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝
 
-    BlockUI v1.0.4 — sikre callbacks + slider ved load
+    BlockUI v1.0.5 — Frame: InputBegan (ikke MouseButton1Click)
     Sharp. Fast. Clean.
 
     Usage:
@@ -646,7 +646,12 @@ function BlockUI:CreateWindow(cfg)
             switchToTab(tabName)
         end
         btn.MouseButton1Click:Connect(pickTab)
-        rowWrap.MouseButton1Click:Connect(pickTab)
+        -- Frame har ikke MouseButton1Click — brug InputBegan til klik på kant/stribe
+        rowWrap.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                pickTab()
+            end
+        end)
 
         -- Auto-activate first tab
         if not activeTab then
