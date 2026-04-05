@@ -300,6 +300,8 @@ local _defaultTokens = {
 		KeyGateOpenScaleStart = 0.92,
 		KeyGateCloseDuration = 0.22,
 		KeyGateCloseScaleEnd = 0.86,
+		-- Tom pause efter key-ScreenGui er væk, før hub oprettes (mere rolig overgang)
+		KeyGatePauseBeforeHub = 0.2,
 	},
 	Notification = {
 		Width = 280,
@@ -3252,6 +3254,10 @@ function Library:Init()
 		if keyCloseEndScale == nil then
 			keyCloseEndScale = 0.86
 		end
+		local keyPauseBeforeHub = animTok.KeyGatePauseBeforeHub
+		if keyPauseBeforeHub == nil then
+			keyPauseBeforeHub = 0.1
+		end
 
 		local titleText = opts.Title or opts.KeyTitle or "Key required"
 		local descText = opts.Description or opts.Subtitle or "Enter your key to continue."
@@ -3513,17 +3519,23 @@ function Library:Init()
 			end
 			submitBtn.Active = false
 			local tiClose = TweenInfo.new(keyCloseDur, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-			Utils.Tween(cardUIScale, tiClose, { Scale = keyCloseEndScale })
+			local twClose = Utils.Tween(cardUIScale, tiClose, { Scale = keyCloseEndScale })
 			if cardStroke then
 				Utils.Tween(cardStroke, tiClose, { Transparency = 1 })
 			end
-			task.delay(keyCloseDur, function()
+			task.spawn(function()
+				local state = twClose.Completed:Wait()
+				if state ~= Enum.PlaybackState.Completed then
+					return
+				end
 				if screen.Parent then
+					screen.Enabled = false
 					screen:Destroy()
 				end
-				task.defer(function()
-					finishOpen(trimmed)
-				end)
+				if keyPauseBeforeHub > 0 then
+					task.wait(keyPauseBeforeHub)
+				end
+				finishOpen(trimmed)
 			end)
 		end
 
