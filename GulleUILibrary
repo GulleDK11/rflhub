@@ -318,7 +318,7 @@ local _defaultTokens = {
 		KeyGateContentFadeIn = true,
 		KeyGatePauseBeforeHub = 0.2,
 		TabButtonTweenDuration = 0.14,
-		TabContentFadeInDuration = 0.25,
+		TabContentFadeInDuration = 0.45,
 		TabContentFadeIn = true,
 	},
 	Notification = {
