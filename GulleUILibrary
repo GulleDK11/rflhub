@@ -93,6 +93,24 @@ function Utils.Tween(inst, ti, props)
 	return t
 end
 
+-- CanvasGroup giver GroupTransparency-fade på hele undertræet (Roblox 2022+). Returnerer nil hvis ikke tilgængelig.
+function Utils.TryCreateCanvasGroup(props)
+	local ok, cg = pcall(Instance.new, "CanvasGroup")
+	if not ok or cg == nil then
+		return nil
+	end
+	props = props or {}
+	cg.Name = props.Name or "GulleCanvasFade"
+	cg.BackgroundTransparency = 1
+	cg.BorderSizePixel = 0
+	cg.Size = props.Size or UDim2.fromScale(1, 1)
+	cg.Position = props.Position or UDim2.fromScale(0, 0)
+	cg.AnchorPoint = props.AnchorPoint or Vector2.new(0, 0)
+	cg.GroupTransparency = props.GroupTransparency ~= nil and props.GroupTransparency or 1
+	cg.Parent = props.Parent
+	return cg
+end
+
 -- Ripple is drawn in a ScreenGui overlay so tweened Size does not affect AutomaticSize on row cards.
 function Utils.Ripple(button, color, duration, screenPos)
 	if not button or not button:IsDescendantOf(game) then
@@ -295,11 +313,16 @@ local _defaultTokens = {
 		TabTween = 0.18,
 		TabContentScaleFrom = 0.97,
 		LoadingBarDuration = 0.35,
+		-- Hub: CanvasGroup-fade (kræver CanvasGroup; ellers springes over)
+		WindowContentFadeIn = true,
+		WindowContentFadeOut = true,
+		WindowCloseFadeDuration = 0.28,
 		-- Key gate (CreateWindowAfterKey): nil = fallback til WindowOpen*
 		KeyGateOpenDuration = 0.3,
 		KeyGateOpenScaleStart = 0.92,
 		KeyGateCloseDuration = 0.22,
 		KeyGateCloseScaleEnd = 0.86,
+		KeyGateContentFadeIn = true,
 		-- Tom pause efter key-ScreenGui er væk, før hub oprettes (mere rolig overgang)
 		KeyGatePauseBeforeHub = 0.2,
 	},
@@ -952,6 +975,13 @@ function Core.CreateWindow(opts)
 		Parent = resolveGuiParent(opts),
 	})
 
+	local windowFadeRoot = Utils.TryCreateCanvasGroup({
+		Name = "GulleWindowFade",
+		GroupTransparency = (tok.Animation.WindowContentFadeIn == false) and 0 or 1,
+		Parent = screen,
+	})
+	local mainParent = windowFadeRoot or screen
+
 	local main = Utils.Create("Frame", {
 		Name = "Main",
 		BackgroundColor3 = colors.Background,
@@ -959,7 +989,7 @@ function Core.CreateWindow(opts)
 		Position = UDim2.fromScale(0.5, 0.5),
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		ZIndex = 1,
-		Parent = screen,
+		Parent = mainParent,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = main })
 	local mainStroke = Utils.Create("UIStroke", {
@@ -1383,6 +1413,7 @@ function Core.CreateWindow(opts)
 
 	local window = {
 		_screen = screen,
+		_windowFadeRoot = windowFadeRoot,
 		_mainFrame = main,
 		_root = main,
 		_surface = tabList,
@@ -1638,7 +1669,31 @@ function Core.CreateWindow(opts)
 				c:Disconnect()
 			end
 		end
-		screen:Destroy()
+		local scr = self._screen
+		local fadeRoot = self._windowFadeRoot
+		local tt = Core.GetTokens({ _themeOverride = self._themeOverride })
+		local anim = tt.Animation or {}
+		local closeFadeDur = anim.WindowCloseFadeDuration or 0.28
+		local function finishScreenDestroy()
+			if scr and scr.Parent then
+				scr:Destroy()
+			end
+		end
+		if
+			fadeRoot
+			and fadeRoot.Parent
+			and fadeRoot:IsA("CanvasGroup")
+			and anim.WindowContentFadeOut ~= false
+		then
+			Utils.Tween(
+				fadeRoot,
+				TweenInfo.new(closeFadeDur, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+				{ GroupTransparency = 1 }
+			)
+			task.delay(closeFadeDur, finishScreenDestroy)
+		else
+			finishScreenDestroy()
+		end
 	end
 
 	function window:_syncTabStyles()
@@ -1939,7 +1994,7 @@ function Core.CreateWindow(opts)
 		return tabObj
 	end
 
-	Services.NotificationService:_ensureContainer(screen)
+	Services.NotificationService:_ensureContainer(windowFadeRoot or screen)
 
 	if configEnabled then
 		table.insert(Services.ConfigService._autoWindows, window)
@@ -1947,6 +2002,16 @@ function Core.CreateWindow(opts)
 
 	task.defer(function()
 		local openDur = tok.Animation.WindowOpenDuration or 0.32
+		if windowFadeRoot and windowFadeRoot:IsA("CanvasGroup") and tok.Animation.WindowContentFadeIn ~= false then
+			windowFadeRoot.GroupTransparency = 1
+			Utils.Tween(
+				windowFadeRoot,
+				TweenInfo.new(openDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ GroupTransparency = 0 }
+			)
+		elseif windowFadeRoot and windowFadeRoot:IsA("CanvasGroup") then
+			windowFadeRoot.GroupTransparency = 0
+		end
 		if mainUIScale and mainUIScale.Scale < 0.999 then
 			Utils.Tween(
 				mainUIScale,
@@ -3268,6 +3333,7 @@ function Library:Init()
 		local showClose = opts.ShowClose ~= false
 
 		local opened = false
+		local exiting = false
 
 		local screen = Utils.Create("ScreenGui", {
 			Name = "GulleUI_KeyGate",
@@ -3277,13 +3343,20 @@ function Library:Init()
 			Parent = guiParent,
 		})
 
+		local keyFadeRoot = Utils.TryCreateCanvasGroup({
+			Name = "GulleKeyFade",
+			GroupTransparency = (animTok.KeyGateContentFadeIn == false) and 0 or 1,
+			Parent = screen,
+		})
+		local overlayParent = keyFadeRoot or screen
+
 		local overlay = Utils.Create("Frame", {
 			Name = "Overlay",
 			BackgroundTransparency = 1,
 			Active = true,
 			BorderSizePixel = 0,
 			Size = UDim2.fromScale(1, 1),
-			Parent = screen,
+			Parent = overlayParent,
 		})
 
 		local card = Utils.Create("Frame", {
@@ -3508,6 +3581,30 @@ function Library:Init()
 			return w
 		end
 
+		local function destroyKeyScreen()
+			if screen.Parent then
+				screen.Enabled = false
+				screen:Destroy()
+			end
+		end
+
+		local function runKeyExitAnimations(ti, afterTween)
+			local twClose = Utils.Tween(cardUIScale, ti, { Scale = keyCloseEndScale })
+			if cardStroke then
+				Utils.Tween(cardStroke, ti, { Transparency = 1 })
+			end
+			if keyFadeRoot and keyFadeRoot:IsA("CanvasGroup") and animTok.KeyGateContentFadeIn ~= false then
+				Utils.Tween(keyFadeRoot, ti, { GroupTransparency = 1 })
+			end
+			task.spawn(function()
+				local state = twClose.Completed:Wait()
+				if state ~= Enum.PlaybackState.Completed then
+					return
+				end
+				afterTween()
+			end)
+		end
+
 		local function proceedValid(trimmed)
 			if opened then
 				return
@@ -3519,19 +3616,8 @@ function Library:Init()
 			end
 			submitBtn.Active = false
 			local tiClose = TweenInfo.new(keyCloseDur, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-			local twClose = Utils.Tween(cardUIScale, tiClose, { Scale = keyCloseEndScale })
-			if cardStroke then
-				Utils.Tween(cardStroke, tiClose, { Transparency = 1 })
-			end
-			task.spawn(function()
-				local state = twClose.Completed:Wait()
-				if state ~= Enum.PlaybackState.Completed then
-					return
-				end
-				if screen.Parent then
-					screen.Enabled = false
-					screen:Destroy()
-				end
+			runKeyExitAnimations(tiClose, function()
+				destroyKeyScreen()
 				if keyPauseBeforeHub > 0 then
 					task.wait(keyPauseBeforeHub)
 				end
@@ -3583,15 +3669,20 @@ function Library:Init()
 		submitBtn.MouseButton1Click:Connect(trySubmit)
 		if closeBtn then
 			closeBtn.MouseButton1Click:Connect(function()
-				if opened then
+				if opened or exiting then
 					return
 				end
-				screen:Destroy()
-				if type(opts.OnCancel) == "function" then
-					pcall(opts.OnCancel)
-				elseif type(opts.OnDenied) == "function" then
-					pcall(opts.OnDenied, "cancelled")
-				end
+				exiting = true
+				setBusy(true)
+				local tiCancel = TweenInfo.new(keyCloseDur * 0.92, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+				runKeyExitAnimations(tiCancel, function()
+					destroyKeyScreen()
+					if type(opts.OnCancel) == "function" then
+						pcall(opts.OnCancel)
+					elseif type(opts.OnDenied) == "function" then
+						pcall(opts.OnDenied, "cancelled")
+					end
+				end)
 			end)
 		end
 
@@ -3604,6 +3695,16 @@ function Library:Init()
 		end
 
 		task.defer(function()
+			if keyFadeRoot and keyFadeRoot:IsA("CanvasGroup") and animTok.KeyGateContentFadeIn ~= false then
+				keyFadeRoot.GroupTransparency = 1
+				Utils.Tween(
+					keyFadeRoot,
+					TweenInfo.new(keyOpenDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{ GroupTransparency = 0 }
+				)
+			elseif keyFadeRoot and keyFadeRoot:IsA("CanvasGroup") then
+				keyFadeRoot.GroupTransparency = 0
+			end
 			Utils.Tween(
 				cardUIScale,
 				TweenInfo.new(keyOpenDur, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
@@ -3620,9 +3721,15 @@ function Library:Init()
 
 		return {
 			Destroy = function()
-				if screen.Parent then
-					screen:Destroy()
+				if not screen.Parent or opened or exiting then
+					return
 				end
+				exiting = true
+				setBusy(true)
+				local tiKill = TweenInfo.new(keyCloseDur * 0.85, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+				runKeyExitAnimations(tiKill, function()
+					destroyKeyScreen()
+				end)
 			end,
 			Screen = screen,
 		}
