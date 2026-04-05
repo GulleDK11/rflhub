@@ -310,7 +310,7 @@ local _defaultTokens = {
 		-- < 1 = pop-in via UIScale; sæt til 1 eller nil for at slå fra
 		WindowOpenScaleStart = 0.94,
 		WindowStrokeFadeIn = true,
-		TabTween = 0.18,
+		TabTween = 0.32,
 		TabContentScaleFrom = 0.97,
 		LoadingBarDuration = 0.35,
 		-- Hub: CanvasGroup-fade (kræver CanvasGroup; ellers springes over)
@@ -1815,11 +1815,6 @@ function Core.CreateWindow(opts)
 			Parent = pages,
 		})
 		Core.AddThemeRef(window, page, "ScrollBarImageColor3", "TextDim")
-		local tabPageScale = Utils.Create("UIScale", {
-			Name = "_GulleTabScale",
-			Scale = 1,
-			Parent = page,
-		})
 
 		-- Single child under ScrollingFrame + inner padding avoids broken canvas sizing.
 		local pageContent = Utils.Create("Frame", {
@@ -1829,6 +1824,12 @@ function Core.CreateWindow(opts)
 			Size = UDim2.new(1, 0, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
 			Parent = page,
+		})
+		-- UIScale på indhold (ikke ScrollingFrame) undgår canvas/layout-stutter under tween.
+		local tabPageScale = Utils.Create("UIScale", {
+			Name = "_GulleTabScale",
+			Scale = 1,
+			Parent = pageContent,
 		})
 		local tTab = tok.Tab
 		local pagePT = tTab.PagePaddingTop or 4
@@ -1895,6 +1896,8 @@ function Core.CreateWindow(opts)
 			_button = btn,
 			_label = tabLbl,
 			_page = page,
+			_tabPageScale = tabPageScale,
+			_tabScaleTween = nil,
 			_content = leftCol,
 			_contentLeft = leftCol,
 			_contentRight = rightCol,
@@ -1947,28 +1950,61 @@ function Core.CreateWindow(opts)
 
 		local function selectTab()
 			local th = Core.GetColors(window)
-			local tabDur = tok.Animation.TabTween or 0.15
+			local tabDur = tok.Animation.TabTween or 0.32
 			local tabFrom = tok.Animation.TabContentScaleFrom
 			if type(tabFrom) ~= "number" or tabFrom >= 0.999 then
 				tabFrom = nil
 			end
 			for _, t in ipairs(window._tabs) do
 				t._page.Visible = false
+				local twOld = t._tabScaleTween
+				if twOld then
+					pcall(function()
+						twOld:Cancel()
+					end)
+					t._tabScaleTween = nil
+				end
+				if t._tabPageScale then
+					t._tabPageScale.Scale = 1
+				end
 				t._button.BackgroundTransparency = 0
 				t._button.BackgroundColor3 = th.SurfaceMuted
 				if t._label then
 					t._label.TextColor3 = th.TabInactive
 				end
 			end
-			page.Visible = true
 			if tabFrom and tabPageScale then
 				tabPageScale.Scale = tabFrom
-				Utils.Tween(tabPageScale, TweenInfo.new(tabDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 })
+			elseif tabPageScale then
+				tabPageScale.Scale = 1
 			end
+			page.CanvasPosition = Vector2.zero
+			page.Visible = true
 			window._activeTab = tabObj
 			btn.BackgroundTransparency = 0
 			btn.BackgroundColor3 = th.SurfaceHover
 			tabLbl.TextColor3 = th.Text
+
+			if tabFrom and tabPageScale then
+				task.defer(function()
+					if window._activeTab ~= tabObj or not page.Parent then
+						return
+					end
+					tabPageScale.Scale = tabFrom
+					local ti = TweenInfo.new(tabDur, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+					local tw = TweenService:Create(tabPageScale, ti, { Scale = 1 })
+					tabObj._tabScaleTween = tw
+					tw:Play()
+					tw.Completed:Connect(function(state)
+						if tabObj._tabScaleTween == tw then
+							tabObj._tabScaleTween = nil
+						end
+						if state == Enum.PlaybackState.Completed and tabPageScale and tabPageScale.Parent then
+							tabPageScale.Scale = 1
+						end
+					end)
+				end)
+			end
 		end
 
 		btn.MouseButton1Click:Connect(selectTab)
