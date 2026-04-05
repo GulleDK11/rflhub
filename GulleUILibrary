@@ -2247,34 +2247,45 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
 
-		local function setState(v)
+		local function setState(v, animate)
 			value = v
 			if flag then
 				Services.StateService:SetFlag(flag, v)
 			end
 			local th = select(1, ElemCtx(win))
-			track.BackgroundColor3 = v and th.Accent or th.Surface
-			knob.Position = v and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
+			if animate then
+				Utils.Tween(track, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+					BackgroundColor3 = v and th.Accent or th.Surface,
+				})
+				Utils.Tween(
+					knob,
+					TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+					{ Position = v and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9) }
+				)
+			else
+				track.BackgroundColor3 = v and th.Accent or th.Surface
+				knob.Position = v and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
+			end
 			if opts.Callback then
 				task.spawn(opts.Callback, v)
 			end
 		end
 
 		switch.MouseButton1Click:Connect(function()
-			setState(not value)
+			setState(not value, true)
 		end)
 
 		if flag then
 			Services.StateService:OnFlagChanged(flag, function(v)
 				if type(v) == "boolean" and v ~= value then
-					setState(v)
+					setState(v, true)
 				end
 			end)
 		end
 
 		return elementApi(card, {
 			Set = function(_, v)
-				setState(v)
+				setState(v, true)
 			end,
 			Get = function()
 				return value
@@ -2325,11 +2336,11 @@ function Elements.CreateSection(tab, arg1, arg2)
 		end)
 		btn.MouseEnter:Connect(function()
 			local th = select(1, ElemCtx(win))
-			btn.BackgroundColor3 = th.Accent
+			Utils.Tween(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = th.Accent })
 		end)
 		btn.MouseLeave:Connect(function()
 			local th = select(1, ElemCtx(win))
-			btn.BackgroundColor3 = th.Surface
+			Utils.Tween(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = th.Surface })
 		end)
 
 		return elementApi(card, {
@@ -2530,6 +2541,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 		local listFrame = Utils.Create("Frame", {
 			BackgroundColor3 = theme.Surface,
+			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, 0),
 			Visible = false,
 			AutomaticSize = Enum.AutomaticSize.Y,
@@ -2579,6 +2591,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 						Services.StateService:SetFlag(flag, current)
 					end
 					open = false
+					listFrame.BackgroundTransparency = 1
 					listFrame.Visible = false
 					if opts.Callback then
 						task.spawn(opts.Callback, current)
@@ -2593,7 +2606,12 @@ function Elements.CreateSection(tab, arg1, arg2)
 			listFrame.Visible = open
 			if open then
 				listFrame.Size = UDim2.new(1, 0, 0, 0)
-				listFrame.BackgroundTransparency = 0
+				listFrame.BackgroundTransparency = 1
+				Utils.Tween(listFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					BackgroundTransparency = 0,
+				})
+			else
+				listFrame.BackgroundTransparency = 1
 			end
 		end)
 
