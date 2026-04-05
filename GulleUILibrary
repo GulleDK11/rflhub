@@ -248,24 +248,24 @@ local _defaultTokens = {
 		PageScrollBarThickness = 3,
 		SearchHeight = 32,
 		SidebarFooterHeight = 56,
-		-- Fanens scroll-indhold (kompakt); ColumnGap er afstand mellem venstre/højre kolonne.
-		PagePaddingTop = 6,
-		PagePaddingBottom = 10,
-		PagePaddingLeft = 6,
-		PagePaddingRight = 8,
+		-- Kompakt overalt; ColumnGap er den eneste bevidst brede mellemrum (venstre/højre kolonne).
+		PagePaddingTop = 4,
+		PagePaddingBottom = 6,
+		PagePaddingLeft = 4,
+		PagePaddingRight = 6,
 		ColumnGap = 48,
-		SectionStackPadding = 8,
+		SectionStackPadding = 6,
 	},
 	Section = {
 		HeaderTextSize = 12,
 		DescriptionTextSize = 11,
-		TitleSpacing = 6,
+		TitleSpacing = 4,
 		BoxRadius = 6,
 		InnerPadding = 0,
 		WrapPaddingBottom = 0,
-		RowSpacing = 5,
-		RowPaddingX = 10,
-		RowPaddingY = 6,
+		RowSpacing = 2,
+		RowPaddingX = 8,
+		RowPaddingY = 4,
 		RowStrokeTransparency = 0.93,
 	},
 	Control = {
@@ -273,14 +273,17 @@ local _defaultTokens = {
 		TogglePill = true,
 		LabelTextSize = 13,
 		SecondaryTextSize = 12,
-		ButtonHeight = 32,
-		ToggleRowHeight = 34,
-		SliderBlockHeight = 40,
-		SliderTrackThickness = 5,
-		InputRowHeight = 50,
-		InputHeight = 28,
-		KeybindRowHeight = 28,
-		DropdownRowOpen = 28,
+		ButtonHeight = 30,
+		ToggleRowHeight = 32,
+		SliderBlockHeight = 32,
+		SliderTrackThickness = 4,
+		InputRowHeight = 44,
+		InputHeight = 26,
+		KeybindRowHeight = 26,
+		DropdownRowOpen = 26,
+		-- Afstand label → felt inde i dropdown / color picker (tæt stablet)
+		InnerStackPadding = 2,
+		ColorChannelRowHeight = 22,
 	},
 	Animation = {
 		WindowOpenDuration = 0.25,
@@ -1246,10 +1249,10 @@ function Core.CreateWindow(opts)
 		Parent = contentShell,
 	})
 	Utils.Create("UIPadding", {
-		PaddingTop = UDim.new(0, 8),
-		PaddingBottom = UDim.new(0, 8),
-		PaddingLeft = UDim.new(0, 10),
-		PaddingRight = UDim.new(0, 10),
+		PaddingTop = UDim.new(0, 6),
+		PaddingBottom = UDim.new(0, 6),
+		PaddingLeft = UDim.new(0, 8),
+		PaddingRight = UDim.new(0, 8),
 		Parent = contentShell,
 	})
 
@@ -1745,10 +1748,10 @@ function Core.CreateWindow(opts)
 			Parent = page,
 		})
 		local tTab = tok.Tab
-		local pagePT = tTab.PagePaddingTop or 6
-		local pagePB = tTab.PagePaddingBottom or 10
-		local pagePL = tTab.PagePaddingLeft or 6
-		local pagePR = tTab.PagePaddingRight or 8
+		local pagePT = tTab.PagePaddingTop or 4
+		local pagePB = tTab.PagePaddingBottom or 6
+		local pagePL = tTab.PagePaddingLeft or 4
+		local pagePR = tTab.PagePaddingRight or 6
 		Utils.Create("UIPadding", {
 			PaddingTop = UDim.new(0, pagePT),
 			PaddingBottom = UDim.new(0, pagePB),
@@ -1783,7 +1786,7 @@ function Core.CreateWindow(opts)
 			LayoutOrder = 0,
 			Parent = splitRow,
 		})
-		local sectStack = tTab.SectionStackPadding or 8
+		local sectStack = tTab.SectionStackPadding or 6
 		Utils.Create("UIListLayout", {
 			Padding = UDim.new(0, sectStack),
 			SortOrder = Enum.SortOrder.LayoutOrder,
@@ -1954,8 +1957,8 @@ end
 
 -- Parent must be a GuiObject frame (e.g. section rowsHost). Never parent rows to UIListLayout — they will not show (Rayfield/wind pattern: layout + siblings).
 local function createControlRowCard(rowsParent, theme, etok, win)
-	local padX = etok.Section.RowPaddingX or 12
-	local padY = etok.Section.RowPaddingY or 8
+	local padX = etok.Section.RowPaddingX or 8
+	local padY = etok.Section.RowPaddingY or 4
 	local card = Utils.Create("Frame", {
 		BackgroundColor3 = theme.RowBackground,
 		BorderSizePixel = 0,
@@ -2275,7 +2278,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 		local top = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 18),
+			Size = UDim2.new(1, 0, 0, 16),
 			Parent = wrap,
 		})
 		Utils.Create("TextLabel", {
@@ -2304,7 +2307,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		local thk = etok.Control.SliderTrackThickness
 		local track = Utils.Create("Frame", {
 			BackgroundColor3 = theme.Surface,
-			Position = UDim2.fromOffset(0, 24),
+			Position = UDim2.fromOffset(0, 19),
 			Size = UDim2.new(1, 0, 0, thk),
 			BorderSizePixel = 0,
 			Parent = wrap,
@@ -2405,7 +2408,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Parent = card,
 		})
 		Utils.Create("UIListLayout", {
-			Padding = UDim.new(0, 6),
+			Padding = UDim.new(0, etok.Control.InnerStackPadding or 2),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = wrap,
 		})
@@ -2415,7 +2418,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Size = UDim2.new(1, 0, 0, 18),
+			Size = UDim2.new(1, 0, 0, 16),
 			Text = opts.Name or "Dropdown",
 			LayoutOrder = 0,
 			Parent = wrap,
@@ -2557,13 +2560,13 @@ function Elements.CreateSection(tab, arg1, arg2)
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Size = UDim2.new(1, 0, 0, 18),
+			Size = UDim2.new(1, 0, 0, 16),
 			Text = opts.Name or "Input",
 			Parent = wrap,
 		})
 		local box = Utils.Create("TextBox", {
 			BackgroundColor3 = theme.BackgroundElevated,
-			Position = UDim2.fromOffset(0, 22),
+			Position = UDim2.fromOffset(0, 18),
 			Size = UDim2.new(1, 0, 0, etok.Control.InputHeight),
 			Font = Enum.Font.Gotham,
 			TextSize = etok.Control.LabelTextSize,
@@ -2660,7 +2663,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Parent = card,
 		})
 		Utils.Create("UIListLayout", {
-			Padding = UDim.new(0, 6),
+			Padding = UDim.new(0, etok.Control.InnerStackPadding or 2),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = wrap,
 		})
@@ -2672,6 +2675,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 		local dr = etok.Control.DefaultRadius
 		local thk = etok.Control.SliderTrackThickness
+		local chRowH = etok.Control.ColorChannelRowHeight or 22
 		Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
@@ -2710,7 +2714,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		for i, label in ipairs(sliders) do
 			local sw = Utils.Create("Frame", {
 				BackgroundTransparency = 1,
-				Size = UDim2.new(1, 0, 0, 30),
+				Size = UDim2.new(1, 0, 0, chRowH),
 				LayoutOrder = i,
 				Parent = wrap,
 			})
@@ -2725,7 +2729,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			})
 			local track = Utils.Create("Frame", {
 				BackgroundColor3 = theme.Surface,
-				Position = UDim2.fromOffset(28, 11),
+				Position = UDim2.fromOffset(28, math.max(0, math.floor((chRowH - thk) / 2))),
 				Size = UDim2.new(1, -28, 0, thk),
 				BorderSizePixel = 0,
 				Parent = sw,
