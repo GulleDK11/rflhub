@@ -221,8 +221,8 @@ local _defaultDeveloperUserIds = {
 
 local _defaultTokens = {
 	Window = {
-		Width = 820,
-		Height = 580,
+		Width = 720,
+		Height = 520,
 		MinWidth = 380,
 		MinHeight = 280,
 		ResizeGripSize = 18,
@@ -239,7 +239,7 @@ local _defaultTokens = {
 	},
 	Tab = {
 		SidebarWidth = 168,
-		ContentGap = 16,
+		ContentGap = 12,
 		ItemHeight = 34,
 		ItemRadius = 6,
 		SidebarPadding = 10,
@@ -248,26 +248,24 @@ local _defaultTokens = {
 		PageScrollBarThickness = 3,
 		SearchHeight = 32,
 		SidebarFooterHeight = 56,
-		-- Fanens scroll-indhold: luft omkring to-kolonne layout
-		PagePaddingTop = 14,
-		PagePaddingBottom = 22,
-		PagePaddingLeft = 14,
-		PagePaddingRight = 16,
-		ColumnGap = 40,
-		SectionStackPadding = 36,
+		-- Fanens scroll-indhold (kompakt); ColumnGap er afstand mellem venstre/højre kolonne.
+		PagePaddingTop = 6,
+		PagePaddingBottom = 10,
+		PagePaddingLeft = 6,
+		PagePaddingRight = 8,
+		ColumnGap = 32,
+		SectionStackPadding = 8,
 	},
 	Section = {
 		HeaderTextSize = 12,
 		DescriptionTextSize = 11,
-		TitleSpacing = 16,
+		TitleSpacing = 6,
 		BoxRadius = 6,
-		-- Luft inde i sektionen omkring rækkekort (top/bund/sider)
-		InnerPadding = 14,
-		-- Ekstra luft under sidste kontrol før næste sektion starter
-		WrapPaddingBottom = 18,
-		RowSpacing = 16,
-		RowPaddingX = 18,
-		RowPaddingY = 12,
+		InnerPadding = 0,
+		WrapPaddingBottom = 0,
+		RowSpacing = 5,
+		RowPaddingX = 10,
+		RowPaddingY = 6,
 		RowStrokeTransparency = 0.93,
 	},
 	Control = {
@@ -275,14 +273,14 @@ local _defaultTokens = {
 		TogglePill = true,
 		LabelTextSize = 13,
 		SecondaryTextSize = 12,
-		ButtonHeight = 36,
-		ToggleRowHeight = 40,
-		SliderBlockHeight = 46,
+		ButtonHeight = 32,
+		ToggleRowHeight = 34,
+		SliderBlockHeight = 40,
 		SliderTrackThickness = 5,
-		InputRowHeight = 56,
-		InputHeight = 30,
-		KeybindRowHeight = 34,
-		DropdownRowOpen = 32,
+		InputRowHeight = 50,
+		InputHeight = 28,
+		KeybindRowHeight = 28,
+		DropdownRowOpen = 28,
 	},
 	Animation = {
 		WindowOpenDuration = 0.25,
@@ -1248,10 +1246,10 @@ function Core.CreateWindow(opts)
 		Parent = contentShell,
 	})
 	Utils.Create("UIPadding", {
-		PaddingTop = UDim.new(0, 14),
-		PaddingBottom = UDim.new(0, 14),
-		PaddingLeft = UDim.new(0, 16),
-		PaddingRight = UDim.new(0, 16),
+		PaddingTop = UDim.new(0, 8),
+		PaddingBottom = UDim.new(0, 8),
+		PaddingLeft = UDim.new(0, 10),
+		PaddingRight = UDim.new(0, 10),
 		Parent = contentShell,
 	})
 
