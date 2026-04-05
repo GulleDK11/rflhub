@@ -1,6 +1,6 @@
 --[[
 	GulleUI — Single-file Roblox executor UI library
-	Built from Instances only. No external UI libs.
+	One built-in dark theme (hub-style). Built from Instances only. No external UI libs.
 ]]
 
 local Library = {}
@@ -22,6 +22,13 @@ local function getGuiParent()
 		return gethui()
 	end
 	return LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local function resolveGuiParent(opts)
+	if type(opts) == "table" and opts.UseCoreGui == false then
+		return LocalPlayer:WaitForChild("PlayerGui")
+	end
+	return getGuiParent()
 end
 -- #endregion
 
@@ -146,68 +153,72 @@ function Services.StateService:OnFlagChanged(flag, fn)
 end
 -- #endregion
 
--- #region ThemeService (WindUI-style: Colors + Tokens, deep merge, per-window overrides)
+-- #region ThemeService (single fixed palette — hub-style dark + blue accent)
 local _defaultTheme = {
-	Background = Color3.fromRGB(14, 14, 18),
-	BackgroundElevated = Color3.fromRGB(20, 20, 26),
-	Surface = Color3.fromRGB(26, 26, 32),
-	SurfaceMuted = Color3.fromRGB(22, 22, 28),
-	SurfaceHover = Color3.fromRGB(38, 38, 48),
-	Accent = Color3.fromRGB(99, 102, 241),
-	AccentHover = Color3.fromRGB(129, 140, 248),
-	AccentMuted = Color3.fromRGB(67, 72, 200),
-	Text = Color3.fromRGB(244, 244, 248),
-	TextDim = Color3.fromRGB(148, 148, 165),
-	Border = Color3.fromRGB(48, 48, 58),
-	BorderLight = Color3.fromRGB(56, 56, 68),
+	Background = Color3.fromRGB(26, 26, 26),
+	BackgroundElevated = Color3.fromRGB(30, 30, 30),
+	Surface = Color3.fromRGB(38, 38, 38),
+	SurfaceMuted = Color3.fromRGB(18, 18, 18),
+	SurfaceHover = Color3.fromRGB(48, 48, 48),
+	Accent = Color3.fromRGB(37, 99, 235),
+	AccentHover = Color3.fromRGB(59, 130, 246),
+	AccentMuted = Color3.fromRGB(29, 78, 216),
+	Text = Color3.fromRGB(255, 255, 255),
+	TextDim = Color3.fromRGB(170, 170, 178),
+	Border = Color3.fromRGB(55, 55, 55),
+	BorderLight = Color3.fromRGB(65, 65, 65),
 	Success = Color3.fromRGB(52, 211, 153),
 	Error = Color3.fromRGB(248, 113, 113),
 	Warning = Color3.fromRGB(251, 191, 36),
-	TabInactive = Color3.fromRGB(120, 120, 138),
+	TabInactive = Color3.fromRGB(160, 160, 170),
 }
 
 local _defaultTokens = {
 	Window = {
-		Width = 600,
-		Height = 468,
-		CornerRadius = 0,
-		PaddingX = 16,
-		TitleBarHeight = 52,
-		TitleBarTop = 22,
-		BodyTop = 84,
-		TitleSize = 20,
-		SubtitleSize = 13,
-		AccentBarHeight = 2,
-		AccentBarTop = 14,
+		Width = 640,
+		Height = 420,
+		CornerRadius = 6,
+		PaddingX = 14,
+		TitleBarHeight = 46,
+		TitleBarTop = 14,
+		BodyTop = 66,
+		TitleSize = 18,
+		SubtitleSize = 12,
+		AccentBarHeight = 0,
+		AccentBarTop = 0,
+		TitleControlsWidth = 100,
 	},
 	Tab = {
-		SidebarWidth = 158,
-		ContentGap = 16,
-		ItemHeight = 36,
-		ItemRadius = 0,
+		SidebarWidth = 168,
+		ContentGap = 12,
+		ItemHeight = 34,
+		ItemRadius = 6,
 		SidebarPadding = 10,
-		ItemSpacing = 4,
+		ItemSpacing = 3,
 		ScrollBarThickness = 2,
 		PageScrollBarThickness = 3,
+		SearchHeight = 32,
 	},
 	Section = {
-		HeaderTextSize = 12,
-		TitleSpacing = 4,
-		BoxRadius = 0,
-		InnerPadding = 12,
-		RowSpacing = 6,
+		HeaderTextSize = 13,
+		DescriptionTextSize = 12,
+		TitleSpacing = 6,
+		BoxRadius = 6,
+		InnerPadding = 10,
+		RowSpacing = 5,
 	},
 	Control = {
-		DefaultRadius = 0,
+		DefaultRadius = 6,
+		TogglePill = true,
 		LabelTextSize = 14,
 		SecondaryTextSize = 13,
-		ButtonHeight = 34,
-		ToggleRowHeight = 28,
+		ButtonHeight = 32,
+		ToggleRowHeight = 30,
 		SliderBlockHeight = 46,
-		SliderTrackThickness = 8,
-		InputRowHeight = 58,
+		SliderTrackThickness = 6,
+		InputRowHeight = 56,
 		InputHeight = 30,
-		KeybindRowHeight = 32,
+		KeybindRowHeight = 30,
 		DropdownRowOpen = 32,
 	},
 	Animation = {
@@ -218,7 +229,7 @@ local _defaultTokens = {
 	},
 	Notification = {
 		Width = 280,
-		CornerRadius = 0,
+		CornerRadius = 6,
 		TitleSize = 15,
 		BodySize = 13,
 		PaddingX = 12,
@@ -249,33 +260,7 @@ Services.ThemeService = {
 	Tokens = Utils.DeepCopy(_defaultTokens),
 	_defaultColors = _defaultTheme,
 	_defaultTokens = _defaultTokens,
-	Presets = {
-		Default = { Colors = Utils.DeepCopy(_defaultTheme), Tokens = Utils.DeepCopy(_defaultTokens) },
-		Ocean = {
-			Colors = {
-				Accent = Color3.fromRGB(56, 189, 248),
-				AccentHover = Color3.fromRGB(125, 211, 252),
-				AccentMuted = Color3.fromRGB(14, 116, 144),
-			},
-		},
-		Rose = {
-			Colors = {
-				Accent = Color3.fromRGB(244, 114, 182),
-				AccentHover = Color3.fromRGB(251, 207, 232),
-				AccentMuted = Color3.fromRGB(190, 24, 93),
-			},
-		},
-		Midnight = {
-			Colors = {
-				Background = Color3.fromRGB(10, 12, 22),
-				BackgroundElevated = Color3.fromRGB(16, 18, 30),
-				Surface = Color3.fromRGB(22, 24, 40),
-				SurfaceMuted = Color3.fromRGB(18, 20, 34),
-				SurfaceHover = Color3.fromRGB(36, 40, 62),
-				Border = Color3.fromRGB(40, 44, 70),
-			},
-		},
-	},
+	Presets = {},
 	_windowCallbacks = {},
 }
 
@@ -332,9 +317,9 @@ end
 
 function Services.ThemeService:ModifyTheme(partial)
 	if type(partial) == "string" then
-		local preset = self.Presets[partial]
-		self:_applyPresetTable(preset or self.Presets.Default)
-	elseif type(partial) == "table" then
+		return
+	end
+	if type(partial) == "table" then
 		self:_mergeThemeTable(partial)
 	end
 	for _, fn in ipairs(self._windowCallbacks) do
@@ -761,7 +746,7 @@ end
 function Core.CreateWindow(opts)
 	opts = opts or {}
 	local displayName = opts.Name or opts.Title or "GulleUI"
-	local subtitle = opts.Subtitle or "Clean interface"
+	local subtitle = opts.Subtitle ~= nil and opts.Subtitle or ""
 	local loadingTitle = opts.LoadingTitle or displayName
 	local loadingSub = opts.LoadingSubtitle or subtitle
 
@@ -775,11 +760,9 @@ function Core.CreateWindow(opts)
 	end
 
 	local windowThemeOverride = nil
-	if type(opts.Theme) == "string" then
-		Services.ThemeService:ModifyTheme(opts.Theme)
-	elseif type(opts.Theme) == "table" then
+	if type(opts.Theme) == "table" then
 		if opts.Theme.ApplyGlobally or opts.Theme.Globally then
-			Services.ThemeService:ModifyTheme(opts.Theme)
+			Services.ThemeService:_mergeThemeTable(opts.Theme)
 		else
 			windowThemeOverride = opts.Theme
 		end
@@ -793,7 +776,7 @@ function Core.CreateWindow(opts)
 		Name = displayName:gsub("%s+", "") .. "_GulleUI",
 		ResetOnSpawn = false,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-		Parent = getGuiParent(),
+		Parent = resolveGuiParent(opts),
 	})
 
 	local main = Utils.Create("Frame", {
@@ -814,28 +797,39 @@ function Core.CreateWindow(opts)
 		Parent = main,
 	})
 
-	local accent = Utils.Create("Frame", {
-		Size = UDim2.new(1, -tok.Window.PaddingX * 2, 0, tok.Window.AccentBarHeight),
-		Position = UDim2.fromOffset(tok.Window.PaddingX, tok.Window.AccentBarTop),
-		BackgroundColor3 = colors.Accent,
-		BackgroundTransparency = 0,
-		BorderSizePixel = 0,
-		ZIndex = 2,
-		Parent = main,
-	})
+	local accent = nil
+	if (tok.Window.AccentBarHeight or 0) > 0 then
+		accent = Utils.Create("Frame", {
+			Size = UDim2.new(1, -tok.Window.PaddingX * 2, 0, tok.Window.AccentBarHeight),
+			Position = UDim2.fromOffset(tok.Window.PaddingX, tok.Window.AccentBarTop),
+			BackgroundColor3 = colors.Accent,
+			BackgroundTransparency = 0,
+			BorderSizePixel = 0,
+			ZIndex = 2,
+			Parent = main,
+		})
+	end
 
 	local titleBar = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, -tok.Window.PaddingX * 2, 0, tok.Window.TitleBarHeight),
 		Position = UDim2.fromOffset(tok.Window.PaddingX, tok.Window.TitleBarTop),
-		ZIndex = 2,
+		ZIndex = 3,
 		Parent = main,
+	})
+
+	local titleControlsW = tok.Window.TitleControlsWidth or 100
+	local leftDrag = Utils.Create("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -titleControlsW, 1, 0),
+		Position = UDim2.fromOffset(0, 0),
+		Parent = titleBar,
 	})
 
 	local titleStack = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 1, 0),
-		Parent = titleBar,
+		Parent = leftDrag,
 	})
 	Utils.Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Vertical,
@@ -850,7 +844,7 @@ function Core.CreateWindow(opts)
 		TextSize = tok.Window.TitleSize,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = colors.Text,
-		Size = UDim2.new(1, 0, 0, 24),
+		Size = UDim2.new(1, 0, 0, 22),
 		Text = displayName,
 		LayoutOrder = 0,
 		Parent = titleStack,
@@ -862,11 +856,49 @@ function Core.CreateWindow(opts)
 		TextSize = tok.Window.SubtitleSize,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = colors.TextDim,
-		Size = UDim2.new(1, 0, 0, 18),
+		Size = UDim2.new(1, 0, 0, 16),
 		Text = subtitle,
+		Visible = subtitle ~= "",
 		LayoutOrder = 1,
 		Parent = titleStack,
 	})
+
+	local titleControls = Utils.Create("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(0, titleControlsW, 1, 0),
+		Position = UDim2.new(1, 0, 0, 0),
+		AnchorPoint = Vector2.new(1, 0),
+		Parent = titleBar,
+	})
+	Utils.Create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalAlignment = Enum.HorizontalAlignment.Right,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		Padding = UDim.new(0, 4),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = titleControls,
+	})
+
+	local function makeTitleBtn(text)
+		local b = Utils.Create("TextButton", {
+			Text = text,
+			Font = Enum.Font.GothamBold,
+			TextSize = 16,
+			TextColor3 = colors.TextDim,
+			BackgroundColor3 = colors.SurfaceHover,
+			BackgroundTransparency = 0.4,
+			Size = UDim2.fromOffset(28, 28),
+			AutoButtonColor = false,
+			BorderSizePixel = 0,
+			Parent = titleControls,
+		})
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 4), Parent = b })
+		return b
+	end
+
+	local minBtn = makeTitleBtn("−")
+	local maxBtn = makeTitleBtn("□")
+	local closeBtn = makeTitleBtn("×")
 
 	local body = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
@@ -889,18 +921,47 @@ function Core.CreateWindow(opts)
 		Transparency = 0.65,
 		Parent = sidebar,
 	})
-	Utils.Create("UIPadding", {
-		PaddingTop = UDim.new(0, 10),
-		PaddingBottom = UDim.new(0, 10),
-		PaddingLeft = UDim.new(0, 10),
-		PaddingRight = UDim.new(0, 10),
+	local sidePad = tok.Tab.SidebarPadding
+	local searchH = tok.Tab.SearchHeight or 32
+	local searchGap = 6
+	local searchTop = sidePad
+	local searchUnder = searchTop + searchH + searchGap
+
+	local searchWrap = Utils.Create("Frame", {
+		BackgroundColor3 = colors.BackgroundElevated,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Size = UDim2.new(1, -sidePad * 2, 0, searchH),
+		Position = UDim2.fromOffset(sidePad, searchTop),
 		Parent = sidebar,
+	})
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Tab.ItemRadius), Parent = searchWrap })
+	local searchStroke = Utils.Create("UIStroke", {
+		Color = colors.Border,
+		Thickness = 1,
+		Transparency = 0.55,
+		Parent = searchWrap,
+	})
+	local searchBox = Utils.Create("TextBox", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -16, 1, 0),
+		Position = UDim2.fromOffset(8, 0),
+		Font = Enum.Font.Gotham,
+		TextSize = 13,
+		TextColor3 = colors.Text,
+		PlaceholderColor3 = colors.TextDim,
+		PlaceholderText = "Search...",
+		Text = "",
+		ClearTextOnFocus = false,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = searchWrap,
 	})
 
 	local tabList = Utils.Create("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
+		Position = UDim2.new(0, sidePad, 0, searchUnder),
+		Size = UDim2.new(1, -sidePad * 2, 1, -searchUnder - sidePad),
 		CanvasSize = UDim2.new(0, 0, 0, 0),
 		ScrollBarThickness = tok.Tab.ScrollBarThickness,
 		ScrollBarImageColor3 = colors.Accent,
@@ -908,14 +969,14 @@ function Core.CreateWindow(opts)
 		Parent = sidebar,
 	})
 	local tabLayout = Utils.Create("UIListLayout", {
-		Padding = UDim.new(0, 6),
+		Padding = UDim.new(0, tok.Tab.ItemSpacing),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = tabList,
 	})
 
 	local contentGap = tok.Tab.SidebarWidth + tok.Tab.ContentGap
 	local contentShell = Utils.Create("Frame", {
-		BackgroundColor3 = colors.BackgroundElevated,
+		BackgroundColor3 = colors.Background,
 		BorderSizePixel = 0,
 		Size = UDim2.new(1, -contentGap, 1, 0),
 		Position = UDim2.fromOffset(contentGap, 0),
@@ -925,7 +986,7 @@ function Core.CreateWindow(opts)
 	local contentShellStroke = Utils.Create("UIStroke", {
 		Color = colors.Border,
 		Thickness = 1,
-		Transparency = 0.85,
+		Transparency = 0.94,
 		Parent = contentShell,
 	})
 	Utils.Create("UIPadding", {
@@ -938,11 +999,20 @@ function Core.CreateWindow(opts)
 
 	local contentHost = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
 		Size = UDim2.fromScale(1, 1),
 		Parent = contentShell,
 	})
 
-	local pages = Utils.Create("Folder", { Name = "Pages", Parent = contentHost })
+	-- Must be a GuiObject (Frame), not Folder: ScrollingFrames under Folder get no layout size → blank content.
+	local pages = Utils.Create("Frame", {
+		Name = "Pages",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		ClipsDescendants = false,
+		Parent = contentHost,
+	})
 
 	local loading = Utils.Create("Frame", {
 		BackgroundColor3 = colors.Background,
@@ -1011,6 +1081,7 @@ function Core.CreateWindow(opts)
 		_title = title,
 		_subTitle = subTitle,
 		_accentBar = accent,
+		_searchBox = searchBox,
 		_tabList = tabList,
 		_tabLayout = tabLayout,
 		_pages = pages,
@@ -1038,12 +1109,10 @@ function Core.CreateWindow(opts)
 	end
 
 	function window:ModifyTheme(newTheme)
+		if type(newTheme) ~= "table" then
+			return
+		end
 		Services.ThemeService:ModifyTheme(newTheme)
-		self:Notify({
-			Title = "Theme",
-			Message = type(newTheme) == "string" and ("Applied preset: " .. tostring(newTheme)) or "Custom theme applied.",
-			Duration = 2.5,
-		})
 	end
 
 	function window:SetVisible(visible)
@@ -1060,6 +1129,15 @@ function Core.CreateWindow(opts)
 
 	function window:LoadConfiguration()
 		return Services.ConfigService:LoadFromPath(self._configFolder, self._configFileName)
+	end
+
+	function window:_applyTabSearch(q)
+		q = string.lower((q or ""):gsub("%s+", ""))
+		for _, t in ipairs(self._tabs) do
+			if t._button and t._searchText then
+				t._button.Visible = (q == "" or string.find(t._searchText, q, 1, true) ~= nil)
+			end
+		end
 	end
 
 	function window:_scheduleAutosave()
@@ -1081,13 +1159,18 @@ function Core.CreateWindow(opts)
 
 	Core.AddThemeRef(window, main, "BackgroundColor3", "Background")
 	Core.AddThemeRef(window, mainStroke, "Color", "Border")
-	Core.AddThemeRef(window, accent, "BackgroundColor3", "Accent")
+	if accent then
+		Core.AddThemeRef(window, accent, "BackgroundColor3", "Accent")
+	end
 	Core.AddThemeRef(window, title, "TextColor3", "Text")
 	Core.AddThemeRef(window, subTitle, "TextColor3", "TextDim")
 	Core.AddThemeRef(window, sidebar, "BackgroundColor3", "SurfaceMuted")
+	Core.AddThemeRef(window, searchWrap, "BackgroundColor3", "BackgroundElevated")
+	Core.AddThemeRef(window, searchStroke, "Color", "Border")
+	Core.AddThemeRef(window, searchBox, "TextColor3", "Text")
 	Core.AddThemeRef(window, sideStroke, "Color", "Border")
 	Core.AddThemeRef(window, tabList, "ScrollBarImageColor3", "Accent")
-	Core.AddThemeRef(window, contentShell, "BackgroundColor3", "BackgroundElevated")
+	Core.AddThemeRef(window, contentShell, "BackgroundColor3", "Background")
 	Core.AddThemeRef(window, contentShellStroke, "Color", "Border")
 	Core.AddThemeRef(window, loading, "BackgroundColor3", "Background")
 	Core.AddThemeRef(window, loadTitle, "TextColor3", "Text")
@@ -1118,8 +1201,35 @@ function Core.CreateWindow(opts)
 		self:SetLocked(false)
 	end
 
+	local savedMainSize = main.Size
+	local savedMainPos = main.Position
+	local maximized = false
+
+	minBtn.MouseButton1Click:Connect(function()
+		screen.Enabled = false
+	end)
+	closeBtn.MouseButton1Click:Connect(function()
+		screen.Enabled = false
+	end)
+	maxBtn.MouseButton1Click:Connect(function()
+		local cam = workspace.CurrentCamera
+		local vp = cam and cam.ViewportSize or Vector2.new(800, 600)
+		if not maximized then
+			savedMainSize = main.Size
+			savedMainPos = main.Position
+			maximized = true
+			main.AnchorPoint = Vector2.new(0.5, 0.5)
+			main.Position = UDim2.fromScale(0.5, 0.5)
+			main.Size = UDim2.fromOffset(math.floor(vp.X * 0.92), math.floor(vp.Y * 0.88))
+		else
+			maximized = false
+			main.Size = savedMainSize
+			main.Position = savedMainPos
+		end
+	end)
+
 	local dragging, dragStart, startPos
-	table.insert(window._dragConns, titleBar.InputBegan:Connect(function(input)
+	table.insert(window._dragConns, leftDrag.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 			dragStart = input.Position
@@ -1144,13 +1254,15 @@ function Core.CreateWindow(opts)
 			kb = Enum.KeyCode[kb]
 		end
 		if typeof(kb) == "EnumItem" and kb.EnumType == Enum.KeyCode then
-			table.insert(window._dragConns, UserInputService.InputBegan:Connect(function(input, processed)
-				if processed then
+			-- Do not use gameProcessed: many games mark keys as processed and the UI would never toggle.
+			table.insert(window._dragConns, UserInputService.InputBegan:Connect(function(input)
+				if input.UserInputType ~= Enum.UserInputType.Keyboard then
 					return
 				end
-				if input.KeyCode == kb then
-					screen.Enabled = not screen.Enabled
+				if input.KeyCode ~= kb then
+					return
 				end
+				screen.Enabled = not screen.Enabled
 			end))
 		end
 	end
@@ -1173,65 +1285,152 @@ function Core.CreateWindow(opts)
 			end
 		end
 		for _, c in ipairs(self._dragConns) do
-			c:Disconnect()
+			if type(c) == "function" then
+				c()
+			elseif c and c.Disconnect then
+				c:Disconnect()
+			end
 		end
 		screen:Destroy()
 	end
 
 	function window:_syncTabStyles()
-		local th = Services.ThemeService.Current
+		local th = Core.GetColors(window)
 		for _, t in ipairs(self._tabs) do
 			local isOn = self._activeTab == t
+			local u = t._underline
 			if isOn then
 				t._button.BackgroundColor3 = th.SurfaceHover
-				t._button.TextColor3 = th.Text
 				t._button.BackgroundTransparency = 0
-				t._stroke.Color = th.Accent
-				t._stroke.Transparency = 0.35
+				if t._label then
+					t._label.TextColor3 = th.Text
+				end
+				if u then
+					u.Visible = true
+				end
 			else
-				t._button.BackgroundColor3 = th.Surface
-				t._button.TextColor3 = th.TabInactive
-				t._button.BackgroundTransparency = 0.35
-				t._stroke.Color = th.Border
-				t._stroke.Transparency = 0.85
+				t._button.BackgroundColor3 = th.SurfaceMuted
+				t._button.BackgroundTransparency = 0.25
+				if t._label then
+					t._label.TextColor3 = th.TabInactive
+				end
+				if u then
+					u.Visible = false
+				end
 			end
 		end
 	end
 
-	function window:CreateTab(name)
-		local T = Services.ThemeService.Current
+	function window:NewSeparator()
+		local wc = Core.GetColors(self)
+		local sep = Utils.Create("Frame", {
+			BackgroundColor3 = wc.Border,
+			BackgroundTransparency = 0.45,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, -4, 0, 1),
+			Parent = self._tabList,
+		})
+		return {
+			Remove = function()
+				if sep.Parent then
+					sep:Destroy()
+				end
+			end,
+		}
+	end
+
+	function window:NewTab(opts)
+		return self:CreateTab(opts)
+	end
+
+	function window:CreateTab(nameOrOpts, iconArg)
+		local tabName, iconId
+		if type(nameOrOpts) == "table" then
+			tabName = nameOrOpts.Name or nameOrOpts[1]
+			iconId = nameOrOpts.Icon or nameOrOpts.Image or iconArg
+		else
+			tabName = nameOrOpts
+			iconId = iconArg
+		end
+		tabName = tabName or "Tab"
+
+		local wc = Core.GetColors(window)
 		local btn = Utils.Create("TextButton", {
-			Text = name,
+			Text = "",
 			Font = Enum.Font.GothamMedium,
 			TextSize = 14,
-			TextColor3 = T.TabInactive,
-			BackgroundColor3 = T.Surface,
-			BackgroundTransparency = 0.35,
+			TextColor3 = wc.TabInactive,
+			BackgroundColor3 = wc.SurfaceMuted,
+			BackgroundTransparency = 0.25,
 			Size = UDim2.new(1, 0, 0, tok.Tab.ItemHeight),
 			AutoButtonColor = false,
+			BorderSizePixel = 0,
 			Parent = tabList,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Tab.ItemRadius), Parent = btn })
-		local btnStroke = Utils.Create("UIStroke", {
-			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-			Color = T.Border,
-			Thickness = 1,
-			Transparency = 0.8,
+
+		local row = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, -16, 1, -6),
+			Position = UDim2.fromOffset(8, 3),
 			Parent = btn,
 		})
+		Utils.Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 8),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = row,
+		})
+		if type(iconId) == "string" and iconId ~= "" then
+			Utils.Create("ImageLabel", {
+				BackgroundTransparency = 1,
+				Image = iconId,
+				Size = UDim2.fromOffset(18, 18),
+				LayoutOrder = 0,
+				Parent = row,
+			})
+		end
+		local tabLbl = Utils.Create("TextLabel", {
+			BackgroundTransparency = 1,
+			Text = tabName,
+			Font = Enum.Font.GothamMedium,
+			TextSize = 14,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextColor3 = wc.TabInactive,
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.new(0, 0, 1, 0),
+			LayoutOrder = 1,
+			Parent = row,
+		})
+
+		local underline = Utils.Create("Frame", {
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.new(0, 0, 1, 0),
+			Size = UDim2.new(1, 0, 0, 2),
+			BackgroundColor3 = wc.Accent,
+			BorderSizePixel = 0,
+			Visible = false,
+			ZIndex = 2,
+			Parent = btn,
+		})
+		Core.AddThemeRef(window, underline, "BackgroundColor3", "Accent")
 
 		local page = Utils.Create("ScrollingFrame", {
-			Name = name,
+			Name = tostring(tabName),
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			Size = UDim2.fromScale(1, 1),
+			Position = UDim2.fromOffset(0, 0),
 			CanvasSize = UDim2.new(0, 0, 0, 0),
 			ScrollBarThickness = tok.Tab.PageScrollBarThickness,
-			ScrollBarImageColor3 = T.Accent,
+			ScrollBarImageColor3 = wc.Accent,
 			Visible = false,
 			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+			ScrollingDirection = Enum.ScrollingDirection.Y,
 			Parent = pages,
 		})
+		Core.AddThemeRef(window, page, "ScrollBarImageColor3", "Accent")
 		Utils.Create("UIPadding", {
 			PaddingTop = UDim.new(0, 6),
 			PaddingBottom = UDim.new(0, 14),
@@ -1248,46 +1447,62 @@ function Core.CreateWindow(opts)
 		local tabObj = {
 			_window = window,
 			_button = btn,
+			_label = tabLbl,
 			_page = page,
 			_layout = pageList,
-			_stroke = btnStroke,
+			_underline = underline,
+			_searchText = string.lower(tostring(tabName)),
 		}
 
-		function tabObj:CreateSection(titleText)
-			return Elements.CreateSection(self, titleText)
+		function tabObj:CreateSection(a, b)
+			if type(a) == "table" then
+				return Elements.CreateSection(self, a.Name or a.Title, a.Description)
+			end
+			return Elements.CreateSection(self, a, b)
+		end
+
+		function tabObj:NewSection(opts)
+			opts = opts or {}
+			return Elements.CreateSection(self, opts.Name or opts.Title, opts.Description)
 		end
 
 		local function selectTab()
+			local th = Core.GetColors(window)
 			for _, t in ipairs(window._tabs) do
 				t._page.Visible = false
-				local th = Services.ThemeService.Current
 				Utils.Tween(t._button, TweenInfo.new(0.22, Enum.EasingStyle.Quart), {
-					BackgroundTransparency = 0.35,
-					TextColor3 = th.TabInactive,
+					BackgroundTransparency = 0.25,
 				})
-				Utils.Tween(t._stroke, TweenInfo.new(0.22), { Transparency = 0.85, Color = th.Border })
+				t._button.BackgroundColor3 = th.SurfaceMuted
+				if t._label then
+					t._label.TextColor3 = th.TabInactive
+				end
+				if t._underline then
+					t._underline.Visible = false
+				end
 			end
 			page.Visible = true
 			window._activeTab = tabObj
-			local th = Services.ThemeService.Current
 			Utils.Tween(btn, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 				BackgroundTransparency = 0,
-				TextColor3 = th.Text,
 			})
 			btn.BackgroundColor3 = th.SurfaceHover
-			Utils.Tween(btnStroke, TweenInfo.new(0.24), { Transparency = 0.35, Color = th.Accent })
+			tabLbl.TextColor3 = th.Text
+			if underline then
+				underline.Visible = true
+			end
 		end
 
 		btn.MouseButton1Click:Connect(selectTab)
 
 		btn.MouseEnter:Connect(function()
 			if window._activeTab ~= tabObj then
-				Utils.Tween(btn, TweenInfo.new(0.16), { BackgroundTransparency = 0.12 })
+				Utils.Tween(btn, TweenInfo.new(0.16), { BackgroundTransparency = 0.08 })
 			end
 		end)
 		btn.MouseLeave:Connect(function()
 			if window._activeTab ~= tabObj then
-				Utils.Tween(btn, TweenInfo.new(0.16), { BackgroundTransparency = 0.35 })
+				Utils.Tween(btn, TweenInfo.new(0.16), { BackgroundTransparency = 0.25 })
 			end
 		end)
 
@@ -1325,12 +1540,25 @@ function Core.CreateWindow(opts)
 		window:_syncTabStyles()
 	end)
 
+	searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+		window:_applyTabSearch(searchBox.Text)
+	end)
+
 	return window
 end
 -- #endregion
 
 -- #region Elements
 local _keybindSeq = 0
+
+local function elementApi(root, apiTable)
+	apiTable.Remove = function()
+		if root and root.Parent then
+			root:Destroy()
+		end
+	end
+	return apiTable
+end
 
 local function ElemCtx(windowRef)
 	if windowRef then
@@ -1339,7 +1567,7 @@ local function ElemCtx(windowRef)
 	return Services.ThemeService.Current, Services.ThemeService.Tokens
 end
 
-function Elements.CreateSection(tab, titleText)
+function Elements.CreateSection(tab, titleText, descriptionText)
 	local win = tab._window
 	local theme, etok = ElemCtx(win)
 	local wrap = Utils.Create("Frame", {
@@ -1354,6 +1582,7 @@ function Elements.CreateSection(tab, titleText)
 		Parent = wrap,
 	})
 
+	local lo = 0
 	local header = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBold,
@@ -1361,23 +1590,45 @@ function Elements.CreateSection(tab, titleText)
 		TextColor3 = theme.TextDim,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Size = UDim2.new(1, 0, 0, 18),
-		Text = string.upper(titleText or "Section"),
-		LayoutOrder = 0,
+		Text = titleText or "Section",
+		LayoutOrder = lo,
 		Parent = wrap,
 	})
+	lo = lo + 1
+
+	if type(descriptionText) == "string" and descriptionText ~= "" then
+		local descLbl = Utils.Create("TextLabel", {
+			BackgroundTransparency = 1,
+			Font = Enum.Font.Gotham,
+			TextSize = etok.Section.DescriptionTextSize,
+			TextColor3 = theme.TextDim,
+			TextTransparency = 0.15,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextWrapped = true,
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Size = UDim2.new(1, 0, 0, 0),
+			Text = descriptionText,
+			LayoutOrder = lo,
+			Parent = wrap,
+		})
+		if win then
+			Core.AddThemeRef(win, descLbl, "TextColor3", "TextDim")
+		end
+		lo = lo + 1
+	end
 
 	local box = Utils.Create("Frame", {
 		BackgroundColor3 = theme.Surface,
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = 1,
+		LayoutOrder = lo,
 		Parent = wrap,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, etok.Section.BoxRadius), Parent = box })
 	local boxStroke = Utils.Create("UIStroke", {
 		Color = theme.Border,
 		Thickness = 1,
-		Transparency = 0.55,
+		Transparency = 0.88,
 		Parent = box,
 	})
 	if win then
@@ -1399,7 +1650,13 @@ function Elements.CreateSection(tab, titleText)
 		Parent = box,
 	})
 
-	local section = { _box = box, _list = list, _tab = tab }
+	local section = { _box = box, _list = list, _tab = tab, _wrap = wrap }
+
+	function section:Remove()
+		if wrap.Parent then
+			wrap:Destroy()
+		end
+	end
 
 	function section:CreateToggle(opts)
 		opts = opts or {}
@@ -1441,8 +1698,8 @@ function Elements.CreateSection(tab, titleText)
 			BorderSizePixel = 0,
 			Parent = switch,
 		})
-		local tr = etok.Control.DefaultRadius
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tr), Parent = track })
+		local tr = etok.Control.TogglePill and UDim.new(1, 0) or UDim.new(0, etok.Control.DefaultRadius)
+		Utils.Create("UICorner", { CornerRadius = tr, Parent = track })
 		local knob = Utils.Create("Frame", {
 			BackgroundColor3 = Color3.new(1, 1, 1),
 			Size = UDim2.fromOffset(18, 18),
@@ -1450,7 +1707,7 @@ function Elements.CreateSection(tab, titleText)
 			BorderSizePixel = 0,
 			Parent = track,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tr), Parent = knob })
+		Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
 
 		local function setState(v, animate)
 			value = v
@@ -1488,14 +1745,14 @@ function Elements.CreateSection(tab, titleText)
 			end)
 		end
 
-		return {
+		return elementApi(row, {
 			Set = function(_, v)
 				setState(v, true)
 			end,
 			Get = function()
 				return value
 			end,
-		}
+		})
 	end
 
 	function section:CreateButton(opts)
@@ -1533,14 +1790,14 @@ function Elements.CreateSection(tab, titleText)
 			Utils.Tween(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = th.SurfaceHover })
 		end)
 
-		return {
+		return elementApi(btn, {
 			Set = function(_, text)
 				btn.Text = tostring(text)
 			end,
 			Get = function()
 				return btn.Text
 			end,
-		}
+		})
 	end
 
 	function section:CreateSlider(opts)
@@ -1610,6 +1867,10 @@ function Elements.CreateSection(tab, titleText)
 		local function setFromX(x)
 			local rel = Utils.Clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
 			local nv = minv + rel * (maxv - minv)
+			local inc = opts.Increment
+			if type(inc) == "number" and inc > 0 then
+				nv = minv + math.floor((nv - minv) / inc + 0.5) * inc
+			end
 			if opts.Rounding then
 				nv = math.floor(nv + 0.5)
 			end
@@ -1655,7 +1916,7 @@ function Elements.CreateSection(tab, titleText)
 			end)
 		end
 
-		return {
+		return elementApi(wrap, {
 			Set = function(_, v)
 				value = Utils.Clamp(tonumber(v) or value, minv, maxv)
 				fill.Size = UDim2.new((value - minv) / (maxv - minv), 0, 1, 0)
@@ -1667,7 +1928,7 @@ function Elements.CreateSection(tab, titleText)
 			Get = function()
 				return value
 			end,
-		}
+		})
 	end
 
 	function section:CreateDropdown(opts)
@@ -1801,7 +2062,7 @@ function Elements.CreateSection(tab, titleText)
 			end)
 		end
 
-		return {
+		return elementApi(wrap, {
 			Refresh = function(_, newOpts)
 				options = newOpts or options
 				rebuild()
@@ -1816,7 +2077,7 @@ function Elements.CreateSection(tab, titleText)
 			Get = function()
 				return current
 			end,
-		}
+		})
 	end
 
 	function section:CreateInput(opts)
@@ -1864,15 +2125,28 @@ function Elements.CreateSection(tab, titleText)
 			Parent = box,
 		})
 
-		box.FocusLost:Connect(function()
-			local t = box.Text
-			if flag then
-				Services.StateService:SetFlag(flag, t)
-			end
-			if opts.Callback then
-				task.spawn(opts.Callback, t)
-			end
-		end)
+		local trigger = opts.Trigger or "FocusLost"
+		if trigger == "TextChanged" then
+			box:GetPropertyChangedSignal("Text"):Connect(function()
+				local t = box.Text
+				if flag then
+					Services.StateService:SetFlag(flag, t)
+				end
+				if opts.Callback then
+					task.spawn(opts.Callback, t)
+				end
+			end)
+		else
+			box.FocusLost:Connect(function()
+				local t = box.Text
+				if flag then
+					Services.StateService:SetFlag(flag, t)
+				end
+				if opts.Callback then
+					task.spawn(opts.Callback, t)
+				end
+			end)
+		end
 
 		if flag then
 			Services.StateService:OnFlagChanged(flag, function(v)
@@ -1882,7 +2156,7 @@ function Elements.CreateSection(tab, titleText)
 			end)
 		end
 
-		return {
+		return elementApi(wrap, {
 			Set = function(_, text)
 				box.Text = tostring(text)
 				if flag then
@@ -1892,7 +2166,7 @@ function Elements.CreateSection(tab, titleText)
 			Get = function()
 				return box.Text
 			end,
-		}
+		})
 	end
 
 	function section:CreateColorPicker(opts)
@@ -2049,7 +2323,7 @@ function Elements.CreateSection(tab, titleText)
 			end)
 		end
 
-		return {
+		return elementApi(wrap, {
 			Get = getColor,
 			Set = function(_, c)
 				if typeof(c) == "Color3" then
@@ -2066,7 +2340,7 @@ function Elements.CreateSection(tab, titleText)
 				end
 				push()
 			end,
-		}
+		})
 	end
 
 	function section:CreateKeybind(opts)
@@ -2154,7 +2428,7 @@ function Elements.CreateSection(tab, titleText)
 			end)
 		end)
 
-		return {
+		return elementApi(row, {
 			Set = function(_, kc)
 				if typeof(kc) == "EnumItem" and kc.EnumType == Enum.KeyCode then
 					key = kc
@@ -2168,7 +2442,7 @@ function Elements.CreateSection(tab, titleText)
 			Get = function()
 				return key
 			end,
-		}
+		})
 	end
 
 	function section:CreateLabel(opts)
@@ -2189,14 +2463,14 @@ function Elements.CreateSection(tab, titleText)
 		if win then
 			Core.AddThemeRef(win, lbl, "TextColor3", "Text")
 		end
-		return {
+		return elementApi(lbl, {
 			Set = function(_, text)
 				lbl.Text = tostring(text)
 			end,
 			Get = function()
 				return lbl.Text
 			end,
-		}
+		})
 	end
 
 	function section:CreateParagraph(opts)
@@ -2217,14 +2491,68 @@ function Elements.CreateSection(tab, titleText)
 		if win then
 			Core.AddThemeRef(win, lbl, "TextColor3", "TextDim")
 		end
-		return {
+		return elementApi(lbl, {
 			Set = function(_, text)
 				lbl.Text = tostring(text)
 			end,
 			Get = function()
 				return lbl.Text
 			end,
-		}
+		})
+	end
+
+	-- rolibwaita-style aliases (see GulleUILibrary.md)
+	function section:NewButton(opts)
+		return self:CreateButton(opts)
+	end
+
+	function section:NewToggle(opts)
+		opts = opts or {}
+		local o = Utils.DeepCopy(opts)
+		if opts.CurrentState ~= nil then
+			o.Default = opts.CurrentState
+		end
+		return self:CreateToggle(o)
+	end
+
+	function section:NewTextBox(opts)
+		opts = opts or {}
+		return self:CreateInput({
+			Name = opts.Name,
+			Placeholder = opts.PlaceholderText,
+			Default = opts.Text,
+			Flag = opts.Flag,
+			Trigger = opts.Trigger or "FocusLost",
+			Callback = opts.Callback,
+		})
+	end
+
+	function section:NewDropdown(opts)
+		opts = opts or {}
+		return self:CreateDropdown({
+			Name = opts.Name,
+			Options = opts.Choices or opts.Options,
+			Default = opts.CurrentState,
+			Flag = opts.Flag,
+			Callback = opts.Callback,
+		})
+	end
+
+	function section:NewSlider(opts)
+		opts = opts or {}
+		local mm = opts.MinMax or { "0", "100" }
+		local minv = tonumber(mm[1]) or 0
+		local maxv = tonumber(mm[2]) or 100
+		local inc = opts.Increment
+		return self:CreateSlider({
+			Name = opts.Name,
+			Flag = opts.Flag,
+			Min = minv,
+			Max = maxv,
+			Default = opts.CurrentValue,
+			Increment = type(inc) == "number" and inc > 0 and inc or nil,
+			Callback = opts.Callback,
+		})
 	end
 
 	return section
@@ -2241,7 +2569,30 @@ function Library:Init()
 		Window = nil,
 	}
 
+	function api.NewWindow(_, opts)
+		opts = opts or {}
+		if opts.PrintCredits == true then
+			print("GulleUI — single-file Roblox UI (flat layout). API: Create* + optional rolibwaita-style New* (see GulleUILibrary.md).")
+		end
+		local w = Core.CreateWindow({
+			Name = opts.Name,
+			Subtitle = opts.Subtitle,
+			Theme = opts.Theme,
+			ToggleUIKeybind = opts.Keybind or opts.ToggleUIKeybind,
+			UseCoreGui = opts.UseCoreGui,
+			LoadingTitle = opts.LoadingTitle,
+			LoadingSubtitle = opts.LoadingSubtitle,
+			ConfigurationSaving = opts.ConfigurationSaving,
+		})
+		api.Window = w
+		return w
+	end
+
 	function api.CreateWindow(_, opts)
+		opts = opts or {}
+		if opts.PrintCredits == true then
+			print("GulleUI — single-file Roblox UI. See GulleUILibrary.md for API.")
+		end
 		local w = Core.CreateWindow(opts)
 		api.Window = w
 		return w
@@ -2285,8 +2636,7 @@ EXAMPLE (paste after loading the library, or run as second loadstring)
 
 	local Window = UI:CreateWindow({
 		Name = "Demo Hub",
-		Subtitle = "Wind-inspired layout · Rayfield-style API",
-		Theme = "Default",
+		Subtitle = "",
 		LoadingTitle = "Demo Hub",
 		LoadingSubtitle = "Preparing interface",
 		ToggleUIKeybind = Enum.KeyCode.RightShift,
