@@ -318,7 +318,7 @@ local _defaultTokens = {
 		KeyGateContentFadeIn = true,
 		KeyGatePauseBeforeHub = 0.2,
 		TabButtonTweenDuration = 0.14,
-		TabContentFadeInDuration = 0.11,
+		TabContentFadeInDuration = 0.25,
 		TabContentFadeIn = true,
 	},
 	Notification = {
@@ -1442,7 +1442,7 @@ function Core.CreateWindow(opts)
 		_themeOverride = windowThemeOverride,
 		_tabAnim = {
 			BtnDur = (tok.Animation or {}).TabButtonTweenDuration or 0.14,
-			ContentFadeDur = (tok.Animation or {}).TabContentFadeInDuration or 0.11,
+			ContentFadeDur = (tok.Animation or {}).TabContentFadeInDuration or 0.25,
 			ContentFadeOn = (tok.Animation or {}).TabContentFadeIn ~= false,
 		},
 	}
