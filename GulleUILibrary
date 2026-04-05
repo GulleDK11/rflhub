@@ -328,8 +328,8 @@ local _defaultTokens = {
 		BodySize = 13,
 		PaddingX = 12,
 		PaddingY = 10,
-		FadeInDuration = 0.22,
-		FadeOutDuration = 0.2,
+		FadeInDuration = 0.4,
+		FadeOutDuration = 0.35,
 	},
 }
 
@@ -644,7 +644,7 @@ function Services.NotificationService:_spawnToast(item)
 		Parent = inner,
 	})
 	task.defer(refreshCardHeight)
-	local fadeIn = nt.FadeInDuration or 0.22
+	local fadeIn = nt.FadeInDuration or 0.4
 	if toastFade then
 		Utils.Tween(
 			toastFade,
@@ -662,7 +662,7 @@ function Services.NotificationService:_spawnToast(item)
 			end
 		end
 		if toastFade then
-			local fadeOut = nt.FadeOutDuration or 0.2
+			local fadeOut = nt.FadeOutDuration or 0.35
 			local tw = Utils.Tween(
 				toastFade,
 				TweenInfo.new(fadeOut, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
@@ -1442,7 +1442,7 @@ function Core.CreateWindow(opts)
 		_themeOverride = windowThemeOverride,
 		_tabAnim = {
 			BtnDur = (tok.Animation or {}).TabButtonTweenDuration or 0.14,
-			ContentFadeDur = (tok.Animation or {}).TabContentFadeInDuration or 0.25,
+			ContentFadeDur = (tok.Animation or {}).TabContentFadeInDuration or 0.45,
 			ContentFadeOn = (tok.Animation or {}).TabContentFadeIn ~= false,
 		},
 	}
