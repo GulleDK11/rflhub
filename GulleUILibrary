@@ -248,12 +248,11 @@ local _defaultTokens = {
 		PageScrollBarThickness = 3,
 		SearchHeight = 32,
 		SidebarFooterHeight = 56,
-		-- Kompakt overalt; ColumnGap er den eneste bevidst brede mellemrum (venstre/højre kolonne).
 		PagePaddingTop = 4,
 		PagePaddingBottom = 6,
 		PagePaddingLeft = 4,
 		PagePaddingRight = 6,
-		ColumnGap = 48,
+		ColumnGap = 28,
 		SectionStackPadding = 6,
 	},
 	Section = {
@@ -263,10 +262,12 @@ local _defaultTokens = {
 		BoxRadius = 6,
 		InnerPadding = 0,
 		WrapPaddingBottom = 0,
-		RowSpacing = 2,
+		RowSpacing = 8,
 		RowPaddingX = 8,
-		RowPaddingY = 4,
+		RowPaddingY = 5,
 		RowStrokeTransparency = 0.93,
+		-- Lodret luft over/under divider-linjen (ud over RowSpacing)
+		DividerMarginY = 10,
 	},
 	Control = {
 		DefaultRadius = 6,
@@ -282,7 +283,7 @@ local _defaultTokens = {
 		KeybindRowHeight = 26,
 		DropdownRowOpen = 26,
 		-- Afstand label → felt inde i dropdown / color picker (tæt stablet)
-		InnerStackPadding = 2,
+		InnerStackPadding = 4,
 		ColorChannelRowHeight = 22,
 	},
 	Animation = {
@@ -2938,12 +2939,35 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 	function section:CreateDivider(opts)
 		opts = opts or {}
-		local theme = select(1, ElemCtx(win))
+		local theme, etok = ElemCtx(win)
 		local mx = opts.MarginX or 0
 		local thick = opts.Thickness or 1
 		local trans = opts.Transparency
 		if trans == nil then
 			trans = 0.45
+		end
+		local marginY = opts.MarginY
+		if marginY == nil then
+			marginY = etok.Section.DividerMarginY
+		end
+		if marginY == nil then
+			marginY = 10
+		end
+		marginY = math.max(0, math.floor(tonumber(marginY) or 0))
+
+		local wrap = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Parent = rowsHost,
+		})
+		if marginY > 0 then
+			Utils.Create("UIPadding", {
+				PaddingTop = UDim.new(0, marginY),
+				PaddingBottom = UDim.new(0, marginY),
+				Parent = wrap,
+			})
 		end
 		local line = Utils.Create("Frame", {
 			BackgroundColor3 = theme.Border,
@@ -2951,12 +2975,12 @@ function Elements.CreateSection(tab, arg1, arg2)
 			BorderSizePixel = 0,
 			Size = UDim2.new(1, -mx * 2, 0, thick),
 			Position = UDim2.new(0, mx, 0, 0),
-			Parent = rowsHost,
+			Parent = wrap,
 		})
 		if win then
 			Core.AddThemeRef(win, line, "BackgroundColor3", "Border")
 		end
-		return elementApi(line, {})
+		return elementApi(wrap, {})
 	end
 
 	function section:CreateParagraph(opts)
