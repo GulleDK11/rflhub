@@ -6,7 +6,7 @@
     ██████╔╝███████╗╚██████╔╝╚██████╗██║  ██╗╚██████╔╝██║
     ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝
 
-    BlockUI v1.0.1 — Modern Blocky Roblox UI Library
+    BlockUI v1.0.2 — Fluent-inspired gray shell
     Sharp. Fast. Clean.
 
     Usage:
@@ -33,30 +33,33 @@ local RunService     = game:GetService("RunService")
 local LocalPlayer    = Players.LocalPlayer
 local PlayerGui      = LocalPlayer:WaitForChild("PlayerGui")
 
--- ── Style (modern dark + sharp accent) ─────────────────────
+-- ── Style: neutral gray “Fluent” shell (ingen macOS-prikker) ─
 local S = {
-    bg       = Color3.fromRGB(10,  11,  14),
-    surface  = Color3.fromRGB(20,  21,  26),
-    surface2 = Color3.fromRGB(28,  29,  36),
-    surface3 = Color3.fromRGB(36,  38,  48),
-    accent   = Color3.fromRGB(196, 255, 97),
-    accentMuted = Color3.fromRGB(120, 160, 55),
-    accent2  = Color3.fromRGB(99,  155, 255),
-    text     = Color3.fromRGB(245, 246, 250),
-    muted    = Color3.fromRGB(120, 122, 138),
-    border   = Color3.fromRGB(48,  50,  62),
-    danger   = Color3.fromRGB(255, 99,  99),
-    warning  = Color3.fromRGB(255, 196, 61),
-    success  = Color3.fromRGB(52,  211, 120),
-    black    = Color3.fromRGB(8,   9,   12),
-    font     = Enum.Font.GothamMedium,
-    fontMono = Enum.Font.Code,
-    fontBody = Enum.Font.Gotham,
-    radiusS  = UDim.new(0, 6),
-    radiusM  = UDim.new(0, 10),
+    bg         = Color3.fromRGB(30, 30, 32),
+    shell      = Color3.fromRGB(36, 36, 38),
+    surface    = Color3.fromRGB(43, 43, 46),
+    surface2   = Color3.fromRGB(50, 50, 54),
+    surface3   = Color3.fromRGB(33, 33, 36),
+    sidebarSel = Color3.fromRGB(48, 48, 52),
+    accent     = Color3.fromRGB(220, 222, 228),
+    accentBar  = Color3.fromRGB(180, 185, 195),
+    accent2    = Color3.fromRGB(120, 165, 220),
+    text       = Color3.fromRGB(248, 248, 250),
+    muted      = Color3.fromRGB(150, 152, 160),
+    border     = Color3.fromRGB(68, 68, 74),
+    danger     = Color3.fromRGB(232, 90, 90),
+    warning    = Color3.fromRGB(230, 180, 60),
+    success    = Color3.fromRGB(80, 180, 120),
+    black      = Color3.fromRGB(18, 18, 20),
+    font       = Enum.Font.GothamMedium,
+    fontMono   = Enum.Font.Code,
+    fontBody   = Enum.Font.Gotham,
+    radiusS    = UDim.new(0, 6),
+    radiusM    = UDim.new(0, 10),
 }
 
-local CORNER_MAIN = UDim.new(0, 8)
+local CORNER_MAIN = UDim.new(0, 10)
+local SIDEBAR_W = 184
 local function corner(inst, r)
     local c = inst:FindFirstChildOfClass("UICorner")
     if not c then
@@ -67,10 +70,17 @@ local function corner(inst, r)
 end
 
 -- ── Utility ─────────────────────────────────────────────────
+-- Ignorér egenskaber ældre Roblox-klienter ikke har (fx LetterSpacing på TextLabel)
+local UNSUPPORTED_PROPS = {
+    LetterSpacing = true,
+}
+
 local function new(cls, props, parent)
     local obj = Instance.new(cls)
     for k, v in pairs(props or {}) do
-        obj[k] = v
+        if not UNSUPPORTED_PROPS[k] then
+            obj[k] = v
+        end
     end
     if parent then obj.Parent = parent end
     return obj
@@ -321,139 +331,137 @@ function BlockUI:CreateWindow(cfg)
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
     }, PlayerGui)
 
-    -- Main frame
+    local titleBarH = (winSub ~= "") and 58 or 46
+
+    -- Main frame (bred Fluent-lignende shell)
     local main = new("Frame", {
-        Size             = UDim2.new(0, 440, 0, 500),
-        Position         = UDim2.new(0.5, -220, 0.5, -250),
-        BackgroundColor3 = S.bg,
+        Size             = UDim2.new(0, 656, 0, 468),
+        Position         = UDim2.new(0.5, -328, 0.5, -234),
+        BackgroundColor3 = S.shell,
         BorderSizePixel  = 0,
         ClipsDescendants = true,
     }, gui)
     corner(main, CORNER_MAIN)
     new("UIStroke", {
-        Color       = S.border,
-        Thickness   = 1,
-        Transparency = 0.2,
-        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+        Color            = S.border,
+        Thickness        = 1,
+        Transparency     = 0.35,
+        ApplyStrokeMode  = Enum.ApplyStrokeMode.Border,
     }, main)
 
-    -- ── Titlebar ────────────────────────────────────────────
+    -- ── Titlebar (drag) — ingen “Apple”-knapper ──────────────
     local titlebar = new("Frame", {
-        Size             = UDim2.new(1, 0, 0, 40),
-        BackgroundColor3 = S.surface,
+        Size             = UDim2.new(1, 0, 0, titleBarH),
+        BackgroundColor3 = S.surface3,
         BorderSizePixel  = 0,
     }, main)
 
-    -- Window dots
-    local dotColors = { S.danger, S.warning, S.success }
-    for i, col in ipairs(dotColors) do
-        local d = new("Frame", {
-            Size             = UDim2.new(0, 8, 0, 8),
-            Position         = UDim2.fromOffset(12 + (i - 1) * 13, 16),
-            BackgroundColor3 = col,
-            BorderSizePixel  = 0,
-        }, titlebar)
-        new("UICorner", { CornerRadius = UDim.new(1, 0) }, d)
+    new("Frame", {
+        Size             = UDim2.new(1, 0, 0, 1),
+        Position         = UDim2.new(0, 0, 1, -1),
+        BackgroundColor3 = S.border,
+        BorderSizePixel  = 0,
+    }, titlebar)
+
+    local titleStack = new("Frame", {
+        Size             = UDim2.new(1, -96, 1, 0),
+        Position         = UDim2.fromOffset(16, 0),
+        BackgroundTransparency = 1,
+        BorderSizePixel  = 0,
+    }, titlebar)
+
+    new("UIListLayout", {
+        FillDirection      = Enum.FillDirection.Vertical,
+        SortOrder          = Enum.SortOrder.LayoutOrder,
+        VerticalAlignment  = Enum.VerticalAlignment.Center,
+        Padding            = UDim.new(0, 2),
+    }, titleStack)
+
+    new("TextLabel", {
+        Size             = UDim2.new(1, 0, 0, 0),
+        AutomaticSize    = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        Text             = winName,
+        TextColor3       = S.text,
+        FontFace         = Font.fromEnum(Enum.Font.GothamSemibold),
+        TextSize         = 16,
+        TextXAlignment   = Enum.TextXAlignment.Left,
+        TextYAlignment   = Enum.TextYAlignment.Center,
+        LayoutOrder      = 1,
+    }, titleStack)
+
+    if winSub ~= "" then
+        new("TextLabel", {
+            Size             = UDim2.new(1, 0, 0, 0),
+            AutomaticSize    = Enum.AutomaticSize.Y,
+            BackgroundTransparency = 1,
+            Text             = winSub,
+            TextColor3       = S.muted,
+            FontFace         = Font.fromEnum(S.fontBody),
+            TextSize         = 12,
+            TextXAlignment   = Enum.TextXAlignment.Left,
+            LayoutOrder      = 2,
+        }, titleStack)
     end
 
-    -- Title text
-    new("TextLabel", {
-        Size             = UDim2.new(1, 0, 1, 0),
-        BackgroundTransparency = 1,
-        Text             = winName:upper(),
-        TextColor3       = S.muted,
-        FontFace         = Font.fromEnum(S.fontMono),
-        TextSize         = 11,
-        LetterSpacing    = 1.6,
-    }, titlebar)
-
-    -- Close button
     local closeBtn = new("TextButton", {
-        Size             = UDim2.new(0, 36, 1, 0),
-        Position         = UDim2.new(1, -36, 0, 0),
+        Size             = UDim2.new(0, 32, 0, 28),
+        Position         = UDim2.new(1, -40, 0.5, -14),
+        BackgroundColor3 = S.surface2,
         BackgroundTransparency = 1,
-        Text             = "✕",
+        Text             = "×",
         TextColor3       = S.muted,
-        FontFace         = Font.fromEnum(S.fontBody),
-        TextSize         = 14,
+        FontFace         = Font.fromEnum(Enum.Font.GothamMedium),
+        TextSize         = 20,
         AutoButtonColor  = false,
     }, titlebar)
+    corner(closeBtn, UDim.new(0, 5))
     closeBtn.MouseEnter:Connect(function()
-        tween(closeBtn, TweenInfo.new(0.12), { TextColor3 = S.danger })
+        tween(closeBtn, TweenInfo.new(0.1), { BackgroundTransparency = 0, TextColor3 = S.text })
     end)
     closeBtn.MouseLeave:Connect(function()
-        tween(closeBtn, TweenInfo.new(0.12), { TextColor3 = S.muted })
+        tween(closeBtn, TweenInfo.new(0.1), { BackgroundTransparency = 1, TextColor3 = S.muted })
     end)
     closeBtn.MouseButton1Click:Connect(function()
         gui:Destroy()
     end)
 
-    -- Bottom border of titlebar
-    new("Frame", {
-        Size             = UDim2.new(1, 0, 0, 1),
-        Position         = UDim2.new(0, 0, 1, -1),
-        BackgroundColor3 = S.border,
-        BorderSizePixel  = 0,
-    }, titlebar)
-
     makeDraggable(main, titlebar)
 
-    -- Subtitle strip
-    if winSub ~= "" then
-        local subBar = new("Frame", {
-            Size             = UDim2.new(1, 0, 0, 26),
-            Position         = UDim2.fromOffset(0, 40),
-            BackgroundColor3 = S.surface2,
-            BorderSizePixel  = 0,
-        }, main)
-        new("TextLabel", {
-            Size             = UDim2.new(1, -16, 1, 0),
-            Position         = UDim2.fromOffset(8, 0),
-            BackgroundTransparency = 1,
-            Text             = "// " .. winSub,
-            TextColor3       = S.muted,
-            FontFace         = Font.fromEnum(S.fontMono),
-            TextSize         = 10,
-            TextXAlignment   = Enum.TextXAlignment.Left,
-        }, subBar)
-        new("Frame", {
-            Size             = UDim2.new(1, 0, 0, 1),
-            Position         = UDim2.new(0, 0, 1, -1),
-            BackgroundColor3 = S.border,
-            BorderSizePixel  = 0,
-        }, subBar)
-    end
-
-    local tabBarY = (winSub ~= "") and 66 or 40
-
-    -- ── Tab Bar ─────────────────────────────────────────────
-    local tabBar = new("Frame", {
-        Size             = UDim2.new(1, 0, 0, 34),
-        Position         = UDim2.fromOffset(0, tabBarY),
-        BackgroundColor3 = S.surface2,
+    -- Venstre sidebar (NavigationView-stil)
+    local sidebar = new("Frame", {
+        Name             = "Sidebar",
+        Size             = UDim2.new(0, SIDEBAR_W, 1, -titleBarH),
+        Position         = UDim2.fromOffset(0, titleBarH),
+        BackgroundColor3 = S.surface3,
         BorderSizePixel  = 0,
-        ClipsDescendants = true,
     }, main)
 
-    new("UIListLayout", {
-        FillDirection = Enum.FillDirection.Horizontal,
-        SortOrder     = Enum.SortOrder.LayoutOrder,
-    }, tabBar)
-
     new("Frame", {
-        Size             = UDim2.new(1, 0, 0, 1),
-        Position         = UDim2.new(0, 0, 1, -1),
+        Size             = UDim2.new(0, 1, 1, 0),
+        Position         = UDim2.new(1, -1, 0, 0),
         BackgroundColor3 = S.border,
         BorderSizePixel  = 0,
-    }, tabBar)
+    }, sidebar)
 
-    local contentY = tabBarY + 34
-
-    -- Content area
-    local contentArea = new("Frame", {
-        Size             = UDim2.new(1, 0, 1, -contentY),
-        Position         = UDim2.fromOffset(0, contentY),
+    local tabList = new("Frame", {
+        Size             = UDim2.new(1, -8, 1, -12),
+        Position         = UDim2.fromOffset(4, 6),
         BackgroundTransparency = 1,
+        BorderSizePixel  = 0,
+    }, sidebar)
+
+    new("UIListLayout", {
+        FillDirection = Enum.FillDirection.Vertical,
+        SortOrder     = Enum.SortOrder.LayoutOrder,
+        Padding       = UDim.new(0, 4),
+    }, tabList)
+
+    -- Indhold til højre for sidebar
+    local contentArea = new("Frame", {
+        Size             = UDim2.new(1, -SIDEBAR_W, 1, -titleBarH),
+        Position         = UDim2.fromOffset(SIDEBAR_W, titleBarH),
+        BackgroundColor3 = S.bg,
         BorderSizePixel  = 0,
         ClipsDescendants = true,
     }, main)
@@ -467,16 +475,12 @@ function BlockUI:CreateWindow(cfg)
             frame.Visible = (n == name)
         end
         for n, btn in pairs(tabs) do
-            local u = btn:FindFirstChild("Underline")
-            if u and u:IsA("Frame") then
-                if n == name then
-                    btn.TextColor3 = S.accent
-                    u.BackgroundColor3 = S.accent
-                    u.BackgroundTransparency = 0
-                else
-                    btn.TextColor3 = S.muted
-                    u.BackgroundTransparency = 1
-                end
+            local ind = btn:FindFirstChild("SelIndicator")
+            local isOn = (n == name)
+            btn.TextColor3 = isOn and S.text or S.muted
+            btn.BackgroundColor3 = isOn and S.sidebarSel or S.surface3
+            if ind and ind:IsA("Frame") then
+                ind.BackgroundTransparency = isOn and 0 or 1
             end
         end
         activeTab = name
@@ -489,36 +493,49 @@ function BlockUI:CreateWindow(cfg)
         tabCfg = tabCfg or {}
         local tabName = tabCfg.Name or "Tab"
 
-        -- Tab button
+        -- Sidebar-fane (Fluent navigation)
         local btn = new("TextButton", {
-            Size             = UDim2.new(0, 0, 1, 0),
-            AutomaticSize    = Enum.AutomaticSize.X,
-            BackgroundTransparency = 1,
-            Text             = tabName:upper(),
-            TextColor3       = S.muted,
-            FontFace         = Font.fromEnum(S.fontMono),
-            TextSize         = 11,
-            LetterSpacing    = 1.2,
-            AutoButtonColor  = false,
-        }, tabBar)
-
-        -- Underline
-        local underline = new("Frame", {
-            Name             = "Underline",
-            Size             = UDim2.new(1, -8, 0, 2),
-            Position         = UDim2.new(0, 4, 1, -2),
-            BackgroundColor3 = S.accent,
-            BackgroundTransparency = 1,
+            Size             = UDim2.new(1, 0, 0, 36),
+            BackgroundColor3 = S.surface3,
             BorderSizePixel  = 0,
-        }, btn)
-        new("UICorner", { CornerRadius = UDim.new(1, 0) }, underline)
+            Text             = tabName,
+            TextColor3       = S.muted,
+            FontFace         = Font.fromEnum(Enum.Font.GothamMedium),
+            TextSize         = 13,
+            TextXAlignment   = Enum.TextXAlignment.Left,
+            AutoButtonColor  = false,
+        }, tabList)
+        corner(btn, UDim.new(0, 5))
 
         new("UIPadding", {
-            PaddingLeft  = UDim.new(0, 16),
-            PaddingRight = UDim.new(0, 16),
+            PaddingLeft  = UDim.new(0, 14),
+            PaddingRight = UDim.new(0, 10),
         }, btn)
 
+        local selInd = new("Frame", {
+            Name             = "SelIndicator",
+            Size             = UDim2.new(0, 3, 0, 18),
+            Position         = UDim2.new(0, 6, 0.5, -9),
+            BackgroundColor3 = S.accentBar,
+            BackgroundTransparency = 1,
+            BorderSizePixel  = 0,
+            ZIndex           = 2,
+            Active           = false,
+        }, btn)
+        new("UICorner", { CornerRadius = UDim.new(1, 0) }, selInd)
+
         tabs[tabName] = btn
+
+        btn.MouseEnter:Connect(function()
+            if activeTab ~= tabName then
+                tween(btn, TweenInfo.new(0.08), { BackgroundColor3 = S.surface })
+            end
+        end)
+        btn.MouseLeave:Connect(function()
+            if activeTab ~= tabName then
+                tween(btn, TweenInfo.new(0.08), { BackgroundColor3 = S.surface3 })
+            end
+        end)
 
         -- Tab content frame with scrolling
         local tabFrame = new("ScrollingFrame", {
@@ -526,7 +543,7 @@ function BlockUI:CreateWindow(cfg)
             BackgroundTransparency = 1,
             BorderSizePixel  = 0,
             ScrollBarThickness = 2,
-            ScrollBarImageColor3 = S.accent,
+            ScrollBarImageColor3 = S.accentBar,
             CanvasSize       = UDim2.new(0, 0, 0, 0),
             AutomaticCanvasSize = Enum.AutomaticSize.Y,
             Visible          = false,
@@ -681,14 +698,14 @@ function BlockUI:CreateWindow(cfg)
                 local stro = track:FindFirstChildOfClass("UIStroke")
                 if val then
                     tween(track, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
-                        BackgroundColor3 = Color3.fromRGB(45, 58, 22),
+                        BackgroundColor3 = Color3.fromRGB(58, 60, 68),
                     })
                     tween(thumb, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
                         Position = UDim2.fromOffset(22, 3),
                         BackgroundColor3 = S.accent,
                     })
                     if stro then
-                        stro.Color = S.accent
+                        stro.Color = S.accentBar
                     end
                 else
                     tween(track, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = S.surface2 })
@@ -1131,7 +1148,7 @@ local BlockUI = require(script.Parent.BlockUI) -- eller dit modul
 
 local Window = BlockUI:CreateWindow({
     Name     = "My Script",
-    Subtitle = "Made with BlockUI v1.0.1",
+    Subtitle = "Made with BlockUI v1.0.2",
     ConfigurationSaving = {
         Enabled  = true,
         FileName = "MyScript_Config",
