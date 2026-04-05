@@ -142,8 +142,8 @@ function Utils.Ripple(button, color, duration, screenPos)
 		Parent = layer,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = circle })
-	-- ~1.35× knappens største kant (før ~2×) — mindre, stadig dækkende midten.
-	local rippleSide = math.max(12, math.floor(maxDim * 0.7 + 0.5))
+	-- Lille, diskret bølge (under knappens største kant).
+	local rippleSide = math.max(4, math.floor(maxDim * 0.52 + 0.5))
 	Utils.Tween(circle, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		Size = UDim2.fromOffset(rippleSide, rippleSide),
 		BackgroundTransparency = 1,
@@ -462,38 +462,49 @@ end
 -- #region NotificationService
 Services.NotificationService = {
 	_container = nil,
+	_stack = nil,
 	_toastOrder = 0,
 }
 
 function Services.NotificationService:_ensureContainer(parent)
 	if self._container and self._container.Parent then
-		return
+		if self._stack and self._stack.Parent then
+			return
+		end
+	else
+		self._container = Utils.Create("Frame", {
+			Name = "Notifications",
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 1),
+			Position = UDim2.fromScale(0, 0),
+			ZIndex = 200,
+			Active = false,
+			Selectable = false,
+			ClipsDescendants = false,
+			Parent = parent,
+		})
 	end
-	self._container = Utils.Create("Frame", {
-		Name = "Notifications",
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		Position = UDim2.fromScale(0, 0),
-		ZIndex = 200,
-		Active = false,
-		Selectable = false,
-		ClipsDescendants = false,
-		Parent = parent,
-	})
-	Utils.Create("UIListLayout", {
-		FillDirection = Enum.FillDirection.Vertical,
-		Padding = UDim.new(0, 8),
-		HorizontalAlignment = Enum.HorizontalAlignment.Right,
-		VerticalAlignment = Enum.VerticalAlignment.Bottom,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Parent = self._container,
-	})
-	Utils.Create("UIPadding", {
-		PaddingBottom = UDim.new(0, 20),
-		PaddingRight = UDim.new(0, 20),
-		Parent = self._container,
-	})
+	if not self._stack or not self._stack.Parent then
+		local tw = (Services.ThemeService.Tokens.Notification or {}).Width or 320
+		self._stack = Utils.Create("Frame", {
+			Name = "ToastStack",
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(1, 1),
+			Position = UDim2.new(1, -20, 1, -20),
+			Size = UDim2.new(0, tw + 24, 1, -40),
+			Parent = self._container,
+		})
+		Utils.Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Vertical,
+			Padding = UDim.new(0, 10),
+			HorizontalAlignment = Enum.HorizontalAlignment.Right,
+			VerticalAlignment = Enum.VerticalAlignment.Bottom,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = self._stack,
+		})
+	end
 end
 
 function Services.NotificationService:_spawnToast(item)
@@ -501,32 +512,37 @@ function Services.NotificationService:_spawnToast(item)
 	local nt = Services.ThemeService.Tokens.Notification
 	local slidePx = 44
 	self._toastOrder = self._toastOrder + 1
+	if self._stack then
+		self._stack.Size = UDim2.new(0, nt.Width + 24, 1, -40)
+	end
+	local padY = nt.PaddingY or 10
+	local padX = nt.PaddingX or 12
 	local card = Utils.Create("Frame", {
+		Name = "ToastCard",
 		BackgroundColor3 = theme.Surface,
 		BackgroundTransparency = 0,
 		BorderSizePixel = 1,
 		BorderColor3 = theme.Border,
-		Size = UDim2.new(0, nt.Width, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(0, nt.Width, 0, 48),
+		AutomaticSize = Enum.AutomaticSize.None,
 		LayoutOrder = self._toastOrder,
 		ClipsDescendants = true,
-		Parent = self._container,
+		Parent = self._stack or self._container,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, nt.CornerRadius), Parent = card })
 	local mover = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 1, 0),
 		Position = UDim2.new(0, slidePx, 0, 0),
 		ClipsDescendants = true,
 		Parent = card,
 	})
 	local pad = Utils.Create("UIPadding", {
-		PaddingTop = UDim.new(0, nt.PaddingY),
-		PaddingBottom = UDim.new(0, nt.PaddingY),
-		PaddingLeft = UDim.new(0, nt.PaddingX),
-		PaddingRight = UDim.new(0, nt.PaddingX),
+		PaddingTop = UDim.new(0, padY),
+		PaddingBottom = UDim.new(0, padY),
+		PaddingLeft = UDim.new(0, padX),
+		PaddingRight = UDim.new(0, padX),
 		Parent = mover,
 	})
 	local inner = Utils.Create("Frame", {
@@ -536,12 +552,18 @@ function Services.NotificationService:_spawnToast(item)
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = mover,
 	})
-	Utils.Create("UIListLayout", {
+	local innerList = Utils.Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Vertical,
 		Padding = UDim.new(0, 6),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = inner,
 	})
+	local function refreshCardHeight()
+		local colH = innerList.AbsoluteContentSize.Y
+		local h = padY * 2 + colH
+		card.Size = UDim2.new(0, nt.Width, 0, math.max(32, math.ceil(h)))
+	end
+	innerList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(refreshCardHeight)
 	local title = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBold,
@@ -579,6 +601,7 @@ function Services.NotificationService:_spawnToast(item)
 	})
 	Utils.Tween(title, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { TextTransparency = 0 })
 	Utils.Tween(body, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { TextTransparency = 0 })
+	task.defer(refreshCardHeight)
 	task.delay(item.Duration or 3.5, function()
 		if not card.Parent then
 			return
