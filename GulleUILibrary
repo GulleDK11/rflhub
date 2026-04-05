@@ -199,6 +199,7 @@ local _defaultTokens = {
 		ScrollBarThickness = 2,
 		PageScrollBarThickness = 3,
 		SearchHeight = 32,
+		SidebarFooterHeight = 56,
 	},
 	Section = {
 		HeaderTextSize = 13,
@@ -929,6 +930,9 @@ function Core.CreateWindow(opts)
 	local searchGap = 6
 	local searchTop = sidePad
 	local searchUnder = searchTop + searchH + searchGap
+	local footerH = tok.Tab.SidebarFooterHeight or 56
+	local footerGap = 8
+	local profileBlockH = opts.HideSidebarProfile == true and 0 or (footerH + footerGap)
 
 	local searchWrap = Utils.Create("Frame", {
 		BackgroundColor3 = colors.BackgroundElevated,
@@ -974,7 +978,7 @@ function Core.CreateWindow(opts)
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Position = UDim2.new(0, sidePad, 0, searchUnder),
-		Size = UDim2.new(1, -sidePad * 2, 1, -searchUnder - sidePad),
+		Size = UDim2.new(1, -sidePad * 2, 1, -searchUnder - sidePad - profileBlockH),
 		CanvasSize = UDim2.new(0, 0, 0, 0),
 		ScrollBarThickness = tok.Tab.ScrollBarThickness,
 		ScrollBarImageColor3 = colors.Accent,
@@ -986,6 +990,102 @@ function Core.CreateWindow(opts)
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = tabList,
 	})
+
+	local profileBarInst, profileNameInst, profileRankInst
+	if opts.HideSidebarProfile ~= true then
+		local function sidebarRankLabel()
+			if type(opts.SidebarRank) == "string" and opts.SidebarRank ~= "" then
+				return opts.SidebarRank
+			end
+			if game.CreatorType == Enum.CreatorType.User and LocalPlayer.UserId == game.CreatorId then
+				return "Developer"
+			end
+			return "User"
+		end
+
+		profileBarInst = Utils.Create("Frame", {
+			BackgroundColor3 = colors.BackgroundElevated,
+			BackgroundTransparency = 0.15,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, -sidePad * 2, 0, footerH),
+			Position = UDim2.new(0, sidePad, 1, -sidePad),
+			AnchorPoint = Vector2.new(0, 1),
+			Parent = sidebar,
+		})
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Tab.ItemRadius), Parent = profileBarInst })
+		Utils.Create("UIStroke", {
+			Color = colors.Border,
+			Thickness = 1,
+			Transparency = 0.88,
+			Parent = profileBarInst,
+		})
+		Utils.Create("UIPadding", {
+			PaddingLeft = UDim.new(0, 8),
+			PaddingRight = UDim.new(0, 8),
+			PaddingTop = UDim.new(0, 8),
+			PaddingBottom = UDim.new(0, 8),
+			Parent = profileBarInst,
+		})
+
+		local avatar = Utils.Create("ImageLabel", {
+			BackgroundColor3 = colors.Surface,
+			BorderSizePixel = 0,
+			Size = UDim2.fromOffset(40, 40),
+			Position = UDim2.fromOffset(0, 0),
+			Image = "",
+			Parent = profileBarInst,
+		})
+		Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = avatar })
+
+		local textCol = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, -48, 1, 0),
+			Position = UDim2.fromOffset(48, 0),
+			Parent = profileBarInst,
+		})
+		Utils.Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Vertical,
+			Padding = UDim.new(0, 2),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = textCol,
+		})
+		profileNameInst = Utils.Create("TextLabel", {
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBold,
+			TextSize = 13,
+			TextColor3 = colors.Text,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Size = UDim2.new(1, 0, 0, 16),
+			Text = "@" .. LocalPlayer.Name,
+			LayoutOrder = 0,
+			Parent = textCol,
+		})
+		profileRankInst = Utils.Create("TextLabel", {
+			BackgroundTransparency = 1,
+			Font = Enum.Font.Gotham,
+			TextSize = 11,
+			TextColor3 = colors.TextDim,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Size = UDim2.new(1, 0, 0, 14),
+			Text = sidebarRankLabel(),
+			LayoutOrder = 1,
+			Parent = textCol,
+		})
+
+		task.defer(function()
+			local ok, content = pcall(function()
+				return Players:GetUserThumbnailAsync(
+					LocalPlayer.UserId,
+					Enum.ThumbnailType.HeadShot,
+					Enum.ThumbnailSize.Size100x100
+				)
+			end)
+			if ok and type(content) == "string" and content ~= "" and avatar.Parent then
+				avatar.Image = content
+			end
+		end)
+	end
 
 	local contentGap = tok.Tab.SidebarWidth + tok.Tab.ContentGap
 	local contentShell = Utils.Create("Frame", {
@@ -1182,6 +1282,11 @@ function Core.CreateWindow(opts)
 	Core.AddThemeRef(window, searchStroke, "Color", "Border")
 	Core.AddThemeRef(window, searchIcon, "ImageColor3", "TextDim")
 	Core.AddThemeRef(window, searchBox, "TextColor3", "Text")
+	if profileBarInst then
+		Core.AddThemeRef(window, profileBarInst, "BackgroundColor3", "BackgroundElevated")
+		Core.AddThemeRef(window, profileNameInst, "TextColor3", "Text")
+		Core.AddThemeRef(window, profileRankInst, "TextColor3", "TextDim")
+	end
 	Core.AddThemeRef(window, sideStroke, "Color", "Border")
 	Core.AddThemeRef(window, tabList, "ScrollBarImageColor3", "Accent")
 	Core.AddThemeRef(window, contentShell, "BackgroundColor3", "Background")
@@ -1565,7 +1670,8 @@ local function ElemCtx(windowRef)
 	return Services.ThemeService.Current, Services.ThemeService.Tokens
 end
 
-local function createControlRowCard(list, theme, etok, win)
+-- Parent must be a GuiObject frame (e.g. section rowsHost). Never parent rows to UIListLayout — they will not show (Rayfield/wind pattern: layout + siblings).
+local function createControlRowCard(rowsParent, theme, etok, win)
 	local padX = etok.Section.RowPaddingX or 12
 	local padY = etok.Section.RowPaddingY or 8
 	local card = Utils.Create("Frame", {
@@ -1573,7 +1679,7 @@ local function createControlRowCard(list, theme, etok, win)
 		BorderSizePixel = 0,
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
-		Parent = list,
+		Parent = rowsParent,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, etok.Section.BoxRadius), Parent = card })
 	local stroke = Utils.Create("UIStroke", {
@@ -1681,7 +1787,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 		end
 		local value = flag and Services.StateService:GetFlag(flag) or def
 
-		local card = createControlRowCard(list, theme, etok, win)
+		local card = createControlRowCard(rowsHost, theme, etok, win)
 		local row = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, etok.Control.ToggleRowHeight),
@@ -1772,7 +1878,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 	function section:CreateButton(opts)
 		opts = opts or {}
 		local theme, etok = ElemCtx(win)
-		local card = createControlRowCard(list, theme, etok, win)
+		local card = createControlRowCard(rowsHost, theme, etok, win)
 		local btnStroke
 		local btn = Utils.Create("TextButton", {
 			BackgroundColor3 = theme.Surface,
@@ -1828,7 +1934,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 		local value = flag and Services.StateService:GetFlag(flag) or def
 		value = Utils.Clamp(tonumber(value) or def, minv, maxv)
 
-		local card = createControlRowCard(list, theme, etok, win)
+		local card = createControlRowCard(rowsHost, theme, etok, win)
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, etok.Control.SliderBlockHeight),
@@ -1958,7 +2064,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 		end
 		local current = flag and Services.StateService:GetFlag(flag) or def
 
-		local card = createControlRowCard(list, theme, etok, win)
+		local card = createControlRowCard(rowsHost, theme, etok, win)
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, 0),
@@ -2106,7 +2212,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			Services.StateService:SetFlag(flag, Services.StateService:GetFlag(flag) ~= nil and Services.StateService:GetFlag(flag) or def)
 		end
 
-		local card = createControlRowCard(list, theme, etok, win)
+		local card = createControlRowCard(rowsHost, theme, etok, win)
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, etok.Control.InputRowHeight),
@@ -2213,7 +2319,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 		end
 		local col = getColor()
 
-		local card = createControlRowCard(list, theme, etok, win)
+		local card = createControlRowCard(rowsHost, theme, etok, win)
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, 0),
@@ -2377,7 +2483,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			end
 		end
 
-		local card = createControlRowCard(list, theme, etok, win)
+		local card = createControlRowCard(rowsHost, theme, etok, win)
 		local row = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, etok.Control.KeybindRowHeight + 2),
@@ -2478,7 +2584,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			AutomaticSize = Enum.AutomaticSize.Y,
 			Size = UDim2.new(1, 0, 0, 0),
 			Text = opts.Text or opts.Name or "Label",
-			Parent = list,
+			Parent = rowsHost,
 		})
 		if win then
 			Core.AddThemeRef(win, lbl, "TextColor3", "Text")
@@ -2506,7 +2612,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			AutomaticSize = Enum.AutomaticSize.Y,
 			Size = UDim2.new(1, 0, 0, 0),
 			Text = opts.Text or opts.Content or "",
-			Parent = list,
+			Parent = rowsHost,
 		})
 		if win then
 			Core.AddThemeRef(win, lbl, "TextColor3", "TextDim")
