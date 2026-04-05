@@ -6,7 +6,7 @@
     ██████╔╝███████╗╚██████╔╝╚██████╗██║  ██╗╚██████╔╝██║
     ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝
 
-    BlockUI v1.0.2 — Fluent-inspired gray shell
+    BlockUI v1.0.3 — Fluent gray + toggle key + fix input
     Sharp. Fast. Clean.
 
     Usage:
@@ -17,6 +17,7 @@
         Tab     → CreateButton, CreateToggle, CreateSlider,
                   CreateInput, CreateDropdown, CreateLabel
         BlockUI → Notify, LoadConfiguration, SaveConfiguration
+        CreateWindow → ToggleKey (Enum eller liste, default Insert; false = slå fra)
 --]]
 
 local BlockUI = {}
@@ -29,37 +30,39 @@ local Players        = game:GetService("Players")
 local TweenService   = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
-local RunService     = game:GetService("RunService")
 local LocalPlayer    = Players.LocalPlayer
 local PlayerGui      = LocalPlayer:WaitForChild("PlayerGui")
 
--- ── Style: neutral gray “Fluent” shell (ingen macOS-prikker) ─
+-- ── Style: grå Fluent + tydelig “ON”-blå ────────────────────
 local S = {
-    bg         = Color3.fromRGB(30, 30, 32),
-    shell      = Color3.fromRGB(36, 36, 38),
-    surface    = Color3.fromRGB(43, 43, 46),
-    surface2   = Color3.fromRGB(50, 50, 54),
-    surface3   = Color3.fromRGB(33, 33, 36),
-    sidebarSel = Color3.fromRGB(48, 48, 52),
-    accent     = Color3.fromRGB(220, 222, 228),
-    accentBar  = Color3.fromRGB(180, 185, 195),
-    accent2    = Color3.fromRGB(120, 165, 220),
-    text       = Color3.fromRGB(248, 248, 250),
-    muted      = Color3.fromRGB(150, 152, 160),
-    border     = Color3.fromRGB(68, 68, 74),
-    danger     = Color3.fromRGB(232, 90, 90),
-    warning    = Color3.fromRGB(230, 180, 60),
-    success    = Color3.fromRGB(80, 180, 120),
-    black      = Color3.fromRGB(18, 18, 20),
-    font       = Enum.Font.GothamMedium,
-    fontMono   = Enum.Font.Code,
-    fontBody   = Enum.Font.Gotham,
-    radiusS    = UDim.new(0, 6),
-    radiusM    = UDim.new(0, 10),
+    bg           = Color3.fromRGB(28, 28, 31),
+    shell        = Color3.fromRGB(40, 40, 44),
+    surface      = Color3.fromRGB(48, 48, 52),
+    surface2     = Color3.fromRGB(56, 56, 62),
+    surface3     = Color3.fromRGB(34, 34, 38),
+    sidebarSel   = Color3.fromRGB(52, 56, 64),
+    accent       = Color3.fromRGB(230, 232, 238),
+    accentBar    = Color3.fromRGB(0, 120, 215),
+    accent2      = Color3.fromRGB(96, 165, 250),
+    fluentBlue   = Color3.fromRGB(0, 120, 215),
+    toggleOn     = Color3.fromRGB(0, 120, 215),
+    toggleOnGlow = Color3.fromRGB(120, 190, 255),
+    text         = Color3.fromRGB(250, 250, 252),
+    muted        = Color3.fromRGB(145, 147, 156),
+    border       = Color3.fromRGB(72, 74, 82),
+    danger       = Color3.fromRGB(232, 90, 90),
+    warning      = Color3.fromRGB(230, 180, 60),
+    success      = Color3.fromRGB(80, 200, 130),
+    black        = Color3.fromRGB(12, 12, 14),
+    font         = Enum.Font.GothamMedium,
+    fontMono     = Enum.Font.Code,
+    fontBody     = Enum.Font.Gotham,
+    radiusS      = UDim.new(0, 6),
+    radiusM      = UDim.new(0, 10),
 }
 
-local CORNER_MAIN = UDim.new(0, 10)
-local SIDEBAR_W = 184
+local CORNER_MAIN = UDim.new(0, 12)
+local SIDEBAR_W = 196
 local function corner(inst, r)
     local c = inst:FindFirstChildOfClass("UICorner")
     if not c then
@@ -76,8 +79,13 @@ local UNSUPPORTED_PROPS = {
 }
 
 local function new(cls, props, parent)
+    props = props or {}
+    -- Tekstlabels skal ikke fange museklik (blokerede knapper/toggles)
+    if cls == "TextLabel" and props.Active == nil then
+        props.Active = false
+    end
     local obj = Instance.new(cls)
-    for k, v in pairs(props or {}) do
+    for k, v in pairs(props) do
         if not UNSUPPORTED_PROPS[k] then
             obj[k] = v
         end
@@ -322,6 +330,17 @@ function BlockUI:CreateWindow(cfg)
         self._configFile = saveConfig.FileName
     end
 
+    local toggleKeys = {}
+    if cfg.ToggleKey == false then
+        toggleKeys = {}
+    elseif cfg.ToggleKey == nil then
+        toggleKeys = { Enum.KeyCode.Insert }
+    elseif typeof(cfg.ToggleKey) == "EnumItem" then
+        toggleKeys = { cfg.ToggleKey }
+    elseif type(cfg.ToggleKey) == "table" then
+        toggleKeys = cfg.ToggleKey
+    end
+
     -- Root ScreenGui
     local gui = new("ScreenGui", {
         Name           = "BlockUI_" .. winName,
@@ -333,10 +352,10 @@ function BlockUI:CreateWindow(cfg)
 
     local titleBarH = (winSub ~= "") and 58 or 46
 
-    -- Main frame (bred Fluent-lignende shell)
+    -- Main frame (bred, blødere Fluent-shell)
     local main = new("Frame", {
-        Size             = UDim2.new(0, 656, 0, 468),
-        Position         = UDim2.new(0.5, -328, 0.5, -234),
+        Size             = UDim2.new(0, 728, 0, 492),
+        Position         = UDim2.new(0.5, -364, 0.5, -246),
         BackgroundColor3 = S.shell,
         BorderSizePixel  = 0,
         ClipsDescendants = true,
@@ -345,7 +364,7 @@ function BlockUI:CreateWindow(cfg)
     new("UIStroke", {
         Color            = S.border,
         Thickness        = 1,
-        Transparency     = 0.35,
+        Transparency     = 0.25,
         ApplyStrokeMode  = Enum.ApplyStrokeMode.Border,
     }, main)
 
@@ -422,7 +441,29 @@ function BlockUI:CreateWindow(cfg)
     closeBtn.MouseLeave:Connect(function()
         tween(closeBtn, TweenInfo.new(0.1), { BackgroundTransparency = 1, TextColor3 = S.muted })
     end)
+    local toggleKeyConn = nil
+    if #toggleKeys > 0 then
+        toggleKeyConn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed then
+                return
+            end
+            if not input.KeyCode then
+                return
+            end
+            for _, key in ipairs(toggleKeys) do
+                if input.KeyCode == key then
+                    gui.Enabled = not gui.Enabled
+                    break
+                end
+            end
+        end)
+    end
+
     closeBtn.MouseButton1Click:Connect(function()
+        if toggleKeyConn then
+            toggleKeyConn:Disconnect()
+            toggleKeyConn = nil
+        end
         gui:Destroy()
     end)
 
@@ -474,13 +515,14 @@ function BlockUI:CreateWindow(cfg)
         for n, frame in pairs(tabFrames) do
             frame.Visible = (n == name)
         end
-        for n, btn in pairs(tabs) do
-            local ind = btn:FindFirstChild("SelIndicator")
+        for n, entry in pairs(tabs) do
             local isOn = (n == name)
-            btn.TextColor3 = isOn and S.text or S.muted
-            btn.BackgroundColor3 = isOn and S.sidebarSel or S.surface3
-            if ind and ind:IsA("Frame") then
-                ind.BackgroundTransparency = isOn and 0 or 1
+            if type(entry) == "table" and entry.btn and entry.wrap then
+                entry.btn.TextColor3 = isOn and S.fluentBlue or S.muted
+                entry.wrap.BackgroundColor3 = isOn and S.sidebarSel or S.surface3
+                if entry.ind and entry.ind:IsA("Frame") then
+                    entry.ind.BackgroundTransparency = isOn and 0 or 1
+                end
             end
         end
         activeTab = name
@@ -492,48 +534,68 @@ function BlockUI:CreateWindow(cfg)
     function Window:CreateTab(tabCfg)
         tabCfg = tabCfg or {}
         local tabName = tabCfg.Name or "Tab"
+        local tabIcon = tabCfg.Icon
+        local tabText = tabName
+        if tabIcon and tabIcon ~= "" then
+            tabText = tabIcon .. "  " .. tabName
+        end
 
-        -- Sidebar-fane (Fluent navigation)
-        local btn = new("TextButton", {
-            Size             = UDim2.new(1, 0, 0, 36),
+        -- Række: indikator + knap (aldrig barn af TextButton → ingen streg over tekst)
+        local rowWrap = new("Frame", {
+            Size             = UDim2.new(1, 0, 0, 38),
             BackgroundColor3 = S.surface3,
             BorderSizePixel  = 0,
-            Text             = tabName,
+        }, tabList)
+        corner(rowWrap, UDim.new(0, 7))
+        new("UIStroke", {
+            Color            = S.border,
+            Thickness        = 1,
+            Transparency     = 0.65,
+            ApplyStrokeMode  = Enum.ApplyStrokeMode.Border,
+        }, rowWrap)
+
+        local selInd = new("Frame", {
+            Name             = "SelIndicator",
+            Size             = UDim2.new(0, 3, 1, -10),
+            Position         = UDim2.new(0, 8, 0.5, 0),
+            AnchorPoint      = Vector2.new(0, 0.5),
+            BackgroundColor3 = S.fluentBlue,
+            BackgroundTransparency = 1,
+            BorderSizePixel  = 0,
+            ZIndex           = 1,
+            Active           = false,
+        }, rowWrap)
+        new("UICorner", { CornerRadius = UDim.new(1, 0) }, selInd)
+
+        local btn = new("TextButton", {
+            Size             = UDim2.new(1, -22, 1, -4),
+            Position         = UDim2.fromOffset(19, 2),
+            BackgroundTransparency = 1,
+            BorderSizePixel  = 0,
+            Text             = tabText,
             TextColor3       = S.muted,
             FontFace         = Font.fromEnum(Enum.Font.GothamMedium),
             TextSize         = 13,
             TextXAlignment   = Enum.TextXAlignment.Left,
             AutoButtonColor  = false,
-        }, tabList)
-        corner(btn, UDim.new(0, 5))
+            ZIndex           = 2,
+        }, rowWrap)
 
         new("UIPadding", {
-            PaddingLeft  = UDim.new(0, 14),
-            PaddingRight = UDim.new(0, 10),
+            PaddingLeft  = UDim.new(0, 4),
+            PaddingRight = UDim.new(0, 6),
         }, btn)
 
-        local selInd = new("Frame", {
-            Name             = "SelIndicator",
-            Size             = UDim2.new(0, 3, 0, 18),
-            Position         = UDim2.new(0, 6, 0.5, -9),
-            BackgroundColor3 = S.accentBar,
-            BackgroundTransparency = 1,
-            BorderSizePixel  = 0,
-            ZIndex           = 2,
-            Active           = false,
-        }, btn)
-        new("UICorner", { CornerRadius = UDim.new(1, 0) }, selInd)
-
-        tabs[tabName] = btn
+        tabs[tabName] = { wrap = rowWrap, btn = btn, ind = selInd }
 
         btn.MouseEnter:Connect(function()
             if activeTab ~= tabName then
-                tween(btn, TweenInfo.new(0.08), { BackgroundColor3 = S.surface })
+                tween(rowWrap, TweenInfo.new(0.1), { BackgroundColor3 = S.surface })
             end
         end)
         btn.MouseLeave:Connect(function()
             if activeTab ~= tabName then
-                tween(btn, TweenInfo.new(0.08), { BackgroundColor3 = S.surface3 })
+                tween(rowWrap, TweenInfo.new(0.1), { BackgroundColor3 = S.surface3 })
             end
         end)
 
@@ -543,7 +605,7 @@ function BlockUI:CreateWindow(cfg)
             BackgroundTransparency = 1,
             BorderSizePixel  = 0,
             ScrollBarThickness = 2,
-            ScrollBarImageColor3 = S.accentBar,
+            ScrollBarImageColor3 = S.fluentBlue,
             CanvasSize       = UDim2.new(0, 0, 0, 0),
             AutomaticCanvasSize = Enum.AutomaticSize.Y,
             Visible          = false,
@@ -555,15 +617,19 @@ function BlockUI:CreateWindow(cfg)
         }, tabFrame)
 
         new("UIPadding", {
-            PaddingTop    = UDim.new(0, 8),
-            PaddingBottom = UDim.new(0, 8),
+            PaddingTop    = UDim.new(0, 12),
+            PaddingBottom = UDim.new(0, 12),
+            PaddingLeft   = UDim.new(0, 14),
+            PaddingRight  = UDim.new(0, 14),
         }, tabFrame)
 
         tabFrames[tabName] = tabFrame
 
-        btn.MouseButton1Click:Connect(function()
+        local function pickTab()
             switchToTab(tabName)
-        end)
+        end
+        btn.MouseButton1Click:Connect(pickTab)
+        rowWrap.MouseButton1Click:Connect(pickTab)
 
         -- Auto-activate first tab
         if not activeTab then
@@ -579,47 +645,56 @@ function BlockUI:CreateWindow(cfg)
         function Tab:CreateButton(elCfg)
             elCfg = elCfg or {}
             local row = new("Frame", {
-                Size             = UDim2.new(1, 0, 0, 46),
+                Size             = UDim2.new(1, 0, 0, 48),
                 BackgroundColor3 = S.surface,
                 BorderSizePixel  = 0,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
-            new("Frame", {
-                Size = UDim2.new(1, 0, 0, 1),
-                Position = UDim2.new(0,0,1,-1),
-                BackgroundColor3 = S.border,
-                BorderSizePixel = 0,
+            corner(row, S.radiusS)
+            new("UIStroke", {
+                Color           = S.border,
+                Thickness       = 1,
+                Transparency    = 0.4,
             }, row)
 
+            local iconPrefix = (elCfg.Icon and elCfg.Icon ~= "") and (elCfg.Icon .. "  ") or ""
             new("TextLabel", {
-                Size             = UDim2.new(1, -100, 1, 0),
+                Size             = UDim2.new(1, -118, 1, 0),
                 Position         = UDim2.fromOffset(14, 0),
                 BackgroundTransparency = 1,
-                Text             = elCfg.Name or "Button",
+                Text             = iconPrefix .. (elCfg.Name or "Button"),
                 TextColor3       = S.text,
                 Font             = S.fontBody,
-                TextSize         = 13,
+                TextSize         = 14,
                 TextXAlignment   = Enum.TextXAlignment.Left,
             }, row)
 
             local btn2 = new("TextButton", {
-                Size             = UDim2.new(0, 80, 0, 26),
-                Position         = UDim2.new(1, -92, 0.5, -13),
+                Size             = UDim2.new(0, 88, 0, 30),
+                Position         = UDim2.new(1, -100, 0.5, -15),
                 BackgroundColor3 = S.surface2,
                 BorderSizePixel  = 0,
-                Text             = "RUN",
-                TextColor3       = S.accent,
-                FontFace         = Font.fromEnum(S.fontMono),
-                TextSize         = 11,
+                Text             = elCfg.ButtonText or "Kør",
+                TextColor3       = S.fluentBlue,
+                FontFace         = Font.fromEnum(Enum.Font.GothamMedium),
+                TextSize         = 13,
+                AutoButtonColor  = false,
+                ZIndex           = 2,
             }, row)
-            new("UIStroke", { Color = S.border, Thickness = 1, Transparency = 0.25 }, btn2)
-            corner(btn2, S.radiusS)
+            new("UIStroke", { Color = S.fluentBlue, Thickness = 1, Transparency = 0.5 }, btn2)
+            corner(btn2, UDim.new(0, 7))
 
             btn2.MouseEnter:Connect(function()
-                tween(btn2, TweenInfo.new(0.1), { BackgroundColor3 = S.accent, TextColor3 = S.black })
+                tween(btn2, TweenInfo.new(0.12), {
+                    BackgroundColor3 = S.fluentBlue,
+                    TextColor3 = Color3.fromRGB(255, 255, 255),
+                })
             end)
             btn2.MouseLeave:Connect(function()
-                tween(btn2, TweenInfo.new(0.1), { BackgroundColor3 = S.surface2, TextColor3 = S.accent })
+                tween(btn2, TweenInfo.new(0.12), {
+                    BackgroundColor3 = S.surface2,
+                    TextColor3 = S.fluentBlue,
+                })
             end)
             btn2.MouseButton1Click:Connect(function()
                 if elCfg.Callback then
@@ -642,80 +717,95 @@ function BlockUI:CreateWindow(cfg)
             if flag then BlockUI.Flags[flag] = value end
 
             local row = new("Frame", {
-                Size             = UDim2.new(1, 0, 0, 54),
+                Size             = UDim2.new(1, 0, 0, elCfg.Description and 58 or 50),
                 BackgroundColor3 = S.surface,
                 BorderSizePixel  = 0,
                 LayoutOrder      = nextOrder(),
             }, tabFrame)
-            new("Frame", { Size = UDim2.new(1,0,0,1), Position = UDim2.new(0,0,1,-1), BackgroundColor3 = S.border, BorderSizePixel = 0 }, row)
+            corner(row, S.radiusS)
+            new("UIStroke", { Color = S.border, Thickness = 1, Transparency = 0.4 }, row)
 
+            local function flipToggle()
+                setState(not value)
+            end
+
+            local rowHit = new("TextButton", {
+                Size             = UDim2.fromScale(1, 1),
+                BackgroundTransparency = 1,
+                Text             = "",
+                AutoButtonColor  = false,
+                ZIndex           = 1,
+            }, row)
+
+            local iconT = (elCfg.Icon and elCfg.Icon ~= "") and (elCfg.Icon .. "  ") or ""
             new("TextLabel", {
-                Size             = UDim2.new(1, -70, 0, 20),
+                Size             = UDim2.new(1, -130, 0, 20),
                 Position         = UDim2.fromOffset(14, 10),
                 BackgroundTransparency = 1,
-                Text             = elCfg.Name or "Toggle",
+                Text             = iconT .. (elCfg.Name or "Toggle"),
                 TextColor3       = S.text,
                 Font             = S.fontBody,
-                TextSize         = 13,
+                TextSize         = 14,
                 TextXAlignment   = Enum.TextXAlignment.Left,
+                ZIndex           = 2,
             }, row)
 
             if elCfg.Description then
                 new("TextLabel", {
-                    Size             = UDim2.new(1, -70, 0, 16),
-                    Position         = UDim2.fromOffset(14, 30),
+                    Size             = UDim2.new(1, -130, 0, 16),
+                    Position         = UDim2.fromOffset(14, 32),
                     BackgroundTransparency = 1,
                     Text             = elCfg.Description,
                     TextColor3       = S.muted,
                     Font             = S.fontBody,
                     TextSize         = 11,
                     TextXAlignment   = Enum.TextXAlignment.Left,
+                    ZIndex           = 2,
                 }, row)
             end
 
-            -- Track
             local track = new("Frame", {
-                Size             = UDim2.new(0, 38, 0, 20),
-                Position         = UDim2.new(1, -52, 0.5, -10),
+                Size             = UDim2.new(0, 42, 0, 22),
+                Position         = UDim2.new(1, -56, 0.5, -11),
                 BackgroundColor3 = S.surface2,
                 BorderSizePixel  = 0,
+                ZIndex           = 3,
+                Active           = false,
             }, row)
             new("UICorner", { CornerRadius = UDim.new(1, 0) }, track)
-            new("UIStroke", { Color = S.border, Thickness = 1 }, track)
+            local trackStroke = new("UIStroke", { Color = S.border, Thickness = 1 }, track)
 
-            -- Thumb
             local thumb = new("Frame", {
-                Size             = UDim2.new(0, 14, 0, 14),
-                Position         = UDim2.fromOffset(2, 3),
-                BackgroundColor3 = S.muted,
+                Size             = UDim2.new(0, 16, 0, 16),
+                Position         = UDim2.fromOffset(3, 3),
+                BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                 BorderSizePixel  = 0,
+                ZIndex           = 3,
+                Active           = false,
             }, track)
             new("UICorner", { CornerRadius = UDim.new(1, 0) }, thumb)
 
             local function setState(val, silent)
                 value = val
                 if flag then BlockUI.Flags[flag] = val end
-                local stro = track:FindFirstChildOfClass("UIStroke")
                 if val then
-                    tween(track, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
-                        BackgroundColor3 = Color3.fromRGB(58, 60, 68),
+                    tween(track, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        BackgroundColor3 = S.toggleOn,
                     })
-                    tween(thumb, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
-                        Position = UDim2.fromOffset(22, 3),
-                        BackgroundColor3 = S.accent,
+                    tween(thumb, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        Position = UDim2.fromOffset(23, 3),
+                        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                     })
-                    if stro then
-                        stro.Color = S.accentBar
-                    end
+                    trackStroke.Color = S.toggleOnGlow
                 else
-                    tween(track, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = S.surface2 })
-                    tween(thumb, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
-                        Position = UDim2.fromOffset(2, 3),
-                        BackgroundColor3 = S.muted,
+                    tween(track, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        BackgroundColor3 = S.surface2,
                     })
-                    if stro then
-                        stro.Color = S.border
-                    end
+                    tween(thumb, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        Position = UDim2.fromOffset(3, 3),
+                        BackgroundColor3 = Color3.fromRGB(200, 200, 205),
+                    })
+                    trackStroke.Color = S.border
                 end
                 if not silent and elCfg.Callback then
                     task.spawn(elCfg.Callback, val)
@@ -724,13 +814,7 @@ function BlockUI:CreateWindow(cfg)
 
             setState(value, true)
 
-            local function toggleClick(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                    setState(not value)
-                end
-            end
-            track.InputBegan:Connect(toggleClick)
-            thumb.InputBegan:Connect(toggleClick)
+            rowHit.MouseButton1Click:Connect(flipToggle)
 
             local Toggle = {}
             function Toggle:Set(val)
@@ -773,7 +857,7 @@ function BlockUI:CreateWindow(cfg)
                 Position         = UDim2.new(1, -84, 0, 10),
                 BackgroundTransparency = 1,
                 Text             = tostring(value) .. " " .. suffix,
-                TextColor3       = S.accent,
+                TextColor3       = S.fluentBlue,
                 FontFace         = Font.fromEnum(S.fontMono),
                 TextSize         = 12,
                 TextXAlignment   = Enum.TextXAlignment.Right,
@@ -791,7 +875,7 @@ function BlockUI:CreateWindow(cfg)
             -- Fill
             local fill = new("Frame", {
                 Size             = UDim2.new(0, 0, 1, 0),
-                BackgroundColor3 = S.accent,
+                BackgroundColor3 = S.fluentBlue,
                 BorderSizePixel  = 0,
             }, trackBg)
             corner(fill, UDim.new(1, 0))
@@ -805,7 +889,7 @@ function BlockUI:CreateWindow(cfg)
                 BorderSizePixel  = 0,
             }, trackBg)
             corner(sliderThumb, UDim.new(1, 0))
-            new("UIStroke", { Color = S.accent, Thickness = 1, Transparency = 0.35 }, sliderThumb)
+            new("UIStroke", { Color = S.fluentBlue, Thickness = 1, Transparency = 0.35 }, sliderThumb)
 
             local function updateSlider(val)
                 val = math.clamp(math.round(val / inc) * inc, range[1], range[2])
@@ -1132,6 +1216,14 @@ function BlockUI:CreateWindow(cfg)
         return Tab
     end
 
+    function Window:SetEnabled(enabled)
+        gui.Enabled = enabled
+    end
+
+    function Window:Toggle()
+        gui.Enabled = not gui.Enabled
+    end
+
     table.insert(BlockUI._windows, Window)
     return Window
 end
@@ -1148,7 +1240,8 @@ local BlockUI = require(script.Parent.BlockUI) -- eller dit modul
 
 local Window = BlockUI:CreateWindow({
     Name     = "My Script",
-    Subtitle = "Made with BlockUI v1.0.2",
+    Subtitle = "Made with BlockUI v1.0.3",
+    ToggleKey = { Enum.KeyCode.Insert, Enum.KeyCode.RightControl },
     ConfigurationSaving = {
         Enabled  = true,
         FileName = "MyScript_Config",
