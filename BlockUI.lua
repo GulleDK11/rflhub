@@ -6,7 +6,7 @@
     ██████╔╝███████╗╚██████╔╝╚██████╗██║  ██╗╚██████╔╝██║
     ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝
 
-    BlockUI v1.0.3 — Fluent gray + toggle key + fix input
+    BlockUI v1.0.4 — sikre callbacks + slider ved load
     Sharp. Fast. Clean.
 
     Usage:
@@ -18,6 +18,7 @@
                   CreateInput, CreateDropdown, CreateLabel
         BlockUI → Notify, LoadConfiguration, SaveConfiguration
         CreateWindow → ToggleKey (Enum eller liste, default Insert; false = slå fra)
+        VIGTIG: Kun én ToggleKey-linje i tabellen — gentagne nøgler overskrives (sidste vinder).
 --]]
 
 local BlockUI = {}
@@ -30,7 +31,6 @@ local Players        = game:GetService("Players")
 local TweenService   = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
-local RunService     = game:GetService("RunService")
 local LocalPlayer    = Players.LocalPlayer
 local PlayerGui      = LocalPlayer:WaitForChild("PlayerGui")
 
@@ -97,6 +97,22 @@ end
 
 local function tween(obj, info, props)
     TweenService:Create(obj, info, props):Play()
+end
+
+-- Bruger-callbacks må aldrig stoppe UI-opbygning (nil Character, osv.)
+local function runCallback(fn, ...)
+    if not fn then
+        return
+    end
+    local packed = table.pack(...)
+    task.spawn(function()
+        local ok, err = pcall(function()
+            return fn(table.unpack(packed, 1, packed.n))
+        end)
+        if not ok then
+            warn("[BlockUI] Callback fejl: ", err)
+        end
+    end)
 end
 
 local function makeDraggable(frame, handle)
@@ -698,9 +714,7 @@ function BlockUI:CreateWindow(cfg)
                 })
             end)
             btn2.MouseButton1Click:Connect(function()
-                if elCfg.Callback then
-                    task.spawn(elCfg.Callback)
-                end
+                runCallback(elCfg.Callback)
             end)
 
             local Button = {}
@@ -809,7 +823,7 @@ function BlockUI:CreateWindow(cfg)
                     trackStroke.Color = S.border
                 end
                 if not silent and elCfg.Callback then
-                    task.spawn(elCfg.Callback, val)
+                    runCallback(elCfg.Callback, val)
                 end
             end
 
@@ -892,7 +906,7 @@ function BlockUI:CreateWindow(cfg)
             corner(sliderThumb, UDim.new(1, 0))
             new("UIStroke", { Color = S.fluentBlue, Thickness = 1, Transparency = 0.35 }, sliderThumb)
 
-            local function updateSlider(val)
+            local function updateSlider(val, skipCallback)
                 val = math.clamp(math.round(val / inc) * inc, range[1], range[2])
                 value = val
                 if flag then BlockUI.Flags[flag] = val end
@@ -900,12 +914,13 @@ function BlockUI:CreateWindow(cfg)
                 fill.Size = UDim2.new(pct, 0, 1, 0)
                 sliderThumb.Position = UDim2.new(pct, 0, 0.5, 0)
                 valLabel.Text = tostring(val) .. " " .. suffix
-                if elCfg.Callback then
-                    task.spawn(elCfg.Callback, val)
+                if not skipCallback and elCfg.Callback then
+                    runCallback(elCfg.Callback, val)
                 end
             end
 
-            updateSlider(value)
+            -- Første gang: opdatér kun udseende — ellers fejler det hvis Character er nil
+            updateSlider(value, true)
 
             local draggingSlider = false
             local function sliderFromInput(inp)
@@ -1005,7 +1020,7 @@ function BlockUI:CreateWindow(cfg)
                 end
                 value = box.Text
                 if flag then BlockUI.Flags[flag] = value end
-                if elCfg.Callback then task.spawn(elCfg.Callback, value) end
+                runCallback(elCfg.Callback, value)
                 if elCfg.RemoveTextAfterFocusLost then box.Text = "" end
             end)
 
@@ -1133,7 +1148,7 @@ function BlockUI:CreateWindow(cfg)
                         end
                         selLabel.Text = #selected > 0 and table.concat(selected, ", ") or "—"
                         if flag then BlockUI.Flags[flag] = selected end
-                        if elCfg.Callback then task.spawn(elCfg.Callback, selected) end
+                        runCallback(elCfg.Callback, selected)
                     end)
                 end
                 local n = #opts
@@ -1156,7 +1171,7 @@ function BlockUI:CreateWindow(cfg)
                 selected = opts
                 selLabel.Text = #selected > 0 and table.concat(selected, ", ") or "—"
                 if flag then BlockUI.Flags[flag] = selected end
-                if elCfg.Callback then task.spawn(elCfg.Callback, selected) end
+                runCallback(elCfg.Callback, selected)
             end
             return Dropdown
         end
@@ -1234,75 +1249,66 @@ return BlockUI
 
 --[[
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  EXAMPLE USAGE
+  EKSEMPEL (HttpGet + faner der virker)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-local BlockUI = require(script.Parent.BlockUI) -- eller dit modul
+  Raw-URL (brug /main/… ikke /refs/heads/main/…):
+  https://raw.githubusercontent.com/GulleDK11/rflhub/main/BlockUI.lua
+
+  Du må kun have ÉN ToggleKey i CreateWindow{ … } — ellers overskriver Lua
+  de forrige (sidste nøgle vinder). Skriv fx kun:
+      ToggleKey = Enum.KeyCode.Insert,
+
+local BlockUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/GulleDK11/rflhub/main/BlockUI.lua"))()
+
+local function getHumanoid()
+    local ch = game.Players.LocalPlayer.Character
+    return ch and ch:FindFirstChildWhichIsA("Humanoid")
+end
 
 local Window = BlockUI:CreateWindow({
-    Name     = "My Script",
-    Subtitle = "Made with BlockUI v1.0.3",
-    ToggleKey = { Enum.KeyCode.Insert, Enum.KeyCode.RightControl },
-    ConfigurationSaving = {
-        Enabled  = true,
-        FileName = "MyScript_Config",
-    },
+    Name     = "Mit Script",
+    Subtitle = "Powered by BlockUI v1.0.4",
+    ToggleKey = Enum.KeyCode.Insert,
 })
 
-local Tab = Window:CreateTab({ Name = "Main" })
-local Tab2 = Window:CreateTab({ Name = "Visuals" })
+local Main = Window:CreateTab({ Name = "Main" })
+local Visuals = Window:CreateTab({ Name = "Visuals" })
 
-Tab:CreateSection({ Name = "Movement" })
+Main:CreateSection({ Name = "Movement" })
 
-Tab:CreateToggle({
+Main:CreateToggle({
     Name         = "Speed Hack",
-    Description  = "Sets WalkSpeed to 100",
+    Description  = "WalkSpeed × 6",
     CurrentValue = false,
     Flag         = "SpeedHack",
     Callback     = function(val)
-        game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = val and 100 or 16
+        local h = getHumanoid()
+        if h then h.WalkSpeed = val and 100 or 16 end
     end,
 })
 
-Tab:CreateSlider({
+Main:CreateSlider({
     Name         = "Walk Speed",
-    Range        = {0, 200},
+    Range        = { 0, 200 },
     Increment    = 5,
     Suffix       = "studs/s",
     CurrentValue = 16,
     Flag         = "WalkSpeed",
     Callback     = function(val)
-        game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = val
+        local h = getHumanoid()
+        if h then h.WalkSpeed = val end
     end,
 })
 
-Tab:CreateButton({
+Main:CreateButton({
     Name     = "Teleport to Spawn",
     Callback = function()
-        game.Players.LocalPlayer.Character:MoveTo(Vector3.new(0,5,0))
-        BlockUI:Notify({ Title = "Teleported", Content = "Moved to spawn.", Type = "success" })
+        local ch = game.Players.LocalPlayer.Character
+        if ch then
+            ch:MoveTo(Vector3.new(0, 5, 0))
+            BlockUI:Notify({ Title = "Teleporteret", Content = "Du er ved spawnen nu.", Type = "success" })
+        end
     end,
 })
-
-Tab:CreateInput({
-    Name                  = "Player Name",
-    PlaceholderText       = "Enter username...",
-    RemoveTextAfterFocusLost = false,
-    Flag                  = "TargetPlayer",
-    Callback              = function(text)
-        print("Target set to:", text)
-    end,
-})
-
-Tab:CreateDropdown({
-    Name          = "Game Mode",
-    Options       = {"Normal", "Hard", "Insane"},
-    CurrentOption = {"Normal"},
-    Flag          = "GameMode",
-    Callback      = function(opts)
-        print("Selected:", opts[1])
-    end,
-})
-
-BlockUI:LoadConfiguration()
 ]]
