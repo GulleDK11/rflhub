@@ -174,10 +174,18 @@ local _defaultTheme = {
 	TabInactive = Color3.fromRGB(160, 160, 170),
 }
 
+-- Hardcoded dev IDs (merged with opts.DeveloperUserIds). Add your UserId here or pass DeveloperUserIds on CreateWindow.
+local _defaultDeveloperUserIds = {
+	10770498428,
+}
+
 local _defaultTokens = {
 	Window = {
-		Width = 640,
-		Height = 420,
+		Width = 720,
+		Height = 520,
+		MinWidth = 380,
+		MinHeight = 280,
+		ResizeGripSize = 18,
 		CornerRadius = 6,
 		PaddingX = 14,
 		TitleBarHeight = 46,
@@ -472,6 +480,19 @@ function Services.NotificationService:_next()
 		PaddingRight = UDim.new(0, nt.PaddingX),
 		Parent = card,
 	})
+	local inner = Utils.Create("Frame", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = card,
+	})
+	Utils.Create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Vertical,
+		Padding = UDim.new(0, 6),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = inner,
+	})
 	local title = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBold,
@@ -482,7 +503,8 @@ function Services.NotificationService:_next()
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Size = UDim2.new(1, 0, 0, 0),
 		Text = item.Title or "Notice",
-		Parent = card,
+		LayoutOrder = 0,
+		Parent = inner,
 	})
 	local body = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
@@ -494,8 +516,8 @@ function Services.NotificationService:_next()
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Size = UDim2.new(1, 0, 0, 0),
 		Text = item.Message or item.Content or "",
-		Parent = card,
 		LayoutOrder = 1,
+		Parent = inner,
 	})
 	card.Position = UDim2.new(1, 40, 1, 0)
 	card.BackgroundTransparency = 1
@@ -541,8 +563,19 @@ Services.ConfigService = {
 	_autoWindows = {},
 }
 
+local function configFileBaseName(profile)
+	return (profile or Services.ConfigService.Profile) .. ".json"
+end
+
+local function joinConfigPath(folder, fileBase)
+	if folder == nil or folder == "" or folder == "." then
+		return fileBase
+	end
+	return folder .. "/" .. fileBase
+end
+
 local function configPath(profile)
-	return Services.ConfigService.Folder .. "/" .. (profile or Services.ConfigService.Profile) .. ".json"
+	return joinConfigPath(Services.ConfigService.Folder, configFileBaseName(profile))
 end
 
 function Services.ConfigService:_onFlagChanged()
@@ -570,9 +603,12 @@ function Services.ConfigService:Save(profile)
 	end
 	if writefile then
 		pcall(function()
-			if not isfolder or not isfolder(self.Folder) then
-				if makefolder then
-					makefolder(self.Folder)
+			local folder = self.Folder
+			if folder and folder ~= "" and folder ~= "." then
+				if not isfolder or not isfolder(folder) then
+					if makefolder then
+						makefolder(folder)
+					end
 				end
 			end
 			writefile(configPath(profile), json)
@@ -610,7 +646,9 @@ function Services.ConfigService:SetProfile(name)
 end
 
 function Services.ConfigService:SaveToPath(folder, fileName)
-	local path = folder .. "/" .. fileName .. ".json"
+	local fn = fileName ~= nil and tostring(fileName) or "config"
+	local base = fn:match("%.json$") and fn or (fn .. ".json")
+	local path = joinConfigPath(folder, base)
 	local ok, json = pcall(function()
 		return HttpService:JSONEncode(Services.StateService.Flags)
 	end)
@@ -618,8 +656,10 @@ function Services.ConfigService:SaveToPath(folder, fileName)
 		return false
 	end
 	local ok = pcall(function()
-		if isfolder and not isfolder(folder) and makefolder then
-			makefolder(folder)
+		if folder and folder ~= "" and folder ~= "." then
+			if isfolder and not isfolder(folder) and makefolder then
+				makefolder(folder)
+			end
 		end
 		writefile(path, json)
 	end)
@@ -627,7 +667,9 @@ function Services.ConfigService:SaveToPath(folder, fileName)
 end
 
 function Services.ConfigService:LoadFromPath(folder, fileName)
-	local path = folder .. "/" .. fileName .. ".json"
+	local fn = fileName ~= nil and tostring(fileName) or "config"
+	local base = fn:match("%.json$") and fn or (fn .. ".json")
+	local path = joinConfigPath(folder, base)
 	if not readfile or not isfile or not isfile(path) then
 		return false
 	end
@@ -756,11 +798,24 @@ function Core.CreateWindow(opts)
 
 	local configSaving = opts.ConfigurationSaving or {}
 	local configEnabled = configSaving.Enabled == true
-	local configFolder = configSaving.FolderName or "GulleUI"
+	local configFolder = (configSaving.FolderName ~= nil) and configSaving.FolderName or "GulleUI"
 	local configFileName = configSaving.FileName or tostring(game.PlaceId)
 
 	if configEnabled then
 		Services.ConfigService:LoadFromPath(configFolder, configFileName)
+	end
+
+	local developerUserIds = {}
+	for _, id in ipairs(_defaultDeveloperUserIds) do
+		table.insert(developerUserIds, id)
+	end
+	if type(opts.DeveloperUserIds) == "table" then
+		for _, id in ipairs(opts.DeveloperUserIds) do
+			local n = tonumber(id)
+			if n and not table.find(developerUserIds, n) then
+				table.insert(developerUserIds, n)
+			end
+		end
 	end
 
 	local windowThemeOverride = nil
@@ -997,6 +1052,9 @@ function Core.CreateWindow(opts)
 			if type(opts.SidebarRank) == "string" and opts.SidebarRank ~= "" then
 				return opts.SidebarRank
 			end
+			if table.find(developerUserIds, LocalPlayer.UserId) then
+				return "Developer"
+			end
 			if game.CreatorType == Enum.CreatorType.User and LocalPlayer.UserId == game.CreatorId then
 				return "Developer"
 			end
@@ -1186,6 +1244,33 @@ function Core.CreateWindow(opts)
 		Parent = loadBarBg,
 	})
 
+	local minW = tok.Window.MinWidth or 380
+	local minH = tok.Window.MinHeight or 280
+	local gripPx = tok.Window.ResizeGripSize or 18
+	local resizeGrip = Utils.Create("TextButton", {
+		Name = "ResizeGrip",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(gripPx, gripPx),
+		Position = UDim2.new(1, -2, 1, -2),
+		AnchorPoint = Vector2.new(1, 1),
+		ZIndex = 25,
+		Parent = main,
+	})
+	local resizeHint = Utils.Create("Frame", {
+		BackgroundColor3 = colors.Border,
+		BackgroundTransparency = 0.5,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(10, 3),
+		Position = UDim2.new(1, -5, 1, -5),
+		AnchorPoint = Vector2.new(1, 1),
+		Rotation = -45,
+		ZIndex = 26,
+		Parent = resizeGrip,
+	})
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, 2), Parent = resizeHint })
+
 	local window = {
 		_screen = screen,
 		_mainFrame = main,
@@ -1296,6 +1381,7 @@ function Core.CreateWindow(opts)
 	Core.AddThemeRef(window, loadSub, "TextColor3", "TextDim")
 	Core.AddThemeRef(window, loadBarBg, "BackgroundColor3", "SurfaceHover")
 	Core.AddThemeRef(window, loadBarFill, "BackgroundColor3", "Accent")
+	Core.AddThemeRef(window, resizeHint, "BackgroundColor3", "Border")
 	window._unsubscribeTheme = Services.ThemeService:RegisterWindowTheme(function()
 		Core.ApplyThemeRefs(window)
 		for _, hook in ipairs(window._tabThemeHooks) do
@@ -1364,6 +1450,38 @@ function Core.CreateWindow(opts)
 	table.insert(window._dragConns, UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = false
+		end
+	end))
+
+	local rsDragging, rsStart, rsSize
+	table.insert(window._dragConns, resizeGrip.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			if maximized then
+				maximized = false
+			end
+			rsDragging = true
+			rsStart = input.Position
+			rsSize = main.AbsoluteSize
+		end
+	end))
+	table.insert(window._dragConns, UserInputService.InputChanged:Connect(function(input)
+		if not rsDragging then
+			return
+		end
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		local delta = input.Position - rsStart
+		local newW = math.max(minW, math.floor(rsSize.X + delta.X + 0.5))
+		local newH = math.max(minH, math.floor(rsSize.Y + delta.Y + 0.5))
+		main.Size = UDim2.fromOffset(newW, newH)
+	end))
+	table.insert(window._dragConns, UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			if rsDragging then
+				rsDragging = false
+				savedMainSize = main.Size
+			end
 		end
 	end))
 
@@ -1888,6 +2006,7 @@ function Elements.CreateSection(tab, titleText, descriptionText)
 			Text = opts.Name or "Button",
 			Size = UDim2.new(1, 0, 0, etok.Control.ButtonHeight),
 			AutoButtonColor = false,
+			ClipsDescendants = true,
 			Parent = card,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, etok.Control.DefaultRadius), Parent = btn })
