@@ -1954,7 +1954,17 @@ function Core.CreateWindow(opts)
 			return s
 		end
 
-		-- Samme hub-vindue: body fyldes med fuld-bredde form (ikke et lille centreret kort-modal).
+		-- Ingen synlig vindueskant / resize under nøgle; valgfrit kompakt vindue; centreret lille panel der smelter med baggrunden.
+		local strokeTransBefore = mainStroke.Transparency
+		mainStroke.Transparency = 1
+		resizeGrip.Visible = false
+		local keyShrinkOn = keyOpts.KeepWindowSize ~= true
+		if keyShrinkOn then
+			local cw = tonumber(keyOpts.CompactWindowWidth) or 392
+			local ch = tonumber(keyOpts.CompactWindowHeight) or 264
+			main.Size = UDim2.fromOffset(cw, ch)
+		end
+
 		local dim = Utils.Create("Frame", {
 			Name = "KeyGateRoot",
 			BackgroundColor3 = colors.Background,
@@ -1965,77 +1975,86 @@ function Core.CreateWindow(opts)
 			ZIndex = 20,
 			Parent = body,
 		})
-		Utils.Create("UIPadding", {
-			PaddingTop = UDim.new(0, 16),
-			PaddingBottom = UDim.new(0, 16),
-			PaddingLeft = UDim.new(0, 20),
-			PaddingRight = UDim.new(0, 20),
+
+		local centerHost = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 1),
 			Parent = dim,
 		})
+		Utils.Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Vertical,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 0),
+			Parent = centerHost,
+		})
 
-		local form = Utils.Create("Frame", {
+		local panelW = math.min(420, math.max(240, tonumber(keyOpts.PanelWidth) or 292))
+		local panel = Utils.Create("Frame", {
 			Name = "KeyGateForm",
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			Size = UDim2.new(1, 0, 0, 0),
+			Size = UDim2.new(0, panelW, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
-			Position = UDim2.fromOffset(0, 0),
-			ZIndex = 21,
-			Parent = dim,
+			LayoutOrder = 0,
+			Parent = centerHost,
 		})
+		Utils.Create("UIPadding", {
+			PaddingTop = UDim.new(0, 4),
+			PaddingBottom = UDim.new(0, 4),
+			PaddingLeft = UDim.new(0, 4),
+			PaddingRight = UDim.new(0, 4),
+			Parent = panel,
+		})
+		local form = panel
 		Utils.Create("UIListLayout", {
 			FillDirection = Enum.FillDirection.Vertical,
 			HorizontalAlignment = Enum.HorizontalAlignment.Left,
 			VerticalAlignment = Enum.VerticalAlignment.Top,
 			SortOrder = Enum.SortOrder.LayoutOrder,
-			Padding = UDim.new(0, 8),
+			Padding = UDim.new(0, 7),
 			Parent = form,
 		})
 
 		local titleLbl = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamBold,
-			TextSize = 22,
+			TextSize = 19,
 			TextColor3 = colors.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Size = UDim2.new(1, 0, 0, 28),
+			Size = UDim2.new(1, 0, 0, 24),
 			Text = tostring(keyOpts.Title or "License key"),
 			LayoutOrder = 0,
 			Parent = form,
 		})
-		Utils.Create("Frame", {
-			BackgroundColor3 = colors.Border,
-			BackgroundTransparency = 0.55,
-			BorderSizePixel = 0,
-			Size = UDim2.new(1, 0, 0, 1),
-			LayoutOrder = 1,
-			Parent = form,
-		})
 		local descText = keyOpts.Description or keyOpts.Subtitle
-		local descOrder = 2
+		local descOrder = 1
 		if type(descText) == "string" and descText ~= "" then
 			Utils.Create("TextLabel", {
 				BackgroundTransparency = 1,
 				Font = Enum.Font.Gotham,
-				TextSize = 13,
+				TextSize = 12,
 				TextColor3 = colors.TextDim,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextWrapped = true,
 				AutomaticSize = Enum.AutomaticSize.Y,
 				Size = UDim2.new(1, 0, 0, 0),
 				Text = descText,
-				LayoutOrder = 2,
+				LayoutOrder = 1,
 				Parent = form,
 			})
-			descOrder = 3
+			descOrder = 2
 		end
 
 		local box = Utils.Create("TextBox", {
-			BackgroundColor3 = colors.BackgroundElevated,
+			BackgroundColor3 = colors.SurfaceMuted,
+			BackgroundTransparency = 0.15,
 			BorderSizePixel = 0,
-			Size = UDim2.new(1, 0, 0, 38),
+			Size = UDim2.new(1, 0, 0, 34),
 			Font = Enum.Font.Gotham,
-			TextSize = 14,
+			TextSize = 13,
 			TextColor3 = colors.Text,
 			Text = "",
 			PlaceholderColor3 = colors.TextDim,
@@ -2046,10 +2065,9 @@ function Core.CreateWindow(opts)
 			Parent = form,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Control.DefaultRadius), Parent = box })
-		Utils.Create("UIStroke", { Color = colors.Border, Thickness = 1, Transparency = 0.55, Parent = box })
 		Utils.Create("UIPadding", {
-			PaddingLeft = UDim.new(0, 12),
-			PaddingRight = UDim.new(0, 12),
+			PaddingLeft = UDim.new(0, 10),
+			PaddingRight = UDim.new(0, 10),
 			Parent = box,
 		})
 
@@ -2083,7 +2101,7 @@ function Core.CreateWindow(opts)
 
 		local btnRow = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 38),
+			Size = UDim2.new(1, 0, 0, 34),
 			LayoutOrder = descOrder + 2,
 			Parent = form,
 		})
@@ -2171,6 +2189,11 @@ function Core.CreateWindow(opts)
 				pcall(keyOpts.OnSuccess, trimmed)
 			end
 			dim:Destroy()
+			mainStroke.Transparency = strokeTransBefore
+			resizeGrip.Visible = true
+			if keyShrinkOn then
+				main.Size = savedMainSize
+			end
 			resetLoadingLayerForReveal()
 			beginStartupLoadingAnimation()
 		end
