@@ -142,8 +142,10 @@ function Utils.Ripple(button, color, duration, screenPos)
 		Parent = layer,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = circle })
+	-- ~1.35× knappens største kant (før ~2×) — mindre, stadig dækkende midten.
+	local rippleSide = math.max(12, math.floor(maxDim * 0.7 + 0.5))
 	Utils.Tween(circle, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Size = UDim2.fromOffset(maxDim * 2, maxDim * 2),
+		Size = UDim2.fromOffset(rippleSide, rippleSide),
 		BackgroundTransparency = 1,
 	})
 	task.delay(duration, function()
@@ -460,14 +462,13 @@ end
 -- #region NotificationService
 Services.NotificationService = {
 	_container = nil,
-	_toastZ = 200,
+	_toastOrder = 0,
 }
 
 function Services.NotificationService:_ensureContainer(parent)
 	if self._container and self._container.Parent then
 		return
 	end
-	-- No UIListLayout: toasts use the same anchor so they stack; layout+Position tween was reflowing the ScreenGui tree.
 	self._container = Utils.Create("Frame", {
 		Name = "Notifications",
 		BackgroundTransparency = 1,
@@ -480,14 +481,26 @@ function Services.NotificationService:_ensureContainer(parent)
 		ClipsDescendants = false,
 		Parent = parent,
 	})
+	Utils.Create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Vertical,
+		Padding = UDim.new(0, 8),
+		HorizontalAlignment = Enum.HorizontalAlignment.Right,
+		VerticalAlignment = Enum.VerticalAlignment.Bottom,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = self._container,
+	})
+	Utils.Create("UIPadding", {
+		PaddingBottom = UDim.new(0, 20),
+		PaddingRight = UDim.new(0, 20),
+		Parent = self._container,
+	})
 end
 
 function Services.NotificationService:_spawnToast(item)
 	local theme = Services.ThemeService.Current
 	local nt = Services.ThemeService.Tokens.Notification
-	local insetX = 20
-	local insetY = 20
-	self._toastZ = self._toastZ + 1
+	local slidePx = 44
+	self._toastOrder = self._toastOrder + 1
 	local card = Utils.Create("Frame", {
 		BackgroundColor3 = theme.Surface,
 		BackgroundTransparency = 0,
@@ -495,24 +508,33 @@ function Services.NotificationService:_spawnToast(item)
 		BorderColor3 = theme.Border,
 		Size = UDim2.new(0, nt.Width, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
-		AnchorPoint = Vector2.new(1, 1),
-		ZIndex = self._toastZ,
+		LayoutOrder = self._toastOrder,
+		ClipsDescendants = true,
 		Parent = self._container,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, nt.CornerRadius), Parent = card })
+	local mover = Utils.Create("Frame", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Position = UDim2.new(0, slidePx, 0, 0),
+		ClipsDescendants = true,
+		Parent = card,
+	})
 	local pad = Utils.Create("UIPadding", {
 		PaddingTop = UDim.new(0, nt.PaddingY),
 		PaddingBottom = UDim.new(0, nt.PaddingY),
 		PaddingLeft = UDim.new(0, nt.PaddingX),
 		PaddingRight = UDim.new(0, nt.PaddingX),
-		Parent = card,
+		Parent = mover,
 	})
 	local inner = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
-		Parent = card,
+		Parent = mover,
 	})
 	Utils.Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Vertical,
@@ -546,12 +568,13 @@ function Services.NotificationService:_spawnToast(item)
 		LayoutOrder = 1,
 		Parent = inner,
 	})
-	card.Position = UDim2.new(1, insetX + 24, 1, -insetY)
 	card.BackgroundTransparency = 1
 	title.TextTransparency = 1
 	body.TextTransparency = 1
+	Utils.Tween(mover, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+		Position = UDim2.new(0, 0, 0, 0),
+	})
 	Utils.Tween(card, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-		Position = UDim2.new(1, -insetX, 1, -insetY),
 		BackgroundTransparency = 0,
 	})
 	Utils.Tween(title, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { TextTransparency = 0 })
@@ -560,8 +583,10 @@ function Services.NotificationService:_spawnToast(item)
 		if not card.Parent then
 			return
 		end
+		Utils.Tween(mover, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
+			Position = UDim2.new(0, slidePx, 0, 0),
+		})
 		Utils.Tween(card, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {
-			Position = UDim2.new(1, insetX + 24, 1, -insetY),
 			BackgroundTransparency = 1,
 		})
 		Utils.Tween(title, TweenInfo.new(0.3), { TextTransparency = 1 })
