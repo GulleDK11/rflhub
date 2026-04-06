@@ -1910,6 +1910,10 @@ function Core.CreateWindow(opts)
 				end)
 				return vp, topInset
 			end
+			-- InputObject.Position is Vector3; GuiObject.AbsolutePosition is Vector2 — always mix as Vector2 for drag math.
+			local function fabInputVec2(pos)
+				return Vector2.new(pos.X, pos.Y)
+			end
 			local function clampFabTopLeft(absPos)
 				local vp, topInset = fabViewport()
 				local w = math.max(holder.AbsoluteSize.X, mobSize)
@@ -1925,14 +1929,13 @@ function Core.CreateWindow(opts)
 				end
 				return Vector2.new(math.clamp(absPos.X, minX, maxX), math.clamp(absPos.Y, minY, maxY))
 			end
-			local function placeFabTopRight()
+			local function placeFabTopCenter()
 				if window._destroyed or not holder.Parent then
 					return
 				end
 				local vp, topInset = fabViewport()
 				local w = math.max(holder.AbsoluteSize.X, mobSize)
-				local h = math.max(holder.AbsoluteSize.Y, mobSize)
-				local x = vp.X - margin - w
+				local x = (vp.X - w) / 2
 				local y = topInset + margin
 				local p = clampFabTopLeft(Vector2.new(x, y))
 				holder.AnchorPoint = Vector2.new(0, 0)
@@ -1954,7 +1957,7 @@ function Core.CreateWindow(opts)
 					end
 					fabPointerDown = true
 					fabDragging = false
-					fabStartInput = input.Position
+					fabStartInput = fabInputVec2(input.Position)
 					fabStartHolderAbs = holder.AbsolutePosition
 				end)
 				table.insert(
@@ -1969,7 +1972,8 @@ function Core.CreateWindow(opts)
 						then
 							return
 						end
-						local delta = input.Position - fabStartInput
+						local cur = fabInputVec2(input.Position)
+						local delta = cur - fabStartInput
 						if delta.Magnitude > tapPx then
 							fabDragging = true
 						end
@@ -1989,7 +1993,7 @@ function Core.CreateWindow(opts)
 					fabPointerDown = false
 					local opened = false
 					if not fabDragging and fabStartInput then
-						local d = (input.Position - fabStartInput).Magnitude
+						local d = (fabInputVec2(input.Position) - fabStartInput).Magnitude
 						if d <= tapPx and not window._destroyed then
 							screen.Enabled = true
 							opened = true
@@ -2012,7 +2016,7 @@ function Core.CreateWindow(opts)
 				end)
 			end
 
-			task.defer(placeFabTopRight)
+			task.defer(placeFabTopCenter)
 
 			local function syncMobileOpenVisibility()
 				if window._destroyed or not holder.Parent then
