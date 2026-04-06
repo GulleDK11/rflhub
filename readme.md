@@ -162,7 +162,12 @@ Optional integration with the [Junkie Roblox SDK / inline UI](https://docs.jnkie
 - **`"junkie"`** — Junkie **`check_key`** only; **`Keys` / `Key`** are ignored.
 - **`"auto"`** or omitted — If both a **`Keys`** whitelist and **`Junkie`** are present, **builtin wins** (Junkie is not loaded) and a warning is printed. If only **`Junkie`** is set, Junkie is used.
 
-On a successful Junkie validation, the library sets **`getgenv().SCRIPT_KEY`** and **`_G.SCRIPT_KEY`** to the validated key, matching Junkie’s documented flow. Set **`SetScriptKeyGlobal = false`** to skip that if your environment conflicts.
+Before `library.lua` loads, the library aligns with the [official inline UI example](https://docs.jnkie.com/roblox-sdk/inline-ui): it sets **`getgenv().UI_CLOSED = false`**. Some SDK builds also require **`getgenv().SCRIPT_KEY`** to exist before the module finishes initializing. If Junkie shows **“No script key provided, please pass a SCRIPT_KEY!”** before you can type a key, set one of:
+
+- **`Keyless = true`** — sets **`SCRIPT_KEY = "KEYLESS"`** before load (keyless services / public loaders often use this pattern).
+- **`BootstrapScriptKey`** (aliases **`ScriptKey`**, **`script_key`**) — paste the **script key** from your Junkie dashboard (Lua Script settings), if your project requires it until the user validates.
+
+After a successful **`check_key`**, the docs set **`getgenv().SCRIPT_KEY`** to the **user’s license key**; GulleUI does the same in **`OnSuccess` / proceed**, overwriting any bootstrap value. Set **`SetScriptKeyGlobal = false`** to skip writing globals if your environment conflicts.
 
 - **`LibraryURL`**: defaults to `https://jnkie.com/sdk/library.lua` if omitted.
 - **`UseGetKeyLink`**: if not `false`, shows **Get Key** and calls **`get_key_link()`** (copies link + notification), unless you set a static **`GetKeyURL`** (static URL wins when both exist).
@@ -174,6 +179,8 @@ UI:CreateWindowAfterKey({
 		Service = "YOUR_SERVICE",
 		Identifier = "12345",
 		Provider = "Mixed",
+		-- Keyless = true,
+		-- BootstrapScriptKey = "paste-from-dashboard-if-required",
 		-- LibraryURL = "https://jnkie.com/sdk/library.lua",
 		-- UseGetKeyLink = true,
 	},
