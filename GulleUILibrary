@@ -1916,13 +1916,6 @@ function Core.CreateWindow(opts)
 		_autosaveThread = nil,
 		_tabThemeHooks = {},
 		_themeOverride = windowThemeOverride,
-		_acrylicEnabled = opts.WindowAcrylic == true,
-		_acrylicDistance = tonumber(opts.WindowAcrylicDistance) or 0.001,
-		_acrylicTransparency = math.clamp(tonumber(opts.WindowAcrylicTransparency) or 0.9, 0, 1),
-		_acrylicPadding = math.max(0, tonumber(opts.WindowAcrylicPadding) or 14),
-		_acrylicModel = nil,
-		_acrylicFolder = nil,
-		_acrylicVisible = false,
 		_tabAnim = {
 			BtnDur = (tok.Animation or {}).TabButtonTweenDuration or 0.14,
 			ContentFadeDur = (tok.Animation or {}).TabContentFadeInDuration or 0.45,
@@ -1930,125 +1923,6 @@ function Core.CreateWindow(opts)
 		},
 		_mobileFabGui = nil,
 	}
-
-	local function acrylicViewportPointToWorld(v2, distance)
-		local cam = workspace.CurrentCamera
-		if not cam then
-			return nil
-		end
-		local ray = cam:ViewportPointToRay(v2.X, v2.Y)
-		return ray.Origin + ray.Direction * distance
-	end
-
-	local function getGuiInsetVec()
-		local ok, a, b = pcall(function()
-			return GuiService:GetGuiInset()
-		end)
-		if not ok then
-			return Vector2.new(0, 0)
-		end
-		if typeof(a) == "Vector2" and typeof(b) == "Vector2" then
-			return a
-		end
-		if typeof(a) == "Vector2" then
-			return a
-		end
-		return Vector2.new(0, 0)
-	end
-
-	local function ensureAcrylicModel()
-		if not window._acrylicEnabled then
-			return nil
-		end
-		if window._acrylicModel and window._acrylicModel.Parent then
-			return window._acrylicModel
-		end
-		local cam = workspace.CurrentCamera
-		if not cam then
-			return nil
-		end
-		local folder = window._acrylicFolder
-		if not folder or not folder.Parent then
-			folder = Instance.new("Folder")
-			folder.Name = "GulleAcrylic_" .. tostring(math.random(100000, 999999))
-			folder.Parent = cam
-			window._acrylicFolder = folder
-		else
-			folder.Parent = cam
-		end
-		local part = Instance.new("Part")
-		part.Name = "WindowAcrylicBody"
-		part.Anchored = true
-		part.CanCollide = false
-		part.CastShadow = false
-		part.Locked = true
-		part.Material = Enum.Material.Glass
-		part.Color = Color3.new(0, 0, 0)
-		part.Reflectance = 0
-		part.Transparency = 1
-		part.Size = Vector3.new(1, 1, 0)
-		part.Parent = folder
-		local mesh = Instance.new("SpecialMesh")
-		mesh.MeshType = Enum.MeshType.Brick
-		mesh.Offset = Vector3.new(0, 0, -0.000001)
-		mesh.Parent = part
-		window._acrylicModel = part
-		return part
-	end
-
-	local function renderAcrylic()
-		if not window._acrylicEnabled or not window._acrylicVisible then
-			return
-		end
-		local model = ensureAcrylicModel()
-		local cam = workspace.CurrentCamera
-		if not model or not cam or not main.Parent or not screen.Enabled then
-			return
-		end
-		local pos = main.AbsolutePosition
-		if screen.IgnoreGuiInset ~= true then
-			pos = pos + getGuiInsetVec()
-		end
-		local size = main.AbsoluteSize
-		local pad = window._acrylicPadding
-		if pad > 0 then
-			local pv = Vector2.new(pad, pad)
-			pos = pos - pv
-			size = size + pv * 2
-		end
-		local topLeft = Vector2.new(pos.X, pos.Y)
-		local topRight = Vector2.new(pos.X + size.X, pos.Y)
-		local bottomRight = Vector2.new(pos.X + size.X, pos.Y + size.Y)
-		local d = window._acrylicDistance
-		local tl3 = acrylicViewportPointToWorld(topLeft, d)
-		local tr3 = acrylicViewportPointToWorld(topRight, d)
-		local br3 = acrylicViewportPointToWorld(bottomRight, d)
-		if not tl3 or not tr3 or not br3 then
-			return
-		end
-		local width = (tr3 - tl3).Magnitude
-		local height = (tr3 - br3).Magnitude
-		model.CFrame = CFrame.fromMatrix((tl3 + br3) / 2, cam.CFrame.XVector, cam.CFrame.YVector, cam.CFrame.ZVector)
-		local mesh = model:FindFirstChildOfClass("SpecialMesh")
-		if mesh then
-			mesh.Scale = Vector3.new(width, height, 0)
-		end
-	end
-
-	local function setAcrylicVisible(enabled)
-		if not window._acrylicEnabled then
-			return
-		end
-		window._acrylicVisible = enabled and true or false
-		local model = ensureAcrylicModel()
-		if not model then
-			return
-		end
-		model.Transparency = window._acrylicVisible and window._acrylicTransparency or 1
-		if window._acrylicVisible then
-			renderAcrylic()
-		end
-	end
 
 	do
 		-- Touch-first: skip on desktop unless MobileOpenButtonTouchOnly == false (e.g. Studio testing).
@@ -2229,7 +2103,6 @@ function Core.CreateWindow(opts)
 
 	function window:SetVisible(visible)
 		screen.Enabled = visible and true or false
-		setAcrylicVisible(screen.Enabled)
 	end
 
 	function window:IsVisible()
@@ -2364,21 +2237,6 @@ function Core.CreateWindow(opts)
 	closeBtn.MouseButton1Click:Connect(function()
 		screen.Enabled = false
 	end)
-	table.insert(window._dragConns, screen:GetPropertyChangedSignal("Enabled"):Connect(function()
-		setAcrylicVisible(screen.Enabled)
-	end))
-	table.insert(window._dragConns, main:GetPropertyChangedSignal("AbsolutePosition"):Connect(renderAcrylic))
-	table.insert(window._dragConns, main:GetPropertyChangedSignal("AbsoluteSize"):Connect(renderAcrylic))
-	table.insert(window._dragConns, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-		local cam = workspace.CurrentCamera
-		if window._acrylicFolder and cam then
-			window._acrylicFolder.Parent = cam
-		end
-		renderAcrylic()
-	end))
-	table.insert(window._dragConns, RunService.RenderStepped:Connect(function()
-		renderAcrylic()
-	end))
 
 	local dragging, dragStart, startPos
 	table.insert(window._dragConns, leftDrag.InputBegan:Connect(function(input)
@@ -2401,7 +2259,6 @@ function Core.CreateWindow(opts)
 	end))
 	table.insert(window._dragConns, main:GetPropertyChangedSignal("Position"):Connect(syncMainShadowMatte))
 	table.insert(window._dragConns, main:GetPropertyChangedSignal("Size"):Connect(syncMainShadowMatte))
-	setAcrylicVisible(screen.Enabled)
 
 	local rsDragging, rsStart, rsSize
 	table.insert(window._dragConns, resizeGrip.InputBegan:Connect(function(input)
@@ -2482,15 +2339,6 @@ function Core.CreateWindow(opts)
 		local anim = tt.Animation or {}
 		local closeFadeDur = anim.WindowCloseFadeDuration or 0.28
 		local function finishScreenDestroy()
-			if self._acrylicModel and self._acrylicModel.Parent then
-				self._acrylicModel.Transparency = 1
-				self._acrylicModel:Destroy()
-			end
-			self._acrylicModel = nil
-			if self._acrylicFolder and self._acrylicFolder.Parent then
-				self._acrylicFolder:Destroy()
-			end
-			self._acrylicFolder = nil
 			local fab = self._mobileFabGui
 			if fab and fab.Parent then
 				fab:Destroy()
