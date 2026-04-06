@@ -4343,7 +4343,22 @@ function Library:Init(opts)
 		local wrongDefault = opts.WrongText or "Invalid key."
 		local submitLabel = opts.SubmitText or "Continue"
 		local closeLabel = opts.CloseText or "Close"
+		local getKeyLabel = opts.GetKeyText or "Get Key"
+		local getKeyUrl = opts.GetKeyURL or opts.DiscordInvite or opts.DiscordURL or opts.InviteURL
 		local showClose = opts.ShowClose ~= false
+		local showGetKey = opts.ShowGetKey ~= false and type(getKeyUrl) == "string" and getKeyUrl ~= ""
+		local saveKey = opts.SaveKey == true or opts.Savekey == true
+		local saveWithTime = opts.Time == true or opts.LocalTime == true or opts.RememberKey == true
+		local saveDays = tonumber(opts.TimeDays or opts.RememberDays or opts.KeySaveDays) or 2
+		if saveDays < 0 then
+			saveDays = 0
+		end
+		local keySaveFolder = type(opts.KeySaveFolder) == "string" and opts.KeySaveFolder or "GulleUI"
+		local keySaveFile = type(opts.KeySaveFile) == "string" and opts.KeySaveFile or ("gulle_key_" .. tostring(game.PlaceId) .. ".json")
+		if not string.match(keySaveFile, "%.json$") then
+			keySaveFile = keySaveFile .. ".json"
+		end
+		local keySavePath = joinConfigPath(keySaveFolder, keySaveFile)
 
 		local opened = false
 		local exiting = false
@@ -4510,12 +4525,112 @@ function Library:Init(opts)
 			return b
 		end
 
+		local getKeyBtn = showGetKey and makeTextButton(getKeyLabel, false) or nil
 		local closeBtn = showClose and makeTextButton(closeLabel, false) or nil
 		local submitBtn = makeTextButton(submitLabel, true)
+
+		local function openExternalUrl(url)
+			if type(url) ~= "string" or url == "" then
+				return false
+			end
+			local okGui = pcall(function()
+				GuiService:OpenBrowserWindow(url)
+			end)
+			if okGui then
+				return true
+			end
+			local copied = false
+			if setclipboard then
+				pcall(function()
+					setclipboard(url)
+					copied = true
+				end)
+			end
+			Services.NotificationService:Notify({
+				Title = "Get Key",
+				Message = copied and "Invite copied to clipboard." or "Could not open browser for invite link.",
+				Duration = 3.5,
+				Type = copied and "success" or "warning",
+			})
+			return copied
+		end
+
+		local function loadSavedKey()
+			if not saveKey or not readfile or not isfile or not isfile(keySavePath) then
+				return nil
+			end
+			local okRead, raw = pcall(function()
+				return readfile(keySavePath)
+			end)
+			if not okRead or type(raw) ~= "string" or raw == "" then
+				return nil
+			end
+			local okDecode, data = pcall(function()
+				return HttpService:JSONDecode(raw)
+			end)
+			if not okDecode or type(data) ~= "table" then
+				return nil
+			end
+			local storedKey = type(data.Key) == "string" and data.Key or ""
+			if storedKey == "" then
+				return nil
+			end
+			if saveWithTime then
+				local savedAt = tonumber(data.SavedAt)
+				local expiresAt = tonumber(data.ExpiresAt)
+				if savedAt then
+					local ttl = math.max(0, saveDays) * 86400
+					expiresAt = expiresAt or (savedAt + ttl)
+				end
+				if expiresAt and os.time() > expiresAt then
+					if delfile and isfile and isfile(keySavePath) then
+						pcall(function()
+							delfile(keySavePath)
+						end)
+					end
+					return nil
+				end
+			end
+			return storedKey
+		end
+
+		local function persistKey(validKey)
+			if not saveKey or not writefile or type(validKey) ~= "string" or validKey == "" then
+				return
+			end
+			pcall(function()
+				if keySaveFolder and keySaveFolder ~= "" and keySaveFolder ~= "." then
+					if (not isfolder or not isfolder(keySaveFolder)) and makefolder then
+						makefolder(keySaveFolder)
+					end
+				end
+				local nowTs = os.time()
+				local payload = {
+					Key = validKey,
+					SavedAt = nowTs,
+				}
+				if saveWithTime then
+					payload.ExpiresAt = nowTs + (math.max(0, saveDays) * 86400)
+				end
+				writefile(keySavePath, HttpService:JSONEncode(payload))
+			end)
+		end
+
+		local function clearPersistedKey()
+			if delfile and isfile and isfile(keySavePath) then
+				pcall(function()
+					delfile(keySavePath)
+				end)
+			end
+		end
 
 		local function setBusy(busy)
 			submitBtn.Active = not busy
 			submitBtn.AutoButtonColor = not busy
+			if getKeyBtn then
+				getKeyBtn.Active = not busy
+				getKeyBtn.AutoButtonColor = not busy
+			end
 			if closeBtn then
 				closeBtn.Active = not busy
 				closeBtn.AutoButtonColor = not busy
@@ -4625,6 +4740,7 @@ function Library:Init(opts)
 			if opened then
 				return
 			end
+			persistKey(trimmed)
 			opened = true
 			setBusy(true)
 			if closeBtn then
@@ -4681,6 +4797,15 @@ function Library:Init(opts)
 			end
 		end
 
+		if getKeyBtn then
+			getKeyBtn.MouseButton1Click:Connect(function()
+				if opened or exiting then
+					return
+				end
+				openExternalUrl(getKeyUrl)
+			end)
+		end
+
 		submitBtn.MouseButton1Click:Connect(trySubmit)
 		if closeBtn then
 			closeBtn.MouseButton1Click:Connect(function()
@@ -4706,6 +4831,13 @@ function Library:Init(opts)
 					trySubmit()
 				end
 			end)
+		end
+
+		local savedKey = loadSavedKey()
+		if savedKey then
+			box.Text = savedKey
+		elseif not saveKey then
+			clearPersistedKey()
 		end
 
 		task.defer(function()
