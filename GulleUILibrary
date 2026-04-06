@@ -19,7 +19,6 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local GuiService = game:GetService("GuiService")
-local Lighting = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -1885,11 +1884,12 @@ function Core.CreateWindow(opts)
 		_autosaveThread = nil,
 		_tabThemeHooks = {},
 		_themeOverride = windowThemeOverride,
-		_worldBlurEnabled = opts.WorldBlur ~= false,
-		_worldBlurSize = math.clamp(tonumber(opts.WorldBlurSize) or 10, 0, 56),
-		_worldBlurTweenDur = math.max(0.05, tonumber(opts.WorldBlurTweenDuration) or 0.2),
-		_worldBlurEffect = nil,
-		_worldBlurTween = nil,
+		_acrylicEnabled = opts.WindowAcrylic ~= false,
+		_acrylicDistance = tonumber(opts.WindowAcrylicDistance) or 0.001,
+		_acrylicTransparency = math.clamp(tonumber(opts.WindowAcrylicTransparency) or 0.98, 0, 1),
+		_acrylicModel = nil,
+		_acrylicFolder = nil,
+		_acrylicVisible = false,
 		_tabAnim = {
 			BtnDur = (tok.Animation or {}).TabButtonTweenDuration or 0.14,
 			ContentFadeDur = (tok.Animation or {}).TabContentFadeInDuration or 0.45,
@@ -1898,53 +1898,97 @@ function Core.CreateWindow(opts)
 		_mobileFabGui = nil,
 	}
 
-	local function ensureWorldBlurEffect()
-		if not window._worldBlurEnabled then
+	local function acrylicViewportPointToWorld(v2, distance)
+		local cam = workspace.CurrentCamera
+		if not cam then
 			return nil
 		end
-		local eff = window._worldBlurEffect
-		if eff and eff.Parent == Lighting then
-			return eff
-		end
-		eff = Instance.new("BlurEffect")
-		eff.Name = "GulleUI_WindowBlur"
-		eff.Size = 0
-		eff.Enabled = true
-		eff.Parent = Lighting
-		window._worldBlurEffect = eff
-		return eff
+		local ray = cam:ViewportPointToRay(v2.X, v2.Y)
+		return ray.Origin + ray.Direction * distance
 	end
 
-	local function setWorldBlur(enabled, instant)
-		if not window._worldBlurEnabled then
+	local function ensureAcrylicModel()
+		if not window._acrylicEnabled then
+			return nil
+		end
+		if window._acrylicModel and window._acrylicModel.Parent then
+			return window._acrylicModel
+		end
+		local cam = workspace.CurrentCamera
+		if not cam then
+			return nil
+		end
+		local folder = window._acrylicFolder
+		if not folder or not folder.Parent then
+			folder = Instance.new("Folder")
+			folder.Name = "GulleAcrylic_" .. tostring(math.random(100000, 999999))
+			folder.Parent = cam
+			window._acrylicFolder = folder
+		else
+			folder.Parent = cam
+		end
+		local part = Instance.new("Part")
+		part.Name = "WindowAcrylicBody"
+		part.Anchored = true
+		part.CanCollide = false
+		part.CastShadow = false
+		part.Locked = true
+		part.Material = Enum.Material.Glass
+		part.Color = Color3.new(0, 0, 0)
+		part.Transparency = 1
+		part.Size = Vector3.new(1, 1, 0)
+		part.Parent = folder
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Brick
+		mesh.Offset = Vector3.new(0, 0, -0.000001)
+		mesh.Parent = part
+		window._acrylicModel = part
+		return part
+	end
+
+	local function renderAcrylic()
+		if not window._acrylicEnabled or not window._acrylicVisible then
 			return
 		end
-		local eff = ensureWorldBlurEffect()
-		if not eff then
+		local model = ensureAcrylicModel()
+		local cam = workspace.CurrentCamera
+		if not model or not cam or not main.Parent or not screen.Enabled then
 			return
 		end
-		local target = enabled and window._worldBlurSize or 0
-		if window._worldBlurTween then
-			pcall(function()
-				window._worldBlurTween:Cancel()
-			end)
-			window._worldBlurTween = nil
-		end
-		if instant then
-			eff.Size = target
+		local pos = main.AbsolutePosition
+		local size = main.AbsoluteSize
+		local topLeft = Vector2.new(pos.X, pos.Y)
+		local topRight = Vector2.new(pos.X + size.X, pos.Y)
+		local bottomRight = Vector2.new(pos.X + size.X, pos.Y + size.Y)
+		local d = window._acrylicDistance
+		local tl3 = acrylicViewportPointToWorld(topLeft, d)
+		local tr3 = acrylicViewportPointToWorld(topRight, d)
+		local br3 = acrylicViewportPointToWorld(bottomRight, d)
+		if not tl3 or not tr3 or not br3 then
 			return
 		end
-		local tw = Utils.Tween(
-			eff,
-			TweenInfo.new(window._worldBlurTweenDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ Size = target }
-		)
-		window._worldBlurTween = tw
-		tw.Completed:Connect(function()
-			if window._worldBlurTween == tw then
-				window._worldBlurTween = nil
-			end
-		end)
+		local width = (tr3 - tl3).Magnitude
+		local height = (tr3 - br3).Magnitude
+		model.CFrame = CFrame.fromMatrix((tl3 + br3) / 2, cam.CFrame.XVector, cam.CFrame.YVector, cam.CFrame.ZVector)
+		local mesh = model:FindFirstChildOfClass("SpecialMesh")
+		if mesh then
+			mesh.Scale = Vector3.new(width, height, 0)
+		end
+	end
+
+	local function setAcrylicVisible(enabled)
+		if not window._acrylicEnabled then
+			return
+		end
+		window._acrylicVisible = enabled and true or false
+		local model = ensureAcrylicModel()
+		if not model then
+			return
+		end
+		model.Transparency = window._acrylicVisible and window._acrylicTransparency or 1
+		if window._acrylicVisible then
+			renderAcrylic()
+		end
 	end
 
 	do
@@ -2126,7 +2170,7 @@ function Core.CreateWindow(opts)
 
 	function window:SetVisible(visible)
 		screen.Enabled = visible and true or false
-		setWorldBlur(screen.Enabled, false)
+		setAcrylicVisible(screen.Enabled)
 	end
 
 	function window:IsVisible()
@@ -2262,7 +2306,19 @@ function Core.CreateWindow(opts)
 		screen.Enabled = false
 	end)
 	table.insert(window._dragConns, screen:GetPropertyChangedSignal("Enabled"):Connect(function()
-		setWorldBlur(screen.Enabled, false)
+		setAcrylicVisible(screen.Enabled)
+	end))
+	table.insert(window._dragConns, main:GetPropertyChangedSignal("AbsolutePosition"):Connect(renderAcrylic))
+	table.insert(window._dragConns, main:GetPropertyChangedSignal("AbsoluteSize"):Connect(renderAcrylic))
+	table.insert(window._dragConns, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+		local cam = workspace.CurrentCamera
+		if window._acrylicFolder and cam then
+			window._acrylicFolder.Parent = cam
+		end
+		renderAcrylic()
+	end))
+	table.insert(window._dragConns, RunService.RenderStepped:Connect(function()
+		renderAcrylic()
 	end))
 
 	local dragging, dragStart, startPos
@@ -2284,7 +2340,7 @@ function Core.CreateWindow(opts)
 			dragging = false
 		end
 	end))
-	setWorldBlur(screen.Enabled, true)
+	setAcrylicVisible(screen.Enabled)
 
 	local rsDragging, rsStart, rsSize
 	table.insert(window._dragConns, resizeGrip.InputBegan:Connect(function(input)
@@ -2365,17 +2421,15 @@ function Core.CreateWindow(opts)
 		local anim = tt.Animation or {}
 		local closeFadeDur = anim.WindowCloseFadeDuration or 0.28
 		local function finishScreenDestroy()
-			if self._worldBlurTween then
-				pcall(function()
-					self._worldBlurTween:Cancel()
-				end)
-				self._worldBlurTween = nil
+			if self._acrylicModel and self._acrylicModel.Parent then
+				self._acrylicModel.Transparency = 1
+				self._acrylicModel:Destroy()
 			end
-			if self._worldBlurEffect and self._worldBlurEffect.Parent then
-				self._worldBlurEffect.Size = 0
-				self._worldBlurEffect:Destroy()
+			self._acrylicModel = nil
+			if self._acrylicFolder and self._acrylicFolder.Parent then
+				self._acrylicFolder:Destroy()
 			end
-			self._worldBlurEffect = nil
+			self._acrylicFolder = nil
 			local fab = self._mobileFabGui
 			if fab and fab.Parent then
 				fab:Destroy()
