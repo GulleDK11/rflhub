@@ -1,6 +1,6 @@
 # GulleUI Library
 
-Default look: dark charcoal surfaces, orange accent, soft corners, pill toggles. Optional **blocky** preset: `Theme = Library.BlockyTheme`. String theme names (e.g. `"Ocean"`) are ignored — pass a **table** for `Theme`.
+Single-file Roblox UI built from Instances only. Default look: dark charcoal surfaces, orange accent, soft corners, pill toggles. Optional **blocky** preset: `Theme = Library.BlockyTheme`. String theme names (e.g. `"Ocean"`) are ignored — pass a **table** for `Theme`.
 
 ---
 
@@ -11,7 +11,7 @@ Default look: dark charcoal surfaces, orange accent, soft corners, pill toggles.
 Put this at the top of your script (replace the URL with your raw host or use `readfile` locally).
 
 ```lua
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/GulleDK11/rflhub/refs/heads/main/GulleUILibrary"))()
+local Library = loadstring(game:HttpGet("YOUR_RAW_URL"))()
 local UI = Library:Init({
 	-- AllowedPlaceIds = { game.PlaceId }, -- optional: only these PlaceIds may open the UI; else notify + error + destroy
 })
@@ -369,7 +369,7 @@ Set under `Theme.Tokens` (global) or per-window `Theme = { Tokens = { … } }`.
 | `WindowContentFadeIn` | Hub CanvasGroup fade |
 | `WindowCanvasDetachAfterOpen` | Default `true`: move hub out of CanvasGroup after load for **sharp** UI when resizing; `false` keeps blur-prone CanvasGroup + close fade |
 | `KeyGateOpenDuration` / `KeyGateCloseDuration` / … | Key screen |
-| `TabButtonTweenDuration` / `TabContentFadeInDuration` / `TabContentFadeIn` | Sidebar + tab content |
+| `TabButtonTweenDuration` / `TabContentFadeInDuration` / `TabContentFadeIn` | Sidebar + tab content. `TabContentFadeIn = true` uses a tab `CanvasGroup` fade (can look softer during live resize). Keep `false` for crisp sections/columns while resizing. |
 
 **`Notification`:** `CornerRadius`, `FrameStrokeThickness`, `FrameStrokeTransparency`, `FadeInDuration`, `FadeOutDuration`.
 
