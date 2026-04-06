@@ -3367,10 +3367,69 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Parent = listFrame,
 		})
 		local listPad = etok.Control.DropdownListPadding or 3
-		Utils.Create("UIListLayout", {
+		local maxRows = math.max(2, math.floor(tonumber(opts.MaxVisibleRows) or 6))
+		local searchEnabled = opts.Search ~= false
+		local searchH = math.max(24, math.floor(triggerH - 2))
+		local searchBox = nil
+		local searchQ = ""
+		local innerLayout = Utils.Create("UIListLayout", {
 			Padding = UDim.new(0, listPad),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = listFrame,
+		})
+		if searchEnabled then
+			local searchWrap = Utils.Create("Frame", {
+				BackgroundColor3 = theme.Surface,
+				BorderSizePixel = 0,
+				Size = UDim2.new(1, 0, 0, searchH),
+				LayoutOrder = 0,
+				Parent = listFrame,
+			})
+			Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = searchWrap })
+			Utils.Create("UIStroke", {
+				Color = theme.Border,
+				Thickness = 1,
+				Transparency = 0.62,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+				Parent = searchWrap,
+			})
+			Utils.Create("UIPadding", {
+				PaddingLeft = UDim.new(0, 8),
+				PaddingRight = UDim.new(0, 8),
+				Parent = searchWrap,
+			})
+			searchBox = Utils.Create("TextBox", {
+				BackgroundTransparency = 1,
+				ClearTextOnFocus = false,
+				Font = Enum.Font.Gotham,
+				TextSize = etok.Control.SecondaryTextSize,
+				TextColor3 = theme.Text,
+				PlaceholderColor3 = theme.TextDim,
+				PlaceholderText = "Search...",
+				Size = UDim2.fromScale(1, 1),
+				Text = "",
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Parent = searchWrap,
+			})
+		end
+		local optionScroller = Utils.Create("ScrollingFrame", {
+			Name = "DropdownOptions",
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, 0, 0, 0),
+			CanvasSize = UDim2.new(0, 0, 0, 0),
+			ScrollBarThickness = 2,
+			ScrollBarImageColor3 = theme.Accent,
+			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+			ScrollingDirection = Enum.ScrollingDirection.Y,
+			ClipsDescendants = true,
+			LayoutOrder = searchEnabled and 1 or 0,
+			Parent = listFrame,
+		})
+		local optionLayout = Utils.Create("UIListLayout", {
+			Padding = UDim.new(0, listPad),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = optionScroller,
 		})
 
 		local open = false
@@ -3411,14 +3470,21 @@ function Elements.CreateSection(tab, arg1, arg2)
 			listFrame.LayoutOrder = 2
 		end
 		local function rebuild()
-			for _, c in ipairs(listFrame:GetChildren()) do
+			for _, c in ipairs(optionScroller:GetChildren()) do
 				if c:IsA("TextButton") then
 					c:Destroy()
 				end
 			end
+			local query = string.lower((searchQ or ""):gsub("^%s+", ""):gsub("%s+$", ""))
 			local innerR = math.max(2, dr - 1)
+			local shownCount = 0
 			for _, opt in ipairs(options) do
 				local optStr = tostring(opt)
+				local optCmp = string.lower(optStr)
+				if query ~= "" and string.find(optCmp, query, 1, true) == nil then
+					continue
+				end
+				shownCount = shownCount + 1
 				local isSel = optStr == tostring(current)
 				local idleBg = isSel and mixRgb(theme.Surface, theme.Accent, 0.14) or theme.Surface
 				local b = Utils.Create("TextButton", {
@@ -3427,7 +3493,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 					AutoButtonColor = false,
 					Size = UDim2.new(1, 0, 0, rowH),
 					ZIndex = 6,
-					Parent = listFrame,
+					Parent = optionScroller,
 				})
 				Utils.Create("UICorner", { CornerRadius = UDim.new(0, innerR), Parent = b })
 				local rowInner = Utils.Create("Frame", {
@@ -3505,8 +3571,22 @@ function Elements.CreateSection(tab, arg1, arg2)
 					end
 				end)
 			end
+			local contentH = optionLayout.AbsoluteContentSize.Y
+			local capH = rowH * maxRows + math.max(0, maxRows - 1) * listPad
+			local targetH = math.min(contentH, capH)
+			if shownCount <= 0 then
+				targetH = 0
+			end
+			optionScroller.Size = UDim2.new(1, 0, 0, targetH)
+			optionScroller.CanvasPosition = Vector2.new(0, 0)
 		end
 		rebuild()
+		if searchBox then
+			searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+				searchQ = searchBox.Text or ""
+				rebuild()
+			end)
+		end
 
 		openBtn.MouseEnter:Connect(function()
 			if not open then
