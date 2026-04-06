@@ -311,7 +311,9 @@ local _defaultTokens = {
 		InputRowHeight = 44,
 		InputHeight = 26,
 		KeybindRowHeight = 26,
-		DropdownRowOpen = 26,
+		DropdownRowOpen = 30,
+		-- Popup-liste: afstand mellem valgmuligheder
+		DropdownListPadding = 3,
 		-- Afstand label → felt inde i dropdown / color picker (tæt stablet)
 		InnerStackPadding = 4,
 		ColorChannelRowHeight = 22,
@@ -2999,6 +3001,10 @@ function Elements.CreateSection(tab, arg1, arg2)
 		end
 		local current = flag and Services.StateService:GetFlag(flag) or def
 
+		local function mixRgb(a, b, k)
+			return Color3.new(a.R + (b.R - a.R) * k, a.G + (b.G - a.G) * k, a.B + (b.B - a.B) * k)
+		end
+
 		local card = createControlRowCard(rowsHost, theme, etok, win)
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
@@ -3023,27 +3029,76 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Parent = wrap,
 		})
 		local dr = etok.Control.DefaultRadius
+		local rowH = etok.Control.ToggleRowHeight
+		local triggerH = etok.Control.DropdownRowOpen or 30
+		local triggerBg = (typeof(theme.BackgroundElevated) == "Color3" and theme.BackgroundElevated) or theme.Surface
+		local popupBg = (typeof(theme.BackgroundElevated) == "Color3" and theme.BackgroundElevated) or theme.Surface
+
 		local openBtn = Utils.Create("TextButton", {
-			BackgroundColor3 = theme.Surface,
-			Size = UDim2.new(1, 0, 0, etok.Control.DropdownRowOpen),
+			BackgroundColor3 = triggerBg,
+			Size = UDim2.new(1, 0, 0, triggerH),
 			LayoutOrder = 1,
-			Font = Enum.Font.GothamMedium,
-			TextSize = etok.Control.SecondaryTextSize,
-			TextColor3 = theme.Text,
-			Text = tostring(current),
+			Text = "",
 			AutoButtonColor = false,
 			Parent = wrap,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = openBtn })
-		Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.6, Parent = openBtn })
+		local triggerStroke = Utils.Create("UIStroke", {
+			Color = theme.Border,
+			Thickness = 1,
+			Transparency = 0.55,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			Parent = openBtn,
+		})
 		Utils.Create("UIPadding", {
 			PaddingLeft = UDim.new(0, 10),
-			PaddingRight = UDim.new(0, 10),
+			PaddingRight = UDim.new(0, 8),
 			Parent = openBtn,
+		})
+		local triggerRow = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 1, 0),
+			Parent = openBtn,
+		})
+		Utils.Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Left,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 6),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = triggerRow,
+		})
+		local valueLbl = Utils.Create("TextLabel", {
+			Name = "DropdownValue",
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamSemibold,
+			TextSize = etok.Control.SecondaryTextSize,
+			TextColor3 = theme.Text,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Size = UDim2.new(1, -22, 1, 0),
+			Text = tostring(current),
+			LayoutOrder = 0,
+			Active = false,
+			Selectable = false,
+			Parent = triggerRow,
+		})
+		local chevron = Utils.Create("TextLabel", {
+			Name = "DropdownChevron",
+			BackgroundTransparency = 1,
+			Font = Enum.Font.GothamBold,
+			TextSize = 11,
+			TextColor3 = theme.TextDim,
+			Text = "▼",
+			Size = UDim2.fromOffset(18, 18),
+			LayoutOrder = 1,
+			Active = false,
+			Selectable = false,
+			Parent = triggerRow,
 		})
 
 		local listFrame = Utils.Create("Frame", {
-			BackgroundColor3 = theme.Surface,
+			BackgroundColor3 = popupBg,
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, 0),
 			Visible = false,
@@ -3055,20 +3110,35 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 		local dropdownMount = win and win._dropdownMount
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = listFrame })
-		Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.5, Parent = listFrame })
-		Utils.Create("UIPadding", {
-			PaddingTop = UDim.new(0, 6),
-			PaddingBottom = UDim.new(0, 6),
-			PaddingLeft = UDim.new(0, 6),
-			PaddingRight = UDim.new(0, 6),
+		Utils.Create("UIStroke", {
+			Color = theme.Border,
+			Thickness = 1,
+			Transparency = 0.35,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 			Parent = listFrame,
 		})
-		local optLayout = Utils.Create("UIListLayout", {
-			Padding = UDim.new(0, 4),
+		Utils.Create("UIPadding", {
+			PaddingTop = UDim.new(0, 5),
+			PaddingBottom = UDim.new(0, 5),
+			PaddingLeft = UDim.new(0, 5),
+			PaddingRight = UDim.new(0, 5),
+			Parent = listFrame,
+		})
+		local listPad = etok.Control.DropdownListPadding or 3
+		Utils.Create("UIListLayout", {
+			Padding = UDim.new(0, listPad),
+			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = listFrame,
 		})
 
 		local open = false
+		local function setTriggerOpenVisual(isOpen)
+			chevron.Text = isOpen and "▲" or "▼"
+			chevron.TextColor3 = isOpen and theme.Accent or theme.TextDim
+			triggerStroke.Color = isOpen and theme.Accent or theme.Border
+			triggerStroke.Transparency = isOpen and 0.22 or 0.55
+			openBtn.BackgroundColor3 = isOpen and mixRgb(triggerBg, theme.Accent, 0.08) or triggerBg
+		end
 		local function syncDropdownListGeometry()
 			if not open or not dropdownMount or listFrame.Parent ~= dropdownMount then
 				return
@@ -3077,11 +3147,12 @@ function Elements.CreateSection(tab, arg1, arg2)
 			local asz = openBtn.AbsoluteSize
 			local mp = dropdownMount.AbsolutePosition
 			local w = math.max(math.floor(asz.X), 80)
-			listFrame.Position = UDim2.fromOffset(math.floor(ap.X - mp.X), math.floor(ap.Y - mp.Y + asz.Y + 2))
+			listFrame.Position = UDim2.fromOffset(math.floor(ap.X - mp.X), math.floor(ap.Y - mp.Y + asz.Y + 3))
 			listFrame.Size = UDim2.fromOffset(w, 0)
 		end
 		local function closeDropdownUI()
 			open = false
+			setTriggerOpenVisual(false)
 			if win._dropdownRenderConn then
 				win._dropdownRenderConn:Disconnect()
 				win._dropdownRenderConn = nil
@@ -3103,26 +3174,103 @@ function Elements.CreateSection(tab, arg1, arg2)
 					c:Destroy()
 				end
 			end
+			local innerR = math.max(2, dr - 1)
 			for _, opt in ipairs(options) do
+				local optStr = tostring(opt)
+				local isSel = optStr == tostring(current)
+				local idleBg = isSel and mixRgb(theme.Surface, theme.Accent, 0.14) or theme.Surface
 				local b = Utils.Create("TextButton", {
-					Text = tostring(opt),
-					Font = Enum.Font.Gotham,
-					TextSize = etok.Control.SecondaryTextSize,
-					TextColor3 = theme.Text,
-					BackgroundColor3 = theme.Surface,
-					Size = UDim2.new(1, 0, 0, etok.Control.ToggleRowHeight),
+					BackgroundColor3 = idleBg,
+					Text = "",
 					AutoButtonColor = false,
+					Size = UDim2.new(1, 0, 0, rowH),
 					ZIndex = 6,
 					Parent = listFrame,
 				})
-				Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = b })
+				Utils.Create("UICorner", { CornerRadius = UDim.new(0, innerR), Parent = b })
+				if isSel then
+					local stripe = Utils.Create("Frame", {
+						Name = "SelectedStripe",
+						BackgroundColor3 = theme.Accent,
+						BorderSizePixel = 0,
+						Size = UDim2.new(0, 3, 1, -8),
+						Position = UDim2.new(0, 5, 0.5, 0),
+						AnchorPoint = Vector2.new(0, 0.5),
+						ZIndex = 2,
+						Parent = b,
+					})
+					Utils.Create("UICorner", { CornerRadius = UDim.new(0, 2), Parent = stripe })
+				end
+				local rowInner = Utils.Create("Frame", {
+					BackgroundTransparency = 1,
+					Size = UDim2.new(1, 0, 1, 0),
+					ZIndex = 3,
+					Parent = b,
+				})
+				Utils.Create("UIPadding", {
+					PaddingLeft = UDim.new(0, 6),
+					PaddingRight = UDim.new(0, 8),
+					Parent = rowInner,
+				})
+				Utils.Create("UIListLayout", {
+					FillDirection = Enum.FillDirection.Horizontal,
+					VerticalAlignment = Enum.VerticalAlignment.Center,
+					Padding = UDim.new(0, 6),
+					Parent = rowInner,
+				})
+				Utils.Create("TextLabel", {
+					BackgroundTransparency = 1,
+					Font = Enum.Font.GothamBold,
+					TextSize = 13,
+					TextColor3 = theme.Accent,
+					Text = "✓",
+					TextTransparency = isSel and 0 or 1,
+					Size = UDim2.fromOffset(14, rowH),
+					Active = false,
+					Selectable = false,
+					Parent = rowInner,
+				})
+				Utils.Create("TextLabel", {
+					BackgroundTransparency = 1,
+					Font = isSel and Enum.Font.GothamSemibold or Enum.Font.Gotham,
+					TextSize = etok.Control.SecondaryTextSize,
+					TextColor3 = isSel and theme.Text or theme.TextDim,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextTruncate = Enum.TextTruncate.AtEnd,
+					Size = UDim2.new(1, -20, 1, 0),
+					Text = optStr,
+					Active = false,
+					Selectable = false,
+					Parent = rowInner,
+				})
+				b.MouseEnter:Connect(function()
+					if isSel then
+						Utils.Tween(
+							b,
+							TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+							{ BackgroundColor3 = mixRgb(theme.Surface, theme.Accent, 0.22) }
+						)
+					else
+						Utils.Tween(
+							b,
+							TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+							{ BackgroundColor3 = theme.SurfaceHover }
+						)
+					end
+				end)
+				b.MouseLeave:Connect(function()
+					Utils.Tween(b, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+						BackgroundColor3 = idleBg,
+					})
+				end)
 				b.MouseButton1Click:Connect(function()
 					current = opt
-					openBtn.Text = tostring(current)
+					valueLbl.Text = optStr
 					if flag then
 						Services.StateService:SetFlag(flag, current)
 					end
 					closeDropdownUI()
+					rebuild()
 					if opts.Callback then
 						task.spawn(opts.Callback, current)
 					end
@@ -3130,6 +3278,21 @@ function Elements.CreateSection(tab, arg1, arg2)
 			end
 		end
 		rebuild()
+
+		openBtn.MouseEnter:Connect(function()
+			if not open then
+				Utils.Tween(openBtn, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					BackgroundColor3 = theme.SurfaceHover,
+				})
+			end
+		end)
+		openBtn.MouseLeave:Connect(function()
+			if not open then
+				Utils.Tween(openBtn, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					BackgroundColor3 = triggerBg,
+				})
+			end
+		end)
 
 		openBtn.MouseButton1Click:Connect(function()
 			if open then
@@ -3139,6 +3302,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			if dropdownMount then
 				win:_closeGulleDropdown()
 				open = true
+				setTriggerOpenVisual(true)
 				win._dropdownClose = closeDropdownUI
 				listFrame.Parent = dropdownMount
 				listFrame.LayoutOrder = 0
@@ -3149,6 +3313,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 				win._dropdownRenderConn = RunService.Heartbeat:Connect(syncDropdownListGeometry)
 			else
 				open = true
+				setTriggerOpenVisual(true)
 				listFrame.Visible = true
 				listFrame.Size = UDim2.new(1, 0, 0, 0)
 				listFrame.BackgroundTransparency = 0
@@ -3159,7 +3324,8 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Services.StateService:OnFlagChanged(flag, function(v)
 				if v ~= current then
 					current = v
-					openBtn.Text = tostring(current)
+					valueLbl.Text = tostring(current)
+					rebuild()
 				end
 			end)
 		end
@@ -3171,10 +3337,11 @@ function Elements.CreateSection(tab, arg1, arg2)
 			end,
 			Set = function(_, v)
 				current = v
-				openBtn.Text = tostring(current)
+				valueLbl.Text = tostring(current)
 				if flag then
 					Services.StateService:SetFlag(flag, current)
 				end
+				rebuild()
 			end,
 			Get = function()
 				return current
