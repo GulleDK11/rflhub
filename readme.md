@@ -152,6 +152,30 @@ Get key button aliases:
 - `DiscordInvite`, `DiscordURL`, or `InviteURL` alias for `GetKeyURL`.
 - `GetKeyText` changes button text.
 
+#### Junkie (jnkie.com) key service
+
+Optional integration with the [Junkie Roblox SDK / inline UI](https://docs.jnkie.com/roblox-sdk/inline-ui): pass a **`Junkie`** table (alias **`Jnkie`**). The library loads `library.lua`, sets `service` / `identifier` / `provider`, and uses **`check_key`** for validation unless you supply your own **`KeyValidateAsync`**.
+
+- **`LibraryURL`**: defaults to `https://jnkie.com/sdk/library.lua` if omitted.
+- **`UseGetKeyLink`**: if not `false`, shows **Get Key** and calls **`get_key_link()`** (copies link + notification), unless you set a static **`GetKeyURL`** (static URL wins when both exist).
+
+```lua
+UI:CreateWindowAfterKey({
+	Junkie = {
+		Service = "YOUR_SERVICE",
+		Identifier = "12345",
+		Provider = "Mixed",
+		-- LibraryURL = "https://jnkie.com/sdk/library.lua",
+		-- UseGetKeyLink = true,
+	},
+	-- Keys = { } -- optional fallback only if you do NOT use Junkie async (omit Junkie or use KeyValidateAsync)
+	Window = { Name = "Hub" },
+	Build = function(Window) end,
+})
+```
+
+If **`KeyValidateAsync`** is set, it takes priority over Junkie (for custom composition).
+
 ---
 
 ### Create a tab
