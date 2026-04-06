@@ -9,7 +9,7 @@ local Elements = {}
 local Services = {}
 local Utils = {}
 
--- Sættes via `Library:Init({ AllowedPlaceIds = { 123, … } })`. `nil` = intet tjek (standard).
+-- Set via `Library:Init({ AllowedPlaceIds = { 123, … } })`. `nil` = no check (default).
 Services._allowedPlaceIds = nil
 
 -- #region Services bootstrap
@@ -97,7 +97,7 @@ function Utils.Tween(inst, ti, props)
 	return t
 end
 
--- CanvasGroup giver GroupTransparency-fade på hele undertræet (Roblox 2022+). Returnerer nil hvis ikke tilgængelig.
+-- CanvasGroup enables GroupTransparency fade on the whole subtree (Roblox 2022+). Returns nil if unavailable.
 function Utils.TryCreateCanvasGroup(props)
 	local ok, cg = pcall(Instance.new, "CanvasGroup")
 	if not ok or cg == nil then
@@ -261,10 +261,10 @@ local _defaultTokens = {
 		LogoSize = 28,
 		LogoPadding = 8,
 		LogoCornerRadius = 4,
-		-- `true` = ImageColor3 følger Text (monokrom ikon); `false` = hvid (bevar PNG-farver)
+		-- `true` = ImageColor3 follows Text (monochrome icon); `false` = white (keep PNG colors)
 		LogoTintToText = false,
 		LogoLoadingScale = 2.35,
-		-- Kun når `LogoPosition = "Loading"`: fast px-størrelse (prioriteres over LogoLoadingScale).
+		-- Only when `LogoPosition = "Loading"`: fixed px size (takes precedence over LogoLoadingScale).
 		LogoLoadingSize = 96,
 	},
 	Tab = {
@@ -296,7 +296,7 @@ local _defaultTokens = {
 		RowPaddingX = 8,
 		RowPaddingY = 5,
 		RowStrokeTransparency = 0.93,
-		-- Lodret luft over/under divider-linjen (ud over RowSpacing)
+		-- Vertical space above/below the divider line (in addition to RowSpacing)
 		DividerMarginY = 10,
 	},
 	Control = {
@@ -312,9 +312,9 @@ local _defaultTokens = {
 		InputHeight = 26,
 		KeybindRowHeight = 26,
 		DropdownRowOpen = 30,
-		-- Popup-liste: afstand mellem valgmuligheder
+		-- Popup list: spacing between options
 		DropdownListPadding = 3,
-		-- Afstand label → felt inde i dropdown / color picker (tæt stablet)
+		-- Label → field spacing inside dropdown / color picker (tight stack)
 		InnerStackPadding = 4,
 		ColorChannelRowHeight = 22,
 	},
@@ -323,11 +323,11 @@ local _defaultTokens = {
 		WindowOpenScale = 1,
 		WindowOpenScaleStart = 0.94,
 		LoadingBarDuration = 1.25,
-		-- Mindst så længe loading-overlay vises (sekunder); progressbar + hub fade afventes.
+		-- Minimum time the loading overlay stays visible (seconds); progress bar + hub fade wait on this.
 		LoadingScreenMinDuration = 2,
 		WindowContentFadeIn = true,
 		WindowContentFadeOut = true,
-		-- Efter åbn: flyt hubben ud af `CanvasGroup` så UI ikke er sløret (resize/skalering). `false` = behold blur + luk via CanvasGroup-fade.
+		-- After open: move hub out of `CanvasGroup` so UI stays sharp (resize/scale). `false` = keep blur + close via CanvasGroup fade.
 		WindowCanvasDetachAfterOpen = true,
 		WindowCloseFadeDuration = 0.28,
 		KeyGateOpenDuration = 0.3,
@@ -343,7 +343,7 @@ local _defaultTokens = {
 	},
 	Notification = {
 		Width = 280,
-		-- Samme visuelle radius som hub (`Window.CornerRadius`, default 6).
+		-- Same visual radius as the hub (`Window.CornerRadius`, default 6).
 		CornerRadius = 6,
 		TitleSize = 15,
 		BodySize = 13,
@@ -351,7 +351,7 @@ local _defaultTokens = {
 		PaddingY = 10,
 		FadeInDuration = 0.4,
 		FadeOutDuration = 0.35,
-		-- Neutral ydre kant (aldrig typefarve — farvet stroke giver orange/rød “halo” i hjørnerne).
+		-- Neutral outer edge (never type color — colored stroke causes orange/red “halos” in corners).
 		FrameStrokeThickness = 1,
 		FrameStrokeTransparency = 0.62,
 	},
@@ -777,7 +777,7 @@ function Services.NotificationService:Notify(data)
 end
 -- #endregion
 
--- Place check + deny (skal ligge før Core.CreateWindow — ellers er lokaler nil ved første kald)
+-- Place check + deny (must run before Core.CreateWindow — otherwise locals are nil on first call)
 local function currentPlaceAllowed()
 	local ids = Services._allowedPlaceIds
 	if ids == nil then
@@ -1633,7 +1633,7 @@ function Core.CreateWindow(opts)
 		ClipsDescendants = false,
 		Parent = contentHost,
 	})
-	-- Sidste lag over fanens indhold: dropdown-lister klippes ellers af ScrollingFrame og skjules af senere sektioner.
+	-- Top layer over tab content: otherwise dropdown lists get clipped by ScrollingFrame and covered by later sections.
 	local dropdownMount = Utils.Create("Frame", {
 		Name = "GulleDropdownMount",
 		BackgroundTransparency = 1,
@@ -2330,8 +2330,8 @@ function Core.CreateWindow(opts)
 			return Elements.CreateSection(self, opts)
 		end
 
-		-- Opret flere sektioner pr. kolonne på én gang (fx 2 venstre + 2 højre = 2×2 layout).
-		-- Returnerer { Left = { Section, ... }, Right = { Section, ... } }.
+		-- Create multiple sections per column in one call (e.g. 2 left + 2 right = 2×2 layout).
+		-- Returns { Left = { Section, ... }, Right = { Section, ... } }.
 		function tabObj:CreateSectionBundle(bundle)
 			bundle = bundle or {}
 			local out = { Left = {}, Right = {} }
@@ -2432,7 +2432,7 @@ function Core.CreateWindow(opts)
 	return tabObj
 end
 
-	-- Notifikationer skal kunne vises før hub (fx key-gate / place denied); flyt container hvis forælder skiftes.
+	-- Toasts must work before the hub exists (e.g. key gate / place denied); reparent container if parent changed.
 	do
 		local notifyParent = windowFadeRoot or screen
 		local c = Services.NotificationService._container
@@ -2506,7 +2506,7 @@ end
 				end
 			end)
 		end
-		-- CanvasGroup rasteriserer hele vinduet → ofte sløret tekst, værre ved resize. Flyt `main` til ScreenGui efter intro.
+		-- CanvasGroup rasterizes the whole window → often blurry text, worse on resize. Move `main` to ScreenGui after intro.
 		if
 			animTok.WindowCanvasDetachAfterOpen ~= false
 			and windowFadeRoot
@@ -3188,19 +3188,6 @@ function Elements.CreateSection(tab, arg1, arg2)
 					Parent = listFrame,
 				})
 				Utils.Create("UICorner", { CornerRadius = UDim.new(0, innerR), Parent = b })
-				if isSel then
-					local stripe = Utils.Create("Frame", {
-						Name = "SelectedStripe",
-						BackgroundColor3 = theme.Accent,
-						BorderSizePixel = 0,
-						Size = UDim2.new(0, 3, 1, -8),
-						Position = UDim2.new(0, 5, 0.5, 0),
-						AnchorPoint = Vector2.new(0, 0.5),
-						ZIndex = 2,
-						Parent = b,
-					})
-					Utils.Create("UICorner", { CornerRadius = UDim.new(0, 2), Parent = stripe })
-				end
 				local rowInner = Utils.Create("Frame", {
 					BackgroundTransparency = 1,
 					Size = UDim2.new(1, 0, 1, 0),
@@ -3936,9 +3923,9 @@ function Library:Init(opts)
 	end
 
 	--[[
-		Kør validering før hubben oprettes. `CreateWindow` kaldes først når check består.
-		opts.Validate() → skal returnere true (synk). Eller opts.ValidateAsync(function(done) done(ok, err?) end).
-		opts.Window = samme tabel som til CreateWindow. opts.Build(Window) = opret faner/sektioner.
+		Run validation before the hub is created. `CreateWindow` is called only when the check passes.
+		opts.Validate() → must return true (sync). Or opts.ValidateAsync(function(done) done(ok, err?) end).
+		opts.Window = same table as for CreateWindow. opts.Build(Window) = create tabs/sections.
 	]]
 	function api.OpenAfterValidate(_, opts)
 		opts = opts or {}
@@ -3998,9 +3985,9 @@ function Library:Init(opts)
 	end
 
 	--[[
-		Separat key-UI (egen ScreenGui). Ved succes ødelægges den; derefter CreateWindow + Build — samme som OpenAfterValidate.
-		Validering (første der matcher): KeyValidateAsync(key, done), KeyValidate(key), Validate(key), eller whitelist Keys / Key.
-		Ingen whitelist og ikke AllowAny → afvist. KeyTheme = valgfri { Colors, Tokens } kun til key-skærmen.
+		Separate key UI (own ScreenGui). On success it is destroyed; then CreateWindow + Build — same flow as OpenAfterValidate.
+		Validation (first match): KeyValidateAsync(key, done), KeyValidate(key), Validate(key), or whitelist Keys / Key.
+		No whitelist and not AllowAny → rejected. KeyTheme = optional { Colors, Tokens } for the key screen only.
 	]]
 	function api.CreateWindowAfterKey(_, opts)
 		opts = opts or {}
