@@ -1,6 +1,6 @@
 # GulleUI Library
 
-Single-file Roblox UI built from Instances only. Default look: dark charcoal surfaces, orange accent, soft corners, pill toggles. Optional **blocky** preset: `Theme = Library.BlockyTheme`. String theme names (e.g. `"Ocean"`) are ignored — pass a **table** for `Theme`.
+Default look: dark charcoal surfaces, orange accent, soft corners, pill toggles. Optional **blocky** preset: `Theme = Library.BlockyTheme`. String theme names (e.g. `"Ocean"`) are ignored — pass a **table** for `Theme`.
 
 ---
 
