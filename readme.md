@@ -49,7 +49,7 @@ local Window = UI:CreateWindow({
 	Logo = "rbxassetid://7734051451", -- or number asset id; optional (alias: LogoImage)
 	LogoPosition = "LeftOfTitle", -- LeftOfTitle | AboveTitle | Sidebar | Loading (alias: LogoPlacement)
 	-- LogoLoadingSize / theme tokens: Theme.Tokens.Window
-	-- Mobile reopen chip (see section below): MobileOpenButton, MobileOpenButtonImage, …
+	-- Mobile reopen chip (see section below): MobileOpenButton, MobileOpenButtonTouchOnly, …
 })
 ```
 
@@ -63,26 +63,24 @@ local Window = UI:CreateWindow({
 
 ### Mobile reopen button
 
-When the hub **`ScreenGui`** is hidden (**−**, **×**, or **`ToggleUIKeybind`**), keyboards can reopen it — on **phone / touch** that is awkward. GulleUI spawns a **second `ScreenGui`** with a small **rounded square** (your **logo** by default) so players can **reopen** the hub without a key.
+When the hub **`ScreenGui`** is hidden (**−**, **×**), **PC players** can use **`ToggleUIKeybind`**; **phones** often do not. GulleUI can add a **second `ScreenGui`**: a small **rounded square** with your **logo** (or text) at the **top center**, below the top safe inset — **tap** to show the hub again.
 
-- **Default position:** **top center** (horizontally centered), below the top safe inset (`GuiService:GetGuiInset`).
-- **Drag:** Move the chip anywhere on screen; position is **clamped** to the viewport and **remembered** until you move it again. When the **viewport changes** (fullscreen, window resize), the chip is **re-clamped** so it stays on screen; it also refits when the chip becomes visible again after hiding the hub.
-- **Tap:** If the pointer moves less than the tap threshold, **release opens** the hub (same as enabling the main `ScreenGui`). Larger movement counts as a drag only.
+- **Touch-only by default:** The chip is created only when **`UserInputService.TouchEnabled`** is true (typical phone/tablet). Set **`MobileOpenButtonTouchOnly = false`** to also show it on desktop (e.g. Studio tests).
+- **Interaction:** **`Activated`** only (simple tap) — no dragging or viewport-follow logic.
 - **`Destroy()`** removes both the hub and this chip.
 
 ```lua
 local Window = UI:CreateWindow({
 	Name = "Hub",
 	Logo = "rbxassetid://7734051451", -- reused on the chip unless you override
-	MobileOpenButton = true, -- default: on; set false to disable entirely
+	MobileOpenButton = true, -- default: on (still skipped on non-touch if TouchOnly default applies)
+	-- MobileOpenButtonTouchOnly = false, -- also show chip on PC without touch
 	-- MobileOpenButtonImage = "rbxassetid://…", -- optional; chip only (overrides Logo)
 	-- MobileOpenButtonText = "UI", -- if there is no image, this label is shown
 	-- MobileOpenButtonSize = 44, -- side length in px, clamped 36–56
 	-- MobileOpenButtonCorner = 10, -- corner radius px (also Theme.Tokens.Window.MobileOpenButtonCorner)
-	-- MobileOpenButtonMargin = 14, -- inset from screen edges when clamping / below top inset
+	-- MobileOpenButtonMargin = 14, -- below top inset + horizontal safety clamp
 	-- MobileOpenButtonDisplayOrder = 700, -- optional Z-order vs other ScreenGuis
-	-- MobileOpenButtonDraggable = false, -- if false: fixed top-center, tap uses Activated only
-	-- MobileOpenButtonTapThreshold = 18, -- px: max movement to count as tap (not drag)
 })
 ```
 
