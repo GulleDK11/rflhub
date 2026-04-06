@@ -1886,7 +1886,7 @@ function Core.CreateWindow(opts)
 		_themeOverride = windowThemeOverride,
 		_acrylicEnabled = opts.WindowAcrylic ~= false,
 		_acrylicDistance = tonumber(opts.WindowAcrylicDistance) or 0.001,
-		_acrylicTransparency = math.clamp(tonumber(opts.WindowAcrylicTransparency) or 0.98, 0, 1),
+		_acrylicTransparency = math.clamp(tonumber(opts.WindowAcrylicTransparency) or 0.94, 0, 1),
 		_acrylicModel = nil,
 		_acrylicFolder = nil,
 		_acrylicVisible = false,
@@ -1905,6 +1905,22 @@ function Core.CreateWindow(opts)
 		end
 		local ray = cam:ViewportPointToRay(v2.X, v2.Y)
 		return ray.Origin + ray.Direction * distance
+	end
+
+	local function getGuiInsetVec()
+		local ok, a, b = pcall(function()
+			return GuiService:GetGuiInset()
+		end)
+		if not ok then
+			return Vector2.new(0, 0)
+		end
+		if typeof(a) == "Vector2" and typeof(b) == "Vector2" then
+			return a
+		end
+		if typeof(a) == "Vector2" then
+			return a
+		end
+		return Vector2.new(0, 0)
 	end
 
 	local function ensureAcrylicModel()
@@ -1956,6 +1972,9 @@ function Core.CreateWindow(opts)
 			return
 		end
 		local pos = main.AbsolutePosition
+		if screen.IgnoreGuiInset ~= true then
+			pos = pos + getGuiInsetVec()
+		end
 		local size = main.AbsoluteSize
 		local topLeft = Vector2.new(pos.X, pos.Y)
 		local topRight = Vector2.new(pos.X + size.X, pos.Y)
