@@ -19,6 +19,7 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local GuiService = game:GetService("GuiService")
+local Lighting = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -1208,129 +1209,6 @@ function Core.CreateWindow(opts)
 		Parent = mainParent,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = main })
-	-- Window-local acrylic feel (not full-screen): subtle vertical shading + soft top sheen.
-	local mainShade = Utils.Create("Frame", {
-		Name = "MainShade",
-		BackgroundColor3 = colors.Surface,
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 1,
-		Parent = main,
-	})
-	Utils.Create("UIGradient", {
-		Rotation = 90,
-		Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, colors.SurfaceHover),
-			ColorSequenceKeypoint.new(1, colors.Background),
-		}),
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.92),
-			NumberSequenceKeypoint.new(1, 0.98),
-		}),
-		Parent = mainShade,
-	})
-	local mainTopSheen = Utils.Create("Frame", {
-		Name = "MainTopSheen",
-		BackgroundColor3 = colors.Text,
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 0, 120),
-		Position = UDim2.fromOffset(0, 0),
-		ZIndex = 1,
-		Parent = main,
-	})
-	Utils.Create("UIGradient", {
-		Rotation = 90,
-		Color = ColorSequence.new(colors.Text),
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.96),
-			NumberSequenceKeypoint.new(1, 1),
-		}),
-		Parent = mainTopSheen,
-	})
-	-- DevForum neon-border style: image/slice glow shell around the panel.
-	local mainNeonShell = Utils.Create("ImageLabel", {
-		Name = "MainNeonShell",
-		BackgroundTransparency = 1,
-		Image = "rbxassetid://8992230677",
-		ScaleType = Enum.ScaleType.Slice,
-		SliceCenter = Rect.new(Vector2.new(99, 99), Vector2.new(99, 99)),
-		ImageColor3 = Color3.new(0, 0, 0),
-		ImageTransparency = 1,
-		Size = UDim2.new(1, 44, 1, 38),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		ZIndex = 0,
-		Parent = mainParent,
-	})
-	Utils.Create("UIGradient", {
-		Rotation = 22,
-		Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, colors.Accent),
-			ColorSequenceKeypoint.new(1, colors.Info),
-		}),
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.28),
-			NumberSequenceKeypoint.new(1, 0.6),
-		}),
-		Parent = mainNeonShell,
-	})
-	-- Explicit orange border glow ring (always visible around window edge).
-	local mainBorderGlow = Utils.Create("Frame", {
-		Name = "MainBorderGlow",
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 20, 1, 20),
-		Position = UDim2.fromScale(0.5, 0.5),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		ZIndex = 1,
-		Parent = main,
-	})
-	local mainBorderGlowStroke = Utils.Create("UIStroke", {
-		Color = Color3.new(0, 0, 0),
-		Thickness = 10,
-		Transparency = 0.86,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-		Parent = mainBorderGlow,
-	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 10)), Parent = mainBorderGlow })
-	local mainBorderRing = Utils.Create("Frame", {
-		Name = "MainBorderRing",
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 8, 1, 8),
-		Position = UDim2.fromScale(0.5, 0.5),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		ZIndex = 1,
-		Parent = main,
-	})
-	local mainBorderRingStroke = Utils.Create("UIStroke", {
-		Color = Color3.new(0, 0, 0),
-		Thickness = 4,
-		Transparency = 0.92,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-		Parent = mainBorderRing,
-	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 5)), Parent = mainBorderRing })
-	local mainBorderShadow = Utils.Create("Frame", {
-		Name = "MainBorderShadow",
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 28, 1, 28),
-		Position = UDim2.fromScale(0.5, 0.5),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		ZIndex = 0,
-		Parent = main,
-	})
-	local mainBorderShadowStroke = Utils.Create("UIStroke", {
-		Color = Color3.new(0, 0, 0),
-		Thickness = 12,
-		Transparency = 0.84,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-		Parent = mainBorderShadow,
-	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 14)), Parent = mainBorderShadow })
 	-- Acrylic/noise paint style from common Roblox UI blur methods.
 	local mainNoiseLow = Utils.Create("ImageLabel", {
 		Name = "MainNoiseLow",
@@ -1372,78 +1250,6 @@ function Core.CreateWindow(opts)
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		Parent = main,
 	})
-	-- Soft stacked shadows behind main for smoother depth.
-	local mainShadowFar = Utils.Create("Frame", {
-		Name = "MainShadowFar",
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = 0.93,
-		BorderSizePixel = 0,
-		ZIndex = 0,
-		Parent = mainParent,
-	})
-	local mainShadowMid = Utils.Create("Frame", {
-		Name = "MainShadowMid",
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = 0.9,
-		BorderSizePixel = 0,
-		ZIndex = 0,
-		Parent = mainParent,
-	})
-	local mainGlowSoft = Utils.Create("Frame", {
-		Name = "MainGlowSoft",
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = 0.95,
-		BorderSizePixel = 0,
-		ZIndex = 0,
-		Parent = mainParent,
-	})
-	Utils.Create("UIGradient", {
-		Rotation = 35,
-		Color = ColorSequence.new(Color3.new(0, 0, 0)),
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.25),
-			NumberSequenceKeypoint.new(1, 0.8),
-		}),
-		Parent = mainGlowSoft,
-	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 16)), Parent = mainShadowFar })
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 10)), Parent = mainShadowMid })
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 14)), Parent = mainGlowSoft })
-	Utils.Create("UIGradient", {
-		Rotation = 25,
-		Color = ColorSequence.new(Color3.new(0, 0, 0)),
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.45),
-			NumberSequenceKeypoint.new(1, 0.9),
-		}),
-		Parent = mainShadowFar,
-	})
-	Utils.Create("UIGradient", {
-		Rotation = 90,
-		Color = ColorSequence.new(Color3.new(0, 0, 0)),
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.5),
-			NumberSequenceKeypoint.new(1, 0.94),
-		}),
-		Parent = mainShadowMid,
-	})
-	local function syncMainDepthLayers()
-		local mPos = main.Position
-		local mSize = main.Size
-		mainNeonShell.Size = UDim2.new(mSize.X.Scale, mSize.X.Offset + 44, mSize.Y.Scale, mSize.Y.Offset + 38)
-		mainNeonShell.Position = UDim2.new(mPos.X.Scale, mPos.X.Offset, mPos.Y.Scale, mPos.Y.Offset + 2)
-		mainNeonShell.AnchorPoint = main.AnchorPoint
-		mainShadowFar.Size = UDim2.new(mSize.X.Scale, mSize.X.Offset + 36, mSize.Y.Scale, mSize.Y.Offset + 36)
-		mainShadowFar.Position = UDim2.new(mPos.X.Scale, mPos.X.Offset + 2, mPos.Y.Scale, mPos.Y.Offset + 16)
-		mainShadowFar.AnchorPoint = main.AnchorPoint
-		mainShadowMid.Size = UDim2.new(mSize.X.Scale, mSize.X.Offset + 22, mSize.Y.Scale, mSize.Y.Offset + 22)
-		mainShadowMid.Position = UDim2.new(mPos.X.Scale, mPos.X.Offset + 1, mPos.Y.Scale, mPos.Y.Offset + 9)
-		mainShadowMid.AnchorPoint = main.AnchorPoint
-		mainGlowSoft.Size = UDim2.new(mSize.X.Scale, mSize.X.Offset + 14, mSize.Y.Scale, mSize.Y.Offset + 14)
-		mainGlowSoft.Position = UDim2.new(mPos.X.Scale, mPos.X.Offset, mPos.Y.Scale, mPos.Y.Offset + 4)
-		mainGlowSoft.AnchorPoint = main.AnchorPoint
-	end
-	syncMainDepthLayers()
 
 	local accent = nil
 	if (tok.Window.AccentBarHeight or 0) > 0 then
@@ -2079,6 +1885,11 @@ function Core.CreateWindow(opts)
 		_autosaveThread = nil,
 		_tabThemeHooks = {},
 		_themeOverride = windowThemeOverride,
+		_worldBlurEnabled = opts.WorldBlur ~= false,
+		_worldBlurSize = math.clamp(tonumber(opts.WorldBlurSize) or 10, 0, 56),
+		_worldBlurTweenDur = math.max(0.05, tonumber(opts.WorldBlurTweenDuration) or 0.2),
+		_worldBlurEffect = nil,
+		_worldBlurTween = nil,
 		_tabAnim = {
 			BtnDur = (tok.Animation or {}).TabButtonTweenDuration or 0.14,
 			ContentFadeDur = (tok.Animation or {}).TabContentFadeInDuration or 0.45,
@@ -2086,6 +1897,55 @@ function Core.CreateWindow(opts)
 		},
 		_mobileFabGui = nil,
 	}
+
+	local function ensureWorldBlurEffect()
+		if not window._worldBlurEnabled then
+			return nil
+		end
+		local eff = window._worldBlurEffect
+		if eff and eff.Parent == Lighting then
+			return eff
+		end
+		eff = Instance.new("BlurEffect")
+		eff.Name = "GulleUI_WindowBlur"
+		eff.Size = 0
+		eff.Enabled = true
+		eff.Parent = Lighting
+		window._worldBlurEffect = eff
+		return eff
+	end
+
+	local function setWorldBlur(enabled, instant)
+		if not window._worldBlurEnabled then
+			return
+		end
+		local eff = ensureWorldBlurEffect()
+		if not eff then
+			return
+		end
+		local target = enabled and window._worldBlurSize or 0
+		if window._worldBlurTween then
+			pcall(function()
+				window._worldBlurTween:Cancel()
+			end)
+			window._worldBlurTween = nil
+		end
+		if instant then
+			eff.Size = target
+			return
+		end
+		local tw = Utils.Tween(
+			eff,
+			TweenInfo.new(window._worldBlurTweenDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Size = target }
+		)
+		window._worldBlurTween = tw
+		tw.Completed:Connect(function()
+			if window._worldBlurTween == tw then
+				window._worldBlurTween = nil
+			end
+		end)
+	end
 
 	do
 		-- Touch-first: skip on desktop unless MobileOpenButtonTouchOnly == false (e.g. Studio testing).
@@ -2266,6 +2126,7 @@ function Core.CreateWindow(opts)
 
 	function window:SetVisible(visible)
 		screen.Enabled = visible and true or false
+		setWorldBlur(screen.Enabled, false)
 	end
 
 	function window:IsVisible()
@@ -2308,14 +2169,6 @@ function Core.CreateWindow(opts)
 
 	Core.AddThemeRef(window, main, "BackgroundColor3", "Background")
 	Core.AddThemeRef(window, mainStroke, "Color", "Border")
-	Core.AddThemeRef(window, mainShade, "BackgroundColor3", "Surface")
-	Core.AddThemeRef(window, mainTopSheen, "BackgroundColor3", "Text")
-	Core.AddThemeRef(window, mainBorderGlowStroke, "Color", "Border")
-	Core.AddThemeRef(window, mainBorderRingStroke, "Color", "Border")
-	Core.AddThemeRef(window, mainBorderShadowStroke, "Color", "Border")
-	Core.AddThemeRef(window, mainGlowSoft, "BackgroundColor3", "Border")
-	Core.AddThemeRef(window, mainShadowFar, "BackgroundColor3", "Border")
-	Core.AddThemeRef(window, mainShadowMid, "BackgroundColor3", "Border")
 	Core.AddThemeRef(window, minBtn, "BackgroundColor3", "SurfaceHover")
 	Core.AddThemeRef(window, minBtn, "TextColor3", "TextDim")
 	Core.AddThemeRef(window, closeBtn, "BackgroundColor3", "SurfaceHover")
@@ -2408,6 +2261,9 @@ function Core.CreateWindow(opts)
 	closeBtn.MouseButton1Click:Connect(function()
 		screen.Enabled = false
 	end)
+	table.insert(window._dragConns, screen:GetPropertyChangedSignal("Enabled"):Connect(function()
+		setWorldBlur(screen.Enabled, false)
+	end))
 
 	local dragging, dragStart, startPos
 	table.insert(window._dragConns, leftDrag.InputBegan:Connect(function(input)
@@ -2428,8 +2284,7 @@ function Core.CreateWindow(opts)
 			dragging = false
 		end
 	end))
-	table.insert(window._dragConns, main:GetPropertyChangedSignal("Position"):Connect(syncMainDepthLayers))
-	table.insert(window._dragConns, main:GetPropertyChangedSignal("Size"):Connect(syncMainDepthLayers))
+	setWorldBlur(screen.Enabled, true)
 
 	local rsDragging, rsStart, rsSize
 	table.insert(window._dragConns, resizeGrip.InputBegan:Connect(function(input)
@@ -2510,6 +2365,17 @@ function Core.CreateWindow(opts)
 		local anim = tt.Animation or {}
 		local closeFadeDur = anim.WindowCloseFadeDuration or 0.28
 		local function finishScreenDestroy()
+			if self._worldBlurTween then
+				pcall(function()
+					self._worldBlurTween:Cancel()
+				end)
+				self._worldBlurTween = nil
+			end
+			if self._worldBlurEffect and self._worldBlurEffect.Parent then
+				self._worldBlurEffect.Size = 0
+				self._worldBlurEffect:Destroy()
+			end
+			self._worldBlurEffect = nil
 			local fab = self._mobileFabGui
 			if fab and fab.Parent then
 				fab:Destroy()
