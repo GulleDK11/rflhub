@@ -1249,6 +1249,58 @@ function Core.CreateWindow(opts)
 		}),
 		Parent = mainTopSheen,
 	})
+	-- DevForum neon-border style: image/slice glow shell around the panel.
+	local mainNeonShell = Utils.Create("ImageLabel", {
+		Name = "MainNeonShell",
+		BackgroundTransparency = 1,
+		Image = "rbxassetid://8992230677",
+		ScaleType = Enum.ScaleType.Slice,
+		SliceCenter = Rect.new(Vector2.new(99, 99), Vector2.new(99, 99)),
+		ImageColor3 = colors.Accent,
+		ImageTransparency = 0.9,
+		Size = UDim2.new(1, 28, 1, 24),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		ZIndex = 1,
+		Parent = main,
+	})
+	Utils.Create("UIGradient", {
+		Rotation = 22,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, colors.Accent),
+			ColorSequenceKeypoint.new(1, colors.Info),
+		}),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.28),
+			NumberSequenceKeypoint.new(1, 0.6),
+		}),
+		Parent = mainNeonShell,
+	})
+	-- Acrylic/noise paint style from common Roblox UI blur methods.
+	local mainNoiseLow = Utils.Create("ImageLabel", {
+		Name = "MainNoiseLow",
+		BackgroundTransparency = 1,
+		Image = "rbxassetid://9968344105",
+		ImageTransparency = 0.985,
+		ScaleType = Enum.ScaleType.Tile,
+		TileSize = UDim2.new(0, 128, 0, 128),
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 1,
+		Parent = main,
+	})
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = mainNoiseLow })
+	local mainNoiseHi = Utils.Create("ImageLabel", {
+		Name = "MainNoiseHi",
+		BackgroundTransparency = 1,
+		Image = "rbxassetid://9968344227",
+		ImageTransparency = 0.94,
+		ScaleType = Enum.ScaleType.Tile,
+		TileSize = UDim2.new(0, 128, 0, 128),
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 1,
+		Parent = main,
+	})
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = mainNoiseHi })
 	local mainUIScale = Utils.Create("UIScale", {
 		Name = "_GulleWindowScale",
 		Scale = 1,
@@ -1268,16 +1320,16 @@ function Core.CreateWindow(opts)
 	-- Soft stacked shadows behind main for smoother depth.
 	local mainShadowFar = Utils.Create("Frame", {
 		Name = "MainShadowFar",
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = 0.9,
+		BackgroundColor3 = colors.Accent,
+		BackgroundTransparency = 0.95,
 		BorderSizePixel = 0,
 		ZIndex = 0,
 		Parent = mainParent,
 	})
 	local mainShadowMid = Utils.Create("Frame", {
 		Name = "MainShadowMid",
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = 0.84,
+		BackgroundColor3 = colors.Info,
+		BackgroundTransparency = 0.93,
 		BorderSizePixel = 0,
 		ZIndex = 0,
 		Parent = mainParent,
@@ -1305,6 +1357,30 @@ function Core.CreateWindow(opts)
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 16)), Parent = mainShadowFar })
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 10)), Parent = mainShadowMid })
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 14)), Parent = mainGlowSoft })
+	Utils.Create("UIGradient", {
+		Rotation = 25,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, colors.Accent),
+			ColorSequenceKeypoint.new(1, colors.Info),
+		}),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.62),
+			NumberSequenceKeypoint.new(1, 0.9),
+		}),
+		Parent = mainShadowFar,
+	})
+	Utils.Create("UIGradient", {
+		Rotation = 90,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, colors.Info),
+			ColorSequenceKeypoint.new(1, colors.Accent),
+		}),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.66),
+			NumberSequenceKeypoint.new(1, 0.92),
+		}),
+		Parent = mainShadowMid,
+	})
 	local function syncMainDepthLayers()
 		local mPos = main.Position
 		local mSize = main.Size
@@ -2185,7 +2261,10 @@ function Core.CreateWindow(opts)
 	Core.AddThemeRef(window, mainStroke, "Color", "Border")
 	Core.AddThemeRef(window, mainShade, "BackgroundColor3", "Surface")
 	Core.AddThemeRef(window, mainTopSheen, "BackgroundColor3", "Text")
+	Core.AddThemeRef(window, mainNeonShell, "ImageColor3", "Accent")
 	Core.AddThemeRef(window, mainGlowSoft, "BackgroundColor3", "Accent")
+	Core.AddThemeRef(window, mainShadowFar, "BackgroundColor3", "Accent")
+	Core.AddThemeRef(window, mainShadowMid, "BackgroundColor3", "Info")
 	Core.AddThemeRef(window, minBtn, "BackgroundColor3", "SurfaceHover")
 	Core.AddThemeRef(window, minBtn, "TextColor3", "TextDim")
 	Core.AddThemeRef(window, closeBtn, "BackgroundColor3", "SurfaceHover")
