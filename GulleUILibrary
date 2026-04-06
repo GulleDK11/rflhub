@@ -4380,6 +4380,27 @@ function Library:Init(opts)
 		local junkieMod = nil
 		local junkieUseGetKeyLink = false
 		if jnkOpts and loadJunkieSdk then
+			-- Official inline UI flow sets UI_CLOSED and SCRIPT_KEY state before using the SDK
+			-- (https://docs.jnkie.com/roblox-sdk/inline-ui). Some SDK builds require SCRIPT_KEY to exist
+			-- before library.lua finishes loading; use Keyless / BootstrapScriptKey if you see "No script key provided".
+			pcall(function()
+				local g = getgenv and getgenv()
+				if not g then
+					return
+				end
+				g.UI_CLOSED = false
+				local boot = jnkOpts.BootstrapScriptKey
+					or jnkOpts.bootstrap_script_key
+					or jnkOpts.ScriptKey
+					or jnkOpts.script_key
+				if jnkOpts.Keyless == true or jnkOpts.keyless == true then
+					g.SCRIPT_KEY = "KEYLESS"
+				elseif type(boot) == "string" and boot ~= "" then
+					g.SCRIPT_KEY = boot
+				end
+				_G.UI_CLOSED = false
+			end)
+
 			local libUrl = type(jnkOpts.LibraryURL) == "string" and jnkOpts.LibraryURL or "https://jnkie.com/sdk/library.lua"
 			local okLd, loaded = pcall(function()
 				return loadstring(game:HttpGet(libUrl))()
@@ -4395,6 +4416,17 @@ function Library:Init(opts)
 				loaded.service = jstr(jnkOpts.Service or jnkOpts.service or loaded.service)
 				loaded.identifier = jstr(jnkOpts.Identifier or jnkOpts.identifier or loaded.identifier)
 				loaded.provider = jstr(jnkOpts.Provider or jnkOpts.provider or loaded.provider)
+				local boot = jnkOpts.BootstrapScriptKey
+					or jnkOpts.bootstrap_script_key
+					or jnkOpts.ScriptKey
+					or jnkOpts.script_key
+				if jnkOpts.Keyless == true or jnkOpts.keyless == true then
+					loaded.script_key = loaded.script_key or "KEYLESS"
+					loaded.ScriptKey = loaded.ScriptKey or "KEYLESS"
+				elseif type(boot) == "string" and boot ~= "" then
+					loaded.script_key = loaded.script_key or boot
+					loaded.ScriptKey = loaded.ScriptKey or boot
+				end
 				junkieUseGetKeyLink = jnkOpts.UseGetKeyLink ~= false
 			else
 				warn("[GulleUI] CreateWindowAfterKey: Junkie SDK failed to load (check LibraryURL / network).")
@@ -4837,8 +4869,8 @@ function Library:Init(opts)
 			if opened then
 				return
 			end
-			-- Junkie inline UI expects getgenv().SCRIPT_KEY after a successful check_key (see https://docs.jnkie.com/roblox-sdk/inline-ui).
-			-- Loaders or follow-up scripts often rely on this; omitting it can cause immediate kick or abort.
+			-- Docs: after check_key, SCRIPT_KEY must be the user's license key (replaces any BootstrapScriptKey / KEYLESS).
+			-- https://docs.jnkie.com/roblox-sdk/inline-ui
 			if junkieMod ~= nil and opts.SetScriptKeyGlobal ~= false then
 				pcall(function()
 					local g = getgenv and getgenv()
