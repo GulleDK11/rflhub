@@ -1208,20 +1208,6 @@ function Core.CreateWindow(opts)
 		Parent = mainParent,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = main })
-	local mainDropShadow = Utils.Create("ImageLabel", {
-		Name = "MainDropShadow",
-		BackgroundTransparency = 1,
-		Image = "rbxassetid://8992230677",
-		ScaleType = Enum.ScaleType.Slice,
-		SliceCenter = Rect.new(Vector2.new(99, 99), Vector2.new(99, 99)),
-		ImageColor3 = Color3.new(0, 0, 0),
-		ImageTransparency = 0.78,
-		Size = UDim2.new(1, 44, 1, 44),
-		Position = UDim2.new(0.5, 0, 0.5, 6),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		ZIndex = 0,
-		Parent = main,
-	})
 	-- Acrylic/noise paint style from common Roblox UI blur methods.
 	local mainNoiseLow = Utils.Create("ImageLabel", {
 		Name = "MainNoiseLow",
@@ -1263,24 +1249,6 @@ function Core.CreateWindow(opts)
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		Parent = main,
 	})
-	local mainShadowMatte = Utils.Create("Frame", {
-		Name = "MainShadowMatte",
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = 0.84,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 34, 1, 34),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		ZIndex = 0,
-		Parent = mainParent,
-	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius + 14), Parent = mainShadowMatte })
-	local function syncMainShadowMatte()
-		mainShadowMatte.Size = UDim2.new(main.Size.X.Scale, main.Size.X.Offset + 34, main.Size.Y.Scale, main.Size.Y.Offset + 34)
-		mainShadowMatte.Position = main.Position
-		mainShadowMatte.AnchorPoint = main.AnchorPoint
-	end
-	syncMainShadowMatte()
 
 	local accent = nil
 	if (tok.Window.AccentBarHeight or 0) > 0 then
@@ -2257,8 +2225,6 @@ function Core.CreateWindow(opts)
 			dragging = false
 		end
 	end))
-	table.insert(window._dragConns, main:GetPropertyChangedSignal("Position"):Connect(syncMainShadowMatte))
-	table.insert(window._dragConns, main:GetPropertyChangedSignal("Size"):Connect(syncMainShadowMatte))
 
 	local rsDragging, rsStart, rsSize
 	table.insert(window._dragConns, resizeGrip.InputBegan:Connect(function(input)
