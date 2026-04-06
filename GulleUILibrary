@@ -1190,59 +1190,6 @@ function Core.CreateWindow(opts)
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		Parent = resolveGuiParent(opts),
 	})
-	-- Fake blur/depth backdrop layers (Roblox has no real background blur)
-	local backdropBase = Utils.Create("Frame", {
-		Name = "BackdropBase",
-		BackgroundColor3 = colors.Background,
-		BackgroundTransparency = 0.28,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 0,
-		Parent = screen,
-	})
-	local backdropMid = Utils.Create("Frame", {
-		Name = "BackdropMid",
-		BackgroundColor3 = colors.Surface,
-		BackgroundTransparency = 0.6,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 0,
-		Parent = screen,
-	})
-	Utils.Create("UIGradient", {
-		Rotation = 90,
-		Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, colors.SurfaceHover),
-			ColorSequenceKeypoint.new(1, colors.Background),
-		}),
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.65),
-			NumberSequenceKeypoint.new(1, 0.92),
-		}),
-		Parent = backdropMid,
-	})
-	local backdropGlow = Utils.Create("Frame", {
-		Name = "BackdropGlow",
-		BackgroundColor3 = colors.Accent,
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 0,
-		Parent = screen,
-	})
-	Utils.Create("UIGradient", {
-		Rotation = -25,
-		Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, colors.Accent),
-			ColorSequenceKeypoint.new(1, colors.Info),
-		}),
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.93),
-			NumberSequenceKeypoint.new(0.5, 0.98),
-			NumberSequenceKeypoint.new(1, 1),
-		}),
-		Parent = backdropGlow,
-	})
 
 	local windowFadeRoot = Utils.TryCreateCanvasGroup({
 		Name = "GulleWindowFade",
@@ -1261,6 +1208,47 @@ function Core.CreateWindow(opts)
 		Parent = mainParent,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = main })
+	-- Window-local acrylic feel (not full-screen): subtle vertical shading + soft top sheen.
+	local mainShade = Utils.Create("Frame", {
+		Name = "MainShade",
+		BackgroundColor3 = colors.Surface,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 1,
+		Parent = main,
+	})
+	Utils.Create("UIGradient", {
+		Rotation = 90,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, colors.SurfaceHover),
+			ColorSequenceKeypoint.new(1, colors.Background),
+		}),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.92),
+			NumberSequenceKeypoint.new(1, 0.98),
+		}),
+		Parent = mainShade,
+	})
+	local mainTopSheen = Utils.Create("Frame", {
+		Name = "MainTopSheen",
+		BackgroundColor3 = colors.Text,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 120),
+		Position = UDim2.fromOffset(0, 0),
+		ZIndex = 1,
+		Parent = main,
+	})
+	Utils.Create("UIGradient", {
+		Rotation = 90,
+		Color = ColorSequence.new(colors.Text),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.96),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Parent = mainTopSheen,
+	})
 	local mainUIScale = Utils.Create("UIScale", {
 		Name = "_GulleWindowScale",
 		Scale = 1,
@@ -2195,9 +2183,8 @@ function Core.CreateWindow(opts)
 
 	Core.AddThemeRef(window, main, "BackgroundColor3", "Background")
 	Core.AddThemeRef(window, mainStroke, "Color", "Border")
-	Core.AddThemeRef(window, backdropBase, "BackgroundColor3", "Background")
-	Core.AddThemeRef(window, backdropMid, "BackgroundColor3", "Surface")
-	Core.AddThemeRef(window, backdropGlow, "BackgroundColor3", "Accent")
+	Core.AddThemeRef(window, mainShade, "BackgroundColor3", "Surface")
+	Core.AddThemeRef(window, mainTopSheen, "BackgroundColor3", "Text")
 	Core.AddThemeRef(window, mainGlowSoft, "BackgroundColor3", "Accent")
 	Core.AddThemeRef(window, minBtn, "BackgroundColor3", "SurfaceHover")
 	Core.AddThemeRef(window, minBtn, "TextColor3", "TextDim")
