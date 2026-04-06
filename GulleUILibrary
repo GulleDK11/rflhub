@@ -2444,13 +2444,16 @@ function Core.CreateWindow(opts)
 		})
 		Core.AddThemeRef(window, page, "ScrollBarImageColor3", "TextDim")
 
-		local tabPageFade = Utils.TryCreateCanvasGroup({
-			Name = "TabPageFade",
-			GroupTransparency = 1,
-			Size = UDim2.fromScale(1, 1),
-			Position = UDim2.fromScale(0, 0),
-			Parent = page,
-		})
+		local tabPageFade = nil
+		if window._tabAnim and window._tabAnim.ContentFadeOn then
+			tabPageFade = Utils.TryCreateCanvasGroup({
+				Name = "TabPageFade",
+				GroupTransparency = 1,
+				Size = UDim2.fromScale(1, 1),
+				Position = UDim2.fromScale(0, 0),
+				Parent = page,
+			})
+		end
 		local pageContentMount = tabPageFade or page
 
 		-- Single child under ScrollingFrame + inner padding avoids broken canvas sizing.
