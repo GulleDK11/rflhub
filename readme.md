@@ -49,12 +49,46 @@ local Window = UI:CreateWindow({
 	Logo = "rbxassetid://7734051451", -- or number asset id; optional (alias: LogoImage)
 	LogoPosition = "LeftOfTitle", -- LeftOfTitle | AboveTitle | Sidebar | Loading (alias: LogoPlacement)
 	-- LogoLoadingSize / theme tokens: Theme.Tokens.Window
+	-- Mobile reopen chip (see section below): MobileOpenButton, MobileOpenButtonImage, …
 })
 ```
 
 **Chrome:** Drag the **title bar** to move. **−** / **×** hide the UI. **Bottom-right grip** resizes (min size from tokens). **Search** filters tab names (case-insensitive substring).
 
+**Sidebar rank:** If you set **`SidebarRank`** to a non-empty string, that text is always shown. Otherwise the label is **`Developer`** when your `UserId` is in **`DeveloperUserIds`** (merged with the library’s built-in list in the source — edit `_defaultDeveloperUserIds` in `GulleUILibrary.lua` to change defaults) or when you own the place (`CreatorType.User` + `CreatorId`). Everyone else gets **`User`**.
+
 **Tabs** use two columns (50/50 + gap). `CreateSection` defaults to the **left** column; use `Column = "Right"` for the right column.
+
+---
+
+### Mobile reopen button
+
+When the hub **`ScreenGui`** is hidden (**−**, **×**, or **`ToggleUIKeybind`**), keyboards can reopen it — on **phone / touch** that is awkward. GulleUI spawns a **second `ScreenGui`** with a small **rounded square** (your **logo** by default) so players can **reopen** the hub without a key.
+
+- **Default position:** **top-right**, below the top safe inset (`GuiService:GetGuiInset`).
+- **Drag:** Move the chip anywhere on screen; position is **clamped** to the viewport and **remembered** until you move it again.
+- **Tap:** If the pointer moves less than the tap threshold, **release opens** the hub (same as enabling the main `ScreenGui`). Larger movement counts as a drag only.
+- **`Destroy()`** removes both the hub and this chip.
+
+```lua
+local Window = UI:CreateWindow({
+	Name = "Hub",
+	Logo = "rbxassetid://7734051451", -- reused on the chip unless you override
+	MobileOpenButton = true, -- default: on; set false to disable entirely
+	-- MobileOpenButtonImage = "rbxassetid://…", -- optional; chip only (overrides Logo)
+	-- MobileOpenButtonText = "UI", -- if there is no image, this label is shown
+	-- MobileOpenButtonSize = 44, -- side length in px, clamped 36–56
+	-- MobileOpenButtonCorner = 10, -- corner radius px (also Theme.Tokens.Window.MobileOpenButtonCorner)
+	-- MobileOpenButtonMargin = 14, -- inset from screen edges when clamping / initial top-right
+	-- MobileOpenButtonDisplayOrder = 700, -- optional Z-order vs other ScreenGuis
+	-- MobileOpenButtonDraggable = false, -- if false: fixed top-right, tap uses Activated only
+	-- MobileOpenButtonTapThreshold = 18, -- px: max movement to count as tap (not drag)
+})
+```
+
+**Theme:** `Theme.Tokens.Window.MobileOpenButtonSize` and **`MobileOpenButtonCorner`** (defaults **44** / **10**) apply if you do not pass the matching `CreateWindow` fields.
+
+**`NewWindow` / `OpenAfterValidate` / `CreateWindowAfterKey`:** Pass the same fields on the window options table (`Window = { … }` where applicable). `NewWindow` forwards the mobile fields into `CreateWindow`.
 
 ---
 
@@ -272,6 +306,7 @@ Section:CreateLabel({ Text = "Helper text" })
 
 ```lua
 Section:CreateParagraph({ Text = "Longer wrapped description." })
+-- Content = "…" -- same as Text
 ```
 
 ---
@@ -345,6 +380,8 @@ Set under `Theme.Tokens` (global) or per-window `Theme = { Tokens = { … } }`.
 **`Section`:** `RowSpacing`, `DividerMarginY`, `RowPaddingY`, …
 
 **`Tab`:** `ColumnGap`, `SidebarWidth`, …
+
+**`Window` (extra):** `MobileOpenButtonSize`, `MobileOpenButtonCorner` — defaults for the mobile reopen chip (overridable per window with `CreateWindow` fields).
 
 CanvasGroup fades need a supported engine; without it, those steps are skipped (tab button tweens still run).
 
