@@ -266,6 +266,9 @@ local _defaultTokens = {
 		LogoLoadingScale = 2.35,
 		-- Only when `LogoPosition = "Loading"`: fixed px size (takes precedence over LogoLoadingScale).
 		LogoLoadingSize = 96,
+		-- Floating reopen control (separate ScreenGui) when hub ScreenGui is hidden; px, ~44 = comfortable touch minimum
+		MobileOpenButtonSize = 44,
+		MobileOpenButtonCorner = 10,
 	},
 	Tab = {
 		SidebarWidth = 168,
@@ -1816,7 +1819,111 @@ function Core.CreateWindow(opts)
 			ContentFadeDur = (tok.Animation or {}).TabContentFadeInDuration or 0.45,
 			ContentFadeOn = (tok.Animation or {}).TabContentFadeIn ~= false,
 		},
+		_mobileFabGui = nil,
 	}
+
+	do
+		if opts.MobileOpenButton ~= false then
+			local wMob = tok.Window or {}
+			local mobSize = math.clamp(
+				math.floor(tonumber(opts.MobileOpenButtonSize) or tonumber(wMob.MobileOpenButtonSize) or 44),
+				36,
+				56
+			)
+			local mobCorner = math.floor(
+				tonumber(opts.MobileOpenButtonCorner) or tonumber(wMob.MobileOpenButtonCorner) or math.max(6, math.floor(mobSize * 0.22))
+			)
+			local fabImg = normalizeLogoAsset(opts.MobileOpenButtonImage or opts.Logo or opts.LogoImage)
+			local fabGui = Utils.Create("ScreenGui", {
+				Name = (displayName:gsub("%s+", "") .. "_GulleMobileOpen"):sub(1, 50),
+				ResetOnSpawn = false,
+				ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+				DisplayOrder = type(opts.MobileOpenButtonDisplayOrder) == "number" and opts.MobileOpenButtonDisplayOrder
+					or (screen.DisplayOrder + 80),
+				IgnoreGuiInset = false,
+				Parent = screen.Parent,
+			})
+			local margin = math.clamp(math.floor(tonumber(opts.MobileOpenButtonMargin) or 14), 8, 28)
+			local holder = Utils.Create("Frame", {
+				Name = "MobileOpenHolder",
+				BackgroundTransparency = 1,
+				Size = UDim2.fromOffset(mobSize + margin, mobSize + margin),
+				Position = UDim2.new(1, -margin, 1, -margin),
+				AnchorPoint = Vector2.new(1, 1),
+				Visible = false,
+				Parent = fabGui,
+			})
+			local hit = Utils.Create("ImageButton", {
+				Name = "OpenHub",
+				BackgroundColor3 = colors.Surface,
+				AutoButtonColor = false,
+				Size = UDim2.fromOffset(mobSize, mobSize),
+				AnchorPoint = Vector2.new(1, 1),
+				Position = UDim2.fromScale(1, 1),
+				Image = "",
+				Parent = holder,
+			})
+			Utils.Create("UICorner", { CornerRadius = UDim.new(0, mobCorner), Parent = hit })
+			local fabStroke = Utils.Create("UIStroke", {
+				Color = colors.Border,
+				Thickness = 1,
+				Transparency = 0.42,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+				Parent = hit,
+			})
+			local iconHost = Utils.Create("Frame", {
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, -10, 1, -10),
+				Position = UDim2.new(0.5, 0, 0.5, 0),
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Parent = hit,
+			})
+			local fabIcon = nil
+			if fabImg then
+				fabIcon = Utils.Create("ImageLabel", {
+					BackgroundTransparency = 1,
+					Size = UDim2.fromScale(1, 1),
+					Image = fabImg,
+					ScaleType = Enum.ScaleType.Fit,
+					Parent = iconHost,
+				})
+			else
+				fabIcon = Utils.Create("TextLabel", {
+					BackgroundTransparency = 1,
+					Size = UDim2.fromScale(1, 1),
+					Font = Enum.Font.GothamBold,
+					TextSize = math.clamp(math.floor(mobSize * 0.34), 11, 18),
+					TextColor3 = colors.Accent,
+					Text = type(opts.MobileOpenButtonText) == "string" and opts.MobileOpenButtonText ~= "" and opts.MobileOpenButtonText
+						or "UI",
+					Parent = iconHost,
+				})
+			end
+			hit.Activated:Connect(function()
+				if window._destroyed then
+					return
+				end
+				screen.Enabled = true
+			end)
+			local function syncMobileOpenVisibility()
+				if window._destroyed or not holder.Parent then
+					return
+				end
+				holder.Visible = not screen.Enabled
+			end
+			screen:GetPropertyChangedSignal("Enabled"):Connect(syncMobileOpenVisibility)
+			syncMobileOpenVisibility()
+
+			window._mobileFabGui = fabGui
+			Core.AddThemeRef(window, hit, "BackgroundColor3", "Surface")
+			Core.AddThemeRef(window, fabStroke, "Color", "Border")
+			if fabIcon and fabIcon:IsA("ImageLabel") and wtok.LogoTintToText == true then
+				Core.AddThemeRef(window, fabIcon, "ImageColor3", "Text")
+			elseif fabIcon and fabIcon:IsA("TextLabel") then
+				Core.AddThemeRef(window, fabIcon, "TextColor3", "Accent")
+			end
+		end
+	end
 
 	function window:_tweenSidebarTab(button, label, bgColor, textColor)
 		local d = self._tabAnim.BtnDur
@@ -2093,6 +2200,11 @@ function Core.CreateWindow(opts)
 		local anim = tt.Animation or {}
 		local closeFadeDur = anim.WindowCloseFadeDuration or 0.28
 		local function finishScreenDestroy()
+			local fab = self._mobileFabGui
+			if fab and fab.Parent then
+				fab:Destroy()
+			end
+			self._mobileFabGui = nil
 			if scr and scr.Parent then
 				scr:Destroy()
 			end
@@ -3907,6 +4019,13 @@ function Library:Init(opts)
 			LogoImage = opts.LogoImage,
 			LogoPosition = opts.LogoPosition,
 			LogoPlacement = opts.LogoPlacement,
+			MobileOpenButton = opts.MobileOpenButton,
+			MobileOpenButtonImage = opts.MobileOpenButtonImage,
+			MobileOpenButtonText = opts.MobileOpenButtonText,
+			MobileOpenButtonSize = opts.MobileOpenButtonSize,
+			MobileOpenButtonCorner = opts.MobileOpenButtonCorner,
+			MobileOpenButtonMargin = opts.MobileOpenButtonMargin,
+			MobileOpenButtonDisplayOrder = opts.MobileOpenButtonDisplayOrder,
 		})
 		api.Window = w
 		return w
