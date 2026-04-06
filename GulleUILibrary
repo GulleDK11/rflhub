@@ -1208,6 +1208,20 @@ function Core.CreateWindow(opts)
 		Parent = mainParent,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = main })
+	local mainDropShadow = Utils.Create("ImageLabel", {
+		Name = "MainDropShadow",
+		BackgroundTransparency = 1,
+		Image = "rbxassetid://8992230677",
+		ScaleType = Enum.ScaleType.Slice,
+		SliceCenter = Rect.new(Vector2.new(99, 99), Vector2.new(99, 99)),
+		ImageColor3 = Color3.new(0, 0, 0),
+		ImageTransparency = 0.78,
+		Size = UDim2.new(1, 44, 1, 44),
+		Position = UDim2.new(0.5, 0, 0.5, 6),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		ZIndex = 0,
+		Parent = main,
+	})
 	-- Acrylic/noise paint style from common Roblox UI blur methods.
 	local mainNoiseLow = Utils.Create("ImageLabel", {
 		Name = "MainNoiseLow",
@@ -1902,7 +1916,7 @@ function Core.CreateWindow(opts)
 		_autosaveThread = nil,
 		_tabThemeHooks = {},
 		_themeOverride = windowThemeOverride,
-		_acrylicEnabled = opts.WindowAcrylic ~= false,
+		_acrylicEnabled = opts.WindowAcrylic == true,
 		_acrylicDistance = tonumber(opts.WindowAcrylicDistance) or 0.001,
 		_acrylicTransparency = math.clamp(tonumber(opts.WindowAcrylicTransparency) or 0.9, 0, 1),
 		_acrylicPadding = math.max(0, tonumber(opts.WindowAcrylicPadding) or 14),
