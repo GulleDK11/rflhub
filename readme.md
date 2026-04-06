@@ -65,8 +65,8 @@ local Window = UI:CreateWindow({
 
 When the hub **`ScreenGui`** is hidden (**−**, **×**, or **`ToggleUIKeybind`**), keyboards can reopen it — on **phone / touch** that is awkward. GulleUI spawns a **second `ScreenGui`** with a small **rounded square** (your **logo** by default) so players can **reopen** the hub without a key.
 
-- **Default position:** **top-right**, below the top safe inset (`GuiService:GetGuiInset`).
-- **Drag:** Move the chip anywhere on screen; position is **clamped** to the viewport and **remembered** until you move it again.
+- **Default position:** **top center** (horizontally centered), below the top safe inset (`GuiService:GetGuiInset`).
+- **Drag:** Move the chip anywhere on screen; position is **clamped** to the viewport and **remembered** until you move it again. When the **viewport changes** (fullscreen, window resize), the chip is **re-clamped** so it stays on screen; it also refits when the chip becomes visible again after hiding the hub.
 - **Tap:** If the pointer moves less than the tap threshold, **release opens** the hub (same as enabling the main `ScreenGui`). Larger movement counts as a drag only.
 - **`Destroy()`** removes both the hub and this chip.
 
@@ -79,9 +79,9 @@ local Window = UI:CreateWindow({
 	-- MobileOpenButtonText = "UI", -- if there is no image, this label is shown
 	-- MobileOpenButtonSize = 44, -- side length in px, clamped 36–56
 	-- MobileOpenButtonCorner = 10, -- corner radius px (also Theme.Tokens.Window.MobileOpenButtonCorner)
-	-- MobileOpenButtonMargin = 14, -- inset from screen edges when clamping / initial top-right
+	-- MobileOpenButtonMargin = 14, -- inset from screen edges when clamping / below top inset
 	-- MobileOpenButtonDisplayOrder = 700, -- optional Z-order vs other ScreenGuis
-	-- MobileOpenButtonDraggable = false, -- if false: fixed top-right, tap uses Activated only
+	-- MobileOpenButtonDraggable = false, -- if false: fixed top-center, tap uses Activated only
 	-- MobileOpenButtonTapThreshold = 18, -- px: max movement to count as tap (not drag)
 })
 ```
