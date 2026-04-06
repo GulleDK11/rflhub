@@ -156,11 +156,20 @@ Get key button aliases:
 
 Optional integration with the [Junkie Roblox SDK / inline UI](https://docs.jnkie.com/roblox-sdk/inline-ui): pass a **`Junkie`** table (alias **`Jnkie`**). The library loads `library.lua`, sets `service` / `identifier` / `provider`, and uses **`check_key`** for validation unless you supply your own **`KeyValidateAsync`**.
 
+**Builtin vs Junkie:** Use **`KeySystem`** (alias **`KeyMode`**) to pick one path explicitly:
+
+- **`"builtin"`** — Whitelist / `KeyValidate` / `KeyValidateAsync` only; the **`Junkie`** table is not loaded.
+- **`"junkie"`** — Junkie **`check_key`** only; **`Keys` / `Key`** are ignored.
+- **`"auto"`** or omitted — If both a **`Keys`** whitelist and **`Junkie`** are present, **builtin wins** (Junkie is not loaded) and a warning is printed. If only **`Junkie`** is set, Junkie is used.
+
+On a successful Junkie validation, the library sets **`getgenv().SCRIPT_KEY`** and **`_G.SCRIPT_KEY`** to the validated key, matching Junkie’s documented flow. Set **`SetScriptKeyGlobal = false`** to skip that if your environment conflicts.
+
 - **`LibraryURL`**: defaults to `https://jnkie.com/sdk/library.lua` if omitted.
 - **`UseGetKeyLink`**: if not `false`, shows **Get Key** and calls **`get_key_link()`** (copies link + notification), unless you set a static **`GetKeyURL`** (static URL wins when both exist).
 
 ```lua
 UI:CreateWindowAfterKey({
+	KeySystem = "junkie",
 	Junkie = {
 		Service = "YOUR_SERVICE",
 		Identifier = "12345",
@@ -168,7 +177,6 @@ UI:CreateWindowAfterKey({
 		-- LibraryURL = "https://jnkie.com/sdk/library.lua",
 		-- UseGetKeyLink = true,
 	},
-	-- Keys = { } -- optional fallback only if you do NOT use Junkie async (omit Junkie or use KeyValidateAsync)
 	Window = { Name = "Hub" },
 	Build = function(Window) end,
 })
