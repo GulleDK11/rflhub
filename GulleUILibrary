@@ -331,6 +331,7 @@ local _defaultTokens = {
 		KeyGateCloseScaleEnd = 0.86,
 		KeyGateContentFadeIn = true,
 		KeyGatePauseBeforeHub = 0.2,
+		LoadingFadeOutDuration = 0.42,
 		TabButtonTweenDuration = 0.14,
 		TabContentFadeInDuration = 0.75,
 		TabContentFadeIn = false,
@@ -595,6 +596,11 @@ function Services.NotificationService:_spawnToast(item)
 		end
 	end
 	local borderC, titleC, bodyC = notifyChromeColors()
+	local function lerpColor3(a, b, t)
+		return Color3.new(a.R + (b.R - a.R) * t, a.G + (b.G - a.G) * t, a.B + (b.B - a.B) * t)
+	end
+	local surfaceTint = lerpColor3(theme.Surface, borderC, 0.2)
+	local accentW = 7
 	self._toastOrder = self._toastOrder + 1
 	if self._stack then
 		self._stack.Size = UDim2.new(0, nt.Width + 24, 1, -40)
@@ -622,30 +628,35 @@ function Services.NotificationService:_spawnToast(item)
 	if toastFade then
 		local chrome = Utils.Create("Frame", {
 			Name = "ToastChrome",
-			BackgroundColor3 = theme.Surface,
+			BackgroundColor3 = surfaceTint,
 			BackgroundTransparency = 0,
 			BorderSizePixel = 0,
 			Size = UDim2.fromScale(1, 1),
 			Position = UDim2.fromScale(0, 0),
+			ZIndex = 1,
 			Parent = toastFade,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, nt.CornerRadius), Parent = chrome })
-		Utils.Create("UIStroke", {
-			Color = borderC,
-			Thickness = 2,
-			Transparency = 0.12,
-			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-			Parent = chrome,
+		Utils.Create("Frame", {
+			Name = "ToastAccent",
+			BackgroundColor3 = borderC,
+			BorderSizePixel = 0,
+			Size = UDim2.new(0, accentW, 1, 0),
+			Position = UDim2.fromScale(0, 0),
+			ZIndex = 2,
+			Parent = toastFade,
 		})
 	else
-		card.BackgroundColor3 = theme.Surface
+		card.BackgroundColor3 = surfaceTint
 		card.BackgroundTransparency = 0
 		card.BorderSizePixel = 0
-		Utils.Create("UIStroke", {
-			Color = borderC,
-			Thickness = 2,
-			Transparency = 0.12,
-			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Utils.Create("Frame", {
+			Name = "ToastAccent",
+			BackgroundColor3 = borderC,
+			BorderSizePixel = 0,
+			Size = UDim2.new(0, accentW, 1, 0),
+			Position = UDim2.fromScale(0, 0),
+			ZIndex = 2,
 			Parent = card,
 		})
 	end
@@ -653,8 +664,9 @@ function Services.NotificationService:_spawnToast(item)
 	local mover = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 1, 0),
-		Position = UDim2.new(0, 0, 0, 0),
+		Size = UDim2.new(1, -accentW, 1, 0),
+		Position = UDim2.new(0, accentW, 0, 0),
+		ZIndex = 3,
 		ClipsDescendants = true,
 		Parent = contentRoot,
 	})
@@ -1625,21 +1637,39 @@ function Core.CreateWindow(opts)
 	})
 
 	local loading = Utils.Create("Frame", {
-		BackgroundColor3 = colors.Background,
-		BackgroundTransparency = 0,
+		Name = "LoadingOverlay",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = 50,
 		Visible = true,
 		Parent = main,
 	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = loading })
+	local loadingFade = Utils.TryCreateCanvasGroup({
+		Name = "LoadingFade",
+		GroupTransparency = 0,
+		Size = UDim2.fromScale(1, 1),
+		Position = UDim2.fromScale(0, 0),
+		Parent = loading,
+	})
+	local loadMount = loadingFade or loading
+	local loadingBg = Utils.Create("Frame", {
+		Name = "LoadingBackground",
+		BackgroundColor3 = colors.Background,
+		BackgroundTransparency = 0,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Position = UDim2.fromScale(0, 0),
+		Parent = loadMount,
+	})
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = loadingBg })
 	local loadStack = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.fromOffset(320, 120),
 		Position = UDim2.fromScale(0.5, 0.5),
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		ZIndex = 51,
-		Parent = loading,
+		ZIndex = 2,
+		Parent = loadMount,
 	})
 	Utils.Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Vertical,
@@ -1882,7 +1912,7 @@ function Core.CreateWindow(opts)
 	Core.AddThemeRef(window, tabList, "ScrollBarImageColor3", "Accent")
 	Core.AddThemeRef(window, contentShell, "BackgroundColor3", "Background")
 	Core.AddThemeRef(window, contentShellStroke, "Color", "Border")
-	Core.AddThemeRef(window, loading, "BackgroundColor3", "Background")
+	Core.AddThemeRef(window, loadingBg, "BackgroundColor3", "Background")
 	Core.AddThemeRef(window, loadTitle, "TextColor3", "Text")
 	Core.AddThemeRef(window, loadSub, "TextColor3", "TextDim")
 	Core.AddThemeRef(window, loadBarBg, "BackgroundColor3", "SurfaceHover")
@@ -2406,8 +2436,9 @@ end
 	end
 
 	task.defer(function()
-		local openDur = tok.Animation.WindowOpenDuration or 0.32
-		if windowFadeRoot and windowFadeRoot:IsA("CanvasGroup") and tok.Animation.WindowContentFadeIn ~= false then
+		local animTok = tok.Animation or {}
+		local openDur = animTok.WindowOpenDuration or 0.32
+		if windowFadeRoot and windowFadeRoot:IsA("CanvasGroup") and animTok.WindowContentFadeIn ~= false then
 			windowFadeRoot.GroupTransparency = 1
 			Utils.Tween(
 				windowFadeRoot,
@@ -2421,11 +2452,12 @@ end
 			Utils.Tween(
 				mainUIScale,
 				TweenInfo.new(openDur, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-				{ Scale = tok.Animation.WindowOpenScale or 1 }
+				{ Scale = animTok.WindowOpenScale or 1 }
 			)
 		end
-		local barDur = tok.Animation.LoadingBarDuration or 1.25
-		local loadingMin = tonumber(tok.Animation.LoadingScreenMinDuration) or 2
+		local barDur = animTok.LoadingBarDuration or 1.25
+		local loadingMin = tonumber(animTok.LoadingScreenMinDuration) or 2
+		local loadFadeDur = tonumber(animTok.LoadingFadeOutDuration) or 0.42
 		Utils.Tween(
 			loadBarFill,
 			TweenInfo.new(barDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
@@ -2433,15 +2465,36 @@ end
 		)
 		local hold = math.max(openDur, barDur, loadingMin, 0.2)
 		task.wait(hold)
-		loading.BackgroundTransparency = 1
-		loadTitle.TextTransparency = 1
-		loadSub.TextTransparency = 1
-		loadBarBg.BackgroundTransparency = 1
-		loadBarFill.BackgroundTransparency = 1
-		if logoLoadingInst then
-			logoLoadingInst.ImageTransparency = 1
+		if loadingFade and loadingFade:IsA("CanvasGroup") then
+			local tw = Utils.Tween(
+				loadingFade,
+				TweenInfo.new(loadFadeDur, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+				{ GroupTransparency = 1 }
+			)
+			task.spawn(function()
+				pcall(function()
+					tw.Completed:Wait()
+				end)
+				if loading.Parent then
+					loading.Visible = false
+				end
+			end)
+		else
+			local ti = TweenInfo.new(loadFadeDur, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+			Utils.Tween(loadingBg, ti, { BackgroundTransparency = 1 })
+			Utils.Tween(loadTitle, ti, { TextTransparency = 1 })
+			Utils.Tween(loadSub, ti, { TextTransparency = 1 })
+			Utils.Tween(loadBarBg, ti, { BackgroundTransparency = 1 })
+			Utils.Tween(loadBarFill, ti, { BackgroundTransparency = 1 })
+			if logoLoadingInst then
+				Utils.Tween(logoLoadingInst, ti, { ImageTransparency = 1 })
+			end
+			task.delay(loadFadeDur, function()
+				if loading.Parent then
+					loading.Visible = false
+				end
+			end)
 		end
-		loading.Visible = false
 	end)
 
 	table.insert(window._tabThemeHooks, function()
@@ -3065,20 +3118,14 @@ function Elements.CreateSection(tab, arg1, arg2)
 				listFrame.LayoutOrder = 0
 				listFrame.ZIndex = 50
 				listFrame.Visible = true
-				listFrame.BackgroundTransparency = 1
+				listFrame.BackgroundTransparency = 0
 				syncDropdownListGeometry()
 				win._dropdownRenderConn = RunService.Heartbeat:Connect(syncDropdownListGeometry)
-				Utils.Tween(listFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-					BackgroundTransparency = 0,
-				})
 			else
 				open = true
 				listFrame.Visible = true
 				listFrame.Size = UDim2.new(1, 0, 0, 0)
-				listFrame.BackgroundTransparency = 1
-				Utils.Tween(listFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-					BackgroundTransparency = 0,
-				})
+				listFrame.BackgroundTransparency = 0
 			end
 		end)
 
