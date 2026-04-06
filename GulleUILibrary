@@ -2018,11 +2018,65 @@ function Core.CreateWindow(opts)
 
 			task.defer(placeFabTopCenter)
 
+			-- Re-clamp offset when viewport / fullscreen changes so the chip stays inside the screen.
+			local function refitFabToViewport()
+				if window._destroyed or not holder.Parent then
+					return
+				end
+				local xo = holder.Position.X.Offset
+				local yo = holder.Position.Y.Offset
+				local p = clampFabTopLeft(Vector2.new(xo, yo))
+				holder.Position = UDim2.fromOffset(p.X, p.Y)
+			end
+
+			local fabVpSizeConn = nil
+			local function hookFabViewportSize()
+				if fabVpSizeConn then
+					pcall(function()
+						fabVpSizeConn:Disconnect()
+					end)
+					fabVpSizeConn = nil
+				end
+				local cam = workspace.CurrentCamera
+				if not cam then
+					return
+				end
+				fabVpSizeConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+					task.defer(refitFabToViewport)
+				end)
+			end
+			hookFabViewportSize()
+			local fabCamConn = workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+				if window._destroyed then
+					return
+				end
+				task.defer(function()
+					hookFabViewportSize()
+					refitFabToViewport()
+				end)
+			end)
+			table.insert(window._dragConns, function()
+				pcall(function()
+					if fabVpSizeConn then
+						fabVpSizeConn:Disconnect()
+					end
+				end)
+				pcall(function()
+					if fabCamConn then
+						fabCamConn:Disconnect()
+					end
+				end)
+			end)
+
 			local function syncMobileOpenVisibility()
 				if window._destroyed or not holder.Parent then
 					return
 				end
-				holder.Visible = not screen.Enabled
+				local show = not screen.Enabled
+				holder.Visible = show
+				if show then
+					task.defer(refitFabToViewport)
+				end
 			end
 			screen:GetPropertyChangedSignal("Enabled"):Connect(syncMobileOpenVisibility)
 			syncMobileOpenVisibility()
