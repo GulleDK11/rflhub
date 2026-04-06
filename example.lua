@@ -15,24 +15,24 @@ local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Gulle
 local UI = Library:Init()
 
 UI:CreateWindowAfterKey({
-	Keys = { "demo" },
+	Keys = { "1" },
 	-- Async instead of Keys (only one path is used on submit):
 	-- KeyValidateAsync = function(key, done)
 	-- 	task.defer(function()
 	-- 		done(tostring(key) == "demo")
 	-- 	end)
 	-- end,
-	Title = "Gulle Test",
-	Description = "Use the key demo to open the hub.",
+	Title = "Key system",
+	Description = "Enter your keyw.",
 	OnSuccess = function(key)
-		print("[GulleUI example] Key OK:", key)
+		print("[GulleUI] Key OK:", key)
 	end,
 	OnCancel = function()
 		warn("[GulleUI] Key screen closed.")
 	end,
 	Window = {
 		Name = "Gulle Test Hub",
-		Subtitle = "",
+		Subtitle = "Age Of Titans",
 		LoadingTitle = "Gulle Test Hub",
 		LoadingSubtitle = "Loading…",
 		ToggleUIKeybind = Enum.KeyCode.RightShift,
@@ -54,9 +54,9 @@ UI:CreateWindowAfterKey({
 	},
 	Build = function(Window)
 -- Tabs
-local TabMain = Window:CreateTab("Main")
+local TabMain = Window:CreateTab({ Name = "Main", Icon = "rbxassetid://74523675899900" })
 local TabVisuals = Window:CreateTab({ Name = "Visuals", Icon = "rbxassetid://74523675899900" })
-local TabConfig = Window:CreateTab("Config")
+local TabConfig = Window:CreateTab({ Name = "Config", Icon = "rbxassetid://74523675899900" })
 
 -- === Main: 2 columns × 2 sections (CreateSectionBundle) + divider in one section ===
 local MainGrid = TabMain:CreateSectionBundle({
