@@ -4316,7 +4316,8 @@ function Library:Init(opts)
 
 	--[[
 		Separate key UI (own ScreenGui). On success it is destroyed; then CreateWindow + Build — same flow as OpenAfterValidate.
-		Validation (first match): KeyValidateAsync(key, done), Junkie.check_key (opts.Junkie), KeyValidate(key), Validate(key), or whitelist Keys / Key.
+		Validation (first match): KeyValidateAsync(key, done), else Junkie.check_key when KeySystem allows loading Junkie, else KeyValidate / Validate / Keys / Key.
+		Use KeySystem = "builtin" | "junkie" | "auto" to separate whitelist vs Junkie; if both Keys and Junkie are set without KeySystem, builtin is used.
 		No whitelist and not AllowAny → rejected. KeyTheme = optional { Colors, Tokens } for the key screen only.
 	]]
 	function api.CreateWindowAfterKey(_, opts)
@@ -4339,18 +4340,61 @@ function Library:Init(opts)
 
 		-- Optional Junkie (jnkie.com) SDK — see https://docs.jnkie.com/roblox-sdk/inline-ui
 		local jnkOpts = type(opts.Junkie) == "table" and opts.Junkie or (type(opts.Jnkie) == "table" and opts.Jnkie or nil)
+		local keySystem = opts.KeySystem or opts.KeyMode
+		if type(keySystem) == "string" then
+			keySystem = string.lower(string.gsub(keySystem, "%s+", ""))
+		end
+		local function hasBuiltinKeyList()
+			if type(opts.Keys) == "table" then
+				for _ in ipairs(opts.Keys) do
+					return true
+				end
+			end
+			return opts.Key ~= nil
+		end
+		local hasBuiltin = hasBuiltinKeyList()
+		local loadJunkieSdk = false
+		if jnkOpts then
+			if keySystem == "builtin" then
+				loadJunkieSdk = false
+			elseif keySystem == "junkie" then
+				loadJunkieSdk = true
+				if hasBuiltin then
+					warn("[GulleUI] CreateWindowAfterKey: KeySystem is junkie — Keys/Key whitelist is ignored.")
+				end
+			elseif keySystem == "auto" or keySystem == nil then
+				if hasBuiltin then
+					loadJunkieSdk = false
+					warn(
+						"[GulleUI] CreateWindowAfterKey: Both Keys and Junkie are set — using builtin Keys only. Pass KeySystem = \"junkie\" to use Junkie, or remove Keys."
+					)
+				else
+					loadJunkieSdk = true
+				end
+			else
+				warn('[GulleUI] CreateWindowAfterKey: unknown KeySystem "' .. tostring(keySystem) .. '"; expected "builtin", "junkie", or "auto".')
+				loadJunkieSdk = not hasBuiltin
+			end
+		end
+
 		local junkieMod = nil
 		local junkieUseGetKeyLink = false
-		if jnkOpts then
+		if jnkOpts and loadJunkieSdk then
 			local libUrl = type(jnkOpts.LibraryURL) == "string" and jnkOpts.LibraryURL or "https://jnkie.com/sdk/library.lua"
 			local okLd, loaded = pcall(function()
 				return loadstring(game:HttpGet(libUrl))()
 			end)
 			if okLd and type(loaded) == "table" then
 				junkieMod = loaded
-				loaded.service = jnkOpts.Service or jnkOpts.service or loaded.service
-				loaded.identifier = jnkOpts.Identifier or jnkOpts.identifier or loaded.identifier
-				loaded.provider = jnkOpts.Provider or jnkOpts.provider or loaded.provider
+				local function jstr(v)
+					if v == nil then
+						return nil
+					end
+					return type(v) == "string" and v or tostring(v)
+				end
+				loaded.service = jstr(jnkOpts.Service or jnkOpts.service or loaded.service)
+				loaded.identifier = jstr(jnkOpts.Identifier or jnkOpts.identifier or loaded.identifier)
+				loaded.provider = jstr(jnkOpts.Provider or jnkOpts.provider or loaded.provider)
 				junkieUseGetKeyLink = jnkOpts.UseGetKeyLink ~= false
 			else
 				warn("[GulleUI] CreateWindowAfterKey: Junkie SDK failed to load (check LibraryURL / network).")
@@ -4729,7 +4773,12 @@ function Library:Init(opts)
 					done(true)
 					return
 				end
-				local err = result.error or result.message
+				local msg = result.message
+				if result.valid == nil and (msg == "KEY_VALID" or msg == "KEYLESS") then
+					done(true)
+					return
+				end
+				local err = result.error or msg
 				done(false, type(err) == "string" and err ~= "" and err or wrongDefault)
 			end)
 		end
@@ -4787,6 +4836,19 @@ function Library:Init(opts)
 		local function proceedValid(trimmed)
 			if opened then
 				return
+			end
+			-- Junkie inline UI expects getgenv().SCRIPT_KEY after a successful check_key (see https://docs.jnkie.com/roblox-sdk/inline-ui).
+			-- Loaders or follow-up scripts often rely on this; omitting it can cause immediate kick or abort.
+			if junkieMod ~= nil and opts.SetScriptKeyGlobal ~= false then
+				pcall(function()
+					local g = getgenv and getgenv()
+					if g then
+						g.SCRIPT_KEY = trimmed
+					end
+				end)
+				pcall(function()
+					_G.SCRIPT_KEY = trimmed
+				end)
 			end
 			persistKey(trimmed)
 			opened = true
@@ -4853,15 +4915,21 @@ function Library:Init(opts)
 				if getKeyUrl then
 					openExternalUrl(getKeyUrl)
 				elseif junkieMod and type(junkieMod.get_key_link) == "function" then
-					local okL, link, err = pcall(function()
+					local okL, first, second = pcall(function()
 						return junkieMod.get_key_link()
 					end)
-					if okL and type(link) == "string" and link ~= "" then
-						openExternalUrl(link)
+					if okL and type(first) == "string" and first ~= "" then
+						openExternalUrl(first)
 					else
+						local errMsg = "Could not get key link."
+						if okL then
+							errMsg = tostring(second or first or errMsg)
+						else
+							errMsg = tostring(first or errMsg)
+						end
 						Services.NotificationService:Notify({
 							Title = "Get Key",
-							Message = tostring(err or link or "Could not get key link."),
+							Message = errMsg,
 							Duration = 4,
 							Type = "warning",
 						})
