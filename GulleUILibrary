@@ -4316,7 +4316,7 @@ function Library:Init(opts)
 
 	--[[
 		Separate key UI (own ScreenGui). On success it is destroyed; then CreateWindow + Build — same flow as OpenAfterValidate.
-		Validation (first match): KeyValidateAsync(key, done), KeyValidate(key), Validate(key), or whitelist Keys / Key.
+		Validation (first match): KeyValidateAsync(key, done), Junkie.check_key (opts.Junkie), KeyValidate(key), Validate(key), or whitelist Keys / Key.
 		No whitelist and not AllowAny → rejected. KeyTheme = optional { Colors, Tokens } for the key screen only.
 	]]
 	function api.CreateWindowAfterKey(_, opts)
@@ -4337,6 +4337,26 @@ function Library:Init(opts)
 			keyPauseBeforeHub = 0.1
 		end
 
+		-- Optional Junkie (jnkie.com) SDK — see https://docs.jnkie.com/roblox-sdk/inline-ui
+		local jnkOpts = type(opts.Junkie) == "table" and opts.Junkie or (type(opts.Jnkie) == "table" and opts.Jnkie or nil)
+		local junkieMod = nil
+		local junkieUseGetKeyLink = false
+		if jnkOpts then
+			local libUrl = type(jnkOpts.LibraryURL) == "string" and jnkOpts.LibraryURL or "https://jnkie.com/sdk/library.lua"
+			local okLd, loaded = pcall(function()
+				return loadstring(game:HttpGet(libUrl))()
+			end)
+			if okLd and type(loaded) == "table" then
+				junkieMod = loaded
+				loaded.service = jnkOpts.Service or jnkOpts.service or loaded.service
+				loaded.identifier = jnkOpts.Identifier or jnkOpts.identifier or loaded.identifier
+				loaded.provider = jnkOpts.Provider or jnkOpts.provider or loaded.provider
+				junkieUseGetKeyLink = jnkOpts.UseGetKeyLink ~= false
+			else
+				warn("[GulleUI] CreateWindowAfterKey: Junkie SDK failed to load (check LibraryURL / network).")
+			end
+		end
+
 		local titleText = opts.Title or opts.KeyTitle or "Key required"
 		local descText = opts.Description or opts.Subtitle or "Enter your key to continue."
 		local placeholder = opts.Placeholder or "Key"
@@ -4344,9 +4364,11 @@ function Library:Init(opts)
 		local submitLabel = opts.SubmitText or "Continue"
 		local closeLabel = opts.CloseText or "Close"
 		local getKeyLabel = opts.GetKeyText or "Get Key"
-		local getKeyUrl = opts.GetKeyURL or opts.DiscordInvite or opts.DiscordURL or opts.InviteURL
+		local staticGetKeyUrl = opts.GetKeyURL or opts.DiscordInvite or opts.DiscordURL or opts.InviteURL
+		local getKeyUrl = type(staticGetKeyUrl) == "string" and staticGetKeyUrl ~= "" and staticGetKeyUrl or nil
 		local showClose = opts.ShowClose ~= false
-		local showGetKey = opts.ShowGetKey ~= false and type(getKeyUrl) == "string" and getKeyUrl ~= ""
+		local showGetKey = opts.ShowGetKey ~= false
+			and (getKeyUrl ~= nil or (junkieMod ~= nil and junkieUseGetKeyLink and type(junkieMod.get_key_link) == "function"))
 		local saveKey = opts.SaveKey == true or opts.Savekey == true
 		local saveWithTime = opts.Time == true or opts.LocalTime == true or opts.RememberKey == true
 		local saveDays = tonumber(opts.TimeDays or opts.RememberDays or opts.KeySaveDays) or 2
@@ -4686,6 +4708,37 @@ function Library:Init(opts)
 			return allowed[norm(trimmed)] == true
 		end
 
+		local function junkieValidateAsync(key, done)
+			task.defer(function()
+				if junkieMod == nil or type(junkieMod.check_key) ~= "function" then
+					done(false, wrongDefault)
+					return
+				end
+				local ok, result = pcall(function()
+					return junkieMod.check_key(key)
+				end)
+				if not ok then
+					done(false, tostring(result))
+					return
+				end
+				if type(result) ~= "table" then
+					done(false, wrongDefault)
+					return
+				end
+				if result.valid == true or result.success == true then
+					done(true)
+					return
+				end
+				local err = result.error or result.message
+				done(false, type(err) == "string" and err ~= "" and err or wrongDefault)
+			end)
+		end
+
+		local keyValidateAsyncFn = type(opts.KeyValidateAsync) == "function" and opts.KeyValidateAsync or nil
+		if keyValidateAsyncFn == nil and junkieMod ~= nil then
+			keyValidateAsyncFn = junkieValidateAsync
+		end
+
 		local function finishOpen(usedKey)
 			if opts.PrintCredits == true then
 				print("GulleUI — CreateWindowAfterKey → CreateWindow. See GulleUILibrary.md.")
@@ -4761,7 +4814,7 @@ function Library:Init(opts)
 				showWrong()
 				return
 			end
-			if type(opts.KeyValidateAsync) == "function" then
+			if type(keyValidateAsyncFn) == "function" then
 				setBusy(true)
 				local doneOnce = false
 				local function done(ok, errMsg)
@@ -4776,7 +4829,7 @@ function Library:Init(opts)
 						showWrong(type(errMsg) == "string" and errMsg or wrongDefault)
 					end
 				end
-				local okCall, errCall = pcall(opts.KeyValidateAsync, trimmed, done)
+				local okCall, errCall = pcall(keyValidateAsyncFn, trimmed, done)
 				if not okCall then
 					done(false, tostring(errCall))
 				end
@@ -4797,7 +4850,23 @@ function Library:Init(opts)
 				if opened or exiting then
 					return
 				end
-				openExternalUrl(getKeyUrl)
+				if getKeyUrl then
+					openExternalUrl(getKeyUrl)
+				elseif junkieMod and type(junkieMod.get_key_link) == "function" then
+					local okL, link, err = pcall(function()
+						return junkieMod.get_key_link()
+					end)
+					if okL and type(link) == "string" and link ~= "" then
+						openExternalUrl(link)
+					else
+						Services.NotificationService:Notify({
+							Title = "Get Key",
+							Message = tostring(err or link or "Could not get key link."),
+							Duration = 4,
+							Type = "warning",
+						})
+					end
+				end
 			end)
 		end
 
