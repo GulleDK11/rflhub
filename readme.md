@@ -237,13 +237,15 @@ local Dropdown = Section:CreateDropdown({
 	Name = "Mode", -- string, required
 	Options = { "A", "B", "C" }, -- table, required
 	Default = "A", -- optional
+	Search = true, -- optional; show search box inside the dropdown list (default true)
+	MaxVisibleRows = 6, -- optional; max rows before scrollbar appears
 	Flag = "mode", -- optional
 	Callback = function(choice) end,
 })
 -- Dropdown:Set(value), Dropdown:Get(), Dropdown:Refresh({ new options }), Dropdown:Remove()
 ```
 
-**`NewDropdown`:** uses `Choices` instead of `Options`, `CurrentState` instead of `Default`.
+**`NewDropdown`:** uses `Choices` instead of `Options`, `CurrentState` instead of `Default`, and supports `Search` + `MaxVisibleRows`.
 
 ---
 
