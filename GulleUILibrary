@@ -222,6 +222,8 @@ local _defaultTheme = {
 	Accent = Color3.fromRGB(234, 118, 42),
 	AccentHover = Color3.fromRGB(251, 156, 74),
 	AccentMuted = Color3.fromRGB(180, 82, 28),
+	-- Kant-glow / neon-strokes når `Tokens.Window.GlowStrokesEnabled` er true
+	Glow = Color3.fromRGB(251, 156, 74),
 	Text = Color3.fromRGB(246, 246, 244),
 	TextDim = Color3.fromRGB(148, 146, 138),
 	Border = Color3.fromRGB(48, 46, 44),
@@ -256,6 +258,14 @@ local _defaultTokens = {
 		AccentBarHeight = 0,
 		AccentBarTop = 0,
 		TitleControlsWidth = 68,
+		GlowStrokesEnabled = false,
+		GlowWindowStrokeThickness = 2,
+		GlowWindowStrokeTransparency = 0.42,
+		GlowActiveTabStrokeThickness = 2,
+		GlowActiveTabStrokeTransparency = 0.38,
+		GlowUnderWindow = false,
+		GlowUnderlayExpand = 8,
+		GlowUnderlayMaxTransparency = 0.92,
 	},
 	Tab = {
 		SidebarWidth = 168,
@@ -305,6 +315,9 @@ local _defaultTokens = {
 		-- Afstand label → felt inde i dropdown / color picker (tæt stablet)
 		InnerStackPadding = 4,
 		ColorChannelRowHeight = 22,
+		GlowButtonStrokeThickness = 2,
+		GlowButtonStrokeTransparency = 0.5,
+		GlowButtonStrokeTransparencyHover = 0.22,
 	},
 	Animation = {
 		WindowOpenDuration = 0.32,
@@ -1053,6 +1066,40 @@ function Core.CreateWindow(opts)
 	})
 	local mainParent = windowFadeRoot or screen
 
+	local wGlowStrokes = tok.Window.GlowStrokesEnabled == true
+	local glowUnderlayFrame = nil
+	if tok.Window.GlowUnderWindow == true then
+		local exp = tonumber(tok.Window.GlowUnderlayExpand) or 8
+		local uw = tok.Window.Width + exp * 2
+		local uh = tok.Window.Height + exp * 2
+		local cr = (tok.Window.CornerRadius or 6) + math.min(4, math.floor(exp / 2))
+		glowUnderlayFrame = Utils.Create("Frame", {
+			Name = "GlowUnderlay",
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			BackgroundTransparency = 0,
+			BorderSizePixel = 0,
+			Size = UDim2.fromOffset(uw, uh),
+			Position = UDim2.fromScale(0.5, 0.5),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			ZIndex = 0,
+			Parent = mainParent,
+		})
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, cr), Parent = glowUnderlayFrame })
+		local ug = Instance.new("UIGradient")
+		ug.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, colors.Glow),
+			ColorSequenceKeypoint.new(1, colors.Accent),
+		})
+		local trMax = tonumber(tok.Window.GlowUnderlayMaxTransparency) or 0.92
+		ug.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, math.clamp(trMax - 0.35, 0, 1)),
+			NumberSequenceKeypoint.new(0.55, trMax),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		ug.Rotation = 118
+		ug.Parent = glowUnderlayFrame
+	end
+
 	local main = Utils.Create("Frame", {
 		Name = "Main",
 		BackgroundColor3 = colors.Background,
@@ -1073,9 +1120,9 @@ function Core.CreateWindow(opts)
 		mainUIScale.Scale = wScaleStart
 	end
 	local mainStroke = Utils.Create("UIStroke", {
-		Color = colors.Border,
-		Thickness = 1,
-		Transparency = 0.82,
+		Color = wGlowStrokes and colors.Glow or colors.Border,
+		Thickness = wGlowStrokes and (tonumber(tok.Window.GlowWindowStrokeThickness) or 2) or 1,
+		Transparency = wGlowStrokes and (tonumber(tok.Window.GlowWindowStrokeTransparency) or 0.42) or 0.82,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		Parent = main,
 	})
@@ -1509,7 +1556,29 @@ function Core.CreateWindow(opts)
 			ContentFadeDur = (tok.Animation or {}).TabContentFadeInDuration or 0.45,
 			ContentFadeOn = (tok.Animation or {}).TabContentFadeIn ~= false,
 		},
+		_glowStrokes = wGlowStrokes,
 	}
+
+	function window:_applyTabGlowStrokes()
+		local th = Core.GetColors(self)
+		local wtok = Core.GetTokens(self).Window or {}
+		local dur = self._tabAnim.BtnDur
+		for _, t in ipairs(self._tabs) do
+			local st = t._tabStroke
+			if st then
+				if wtok.GlowStrokesEnabled ~= true then
+					st.Transparency = 1
+				else
+					local on = self._activeTab == t
+					st.Color = th.Glow
+					st.Thickness = tonumber(wtok.GlowActiveTabStrokeThickness) or 2
+					Utils.Tween(st, TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+						Transparency = on and (tonumber(wtok.GlowActiveTabStrokeTransparency) or 0.38) or 1,
+					})
+				end
+			end
+		end
+	end
 
 	function window:_tweenSidebarTab(button, label, bgColor, textColor)
 		local d = self._tabAnim.BtnDur
@@ -1585,7 +1654,7 @@ function Core.CreateWindow(opts)
 	end
 
 	Core.AddThemeRef(window, main, "BackgroundColor3", "Background")
-	Core.AddThemeRef(window, mainStroke, "Color", "Border")
+	Core.AddThemeRef(window, mainStroke, "Color", wGlowStrokes and "Glow" or "Border")
 	if accent then
 		Core.AddThemeRef(window, accent, "BackgroundColor3", "Accent")
 	end
@@ -1794,6 +1863,7 @@ function Core.CreateWindow(opts)
 				self:_tweenSidebarTab(t._button, t._label, th.SurfaceMuted, th.TabInactive)
 			end
 		end
+		self:_applyTabGlowStrokes()
 	end
 
 	function window:NewSeparator()
@@ -1843,6 +1913,14 @@ function Core.CreateWindow(opts)
 			Parent = tabList,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Tab.ItemRadius), Parent = btn })
+		local tabBtnStroke = Utils.Create("UIStroke", {
+			Color = wc.Glow,
+			Thickness = tonumber(tok.Window.GlowActiveTabStrokeThickness) or 2,
+			Transparency = 1,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			Parent = btn,
+		})
+		Core.AddThemeRef(window, tabBtnStroke, "Color", "Glow")
 
 		local row = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
@@ -1981,6 +2059,7 @@ function Core.CreateWindow(opts)
 			_page = page,
 			_tabPageFade = tabPageFade,
 			_tabContentTween = nil,
+			_tabStroke = tabBtnStroke,
 			_content = leftCol,
 			_contentLeft = leftCol,
 			_contentRight = rightCol,
@@ -2076,6 +2155,7 @@ function Core.CreateWindow(opts)
 			elseif tabPageFade then
 				tabPageFade.GroupTransparency = 0
 			end
+			window:_applyTabGlowStrokes()
 		end
 
 		btn.MouseButton1Click:Connect(selectTab)
@@ -2439,10 +2519,20 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Parent = card,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, etok.Control.DefaultRadius), Parent = btn })
-		btnStroke = Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.55, Parent = btn })
+		local wtok = (Core.GetTokens(win) or {}).Window or {}
+		local btnGlow = wtok.GlowStrokesEnabled == true
+		local bTh = btnGlow and (tonumber(etok.Control.GlowButtonStrokeThickness) or 2) or 1
+		local bTr = btnGlow and (tonumber(etok.Control.GlowButtonStrokeTransparency) or 0.5) or 0.55
+		btnStroke = Utils.Create("UIStroke", {
+			Color = btnGlow and theme.Glow or theme.Border,
+			Thickness = bTh,
+			Transparency = bTr,
+			Parent = btn,
+		})
 		if win then
-			Core.AddThemeRef(win, btnStroke, "Color", "Border")
+			Core.AddThemeRef(win, btnStroke, "Color", btnGlow and "Glow" or "Border")
 		end
+		local trHover = tonumber(etok.Control.GlowButtonStrokeTransparencyHover) or 0.22
 
 		btn.InputBegan:Connect(function(input, gameProcessed)
 			if gameProcessed then
@@ -2467,10 +2557,20 @@ function Elements.CreateSection(tab, arg1, arg2)
 		btn.MouseEnter:Connect(function()
 			local th = select(1, ElemCtx(win))
 			Utils.Tween(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = th.Accent })
+			if btnGlow and btnStroke then
+				Utils.Tween(btnStroke, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { Transparency = trHover })
+			end
 		end)
 		btn.MouseLeave:Connect(function()
 			local th = select(1, ElemCtx(win))
 			Utils.Tween(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = th.Surface })
+			if btnGlow and btnStroke then
+				Utils.Tween(
+					btnStroke,
+					TweenInfo.new(0.18, Enum.EasingStyle.Quad),
+					{ Transparency = tonumber(etok.Control.GlowButtonStrokeTransparency) or 0.5 }
+				)
+			end
 		end)
 
 		return elementApi(card, {
@@ -3844,6 +3944,7 @@ function Library:Init(opts)
 	end
 
 	api.BlockyTheme = Library.BlockyTheme
+	api.NeonTheme = Library.NeonTheme
 
 	function api.Notify(_, data)
 		Services.NotificationService:Notify(data)
@@ -3888,6 +3989,47 @@ Library.BlockyTheme = {
 	Colors = {
 		Border = Color3.fromRGB(72, 64, 58),
 		BorderLight = Color3.fromRGB(92, 82, 74),
+	},
+}
+
+-- Neon / glow preset: cyan accent, `Glow`-strokes, gradient halo under hub. Brug `Theme = Library.NeonTheme` på `CreateWindow` / `Window` i key-flow.
+Library.NeonTheme = {
+	Tokens = {
+		Window = {
+			GlowStrokesEnabled = true,
+			GlowUnderWindow = true,
+			GlowUnderlayExpand = 10,
+			GlowUnderlayMaxTransparency = 0.88,
+			GlowWindowStrokeThickness = 2,
+			GlowWindowStrokeTransparency = 0.38,
+			GlowActiveTabStrokeThickness = 2,
+			GlowActiveTabStrokeTransparency = 0.32,
+			AccentBarHeight = 3,
+			AccentBarTop = 11,
+			CornerRadius = 8,
+		},
+		Control = {
+			GlowButtonStrokeThickness = 2,
+			GlowButtonStrokeTransparency = 0.42,
+			GlowButtonStrokeTransparencyHover = 0.12,
+		},
+	},
+	Colors = {
+		Background = Color3.fromRGB(10, 12, 22),
+		BackgroundElevated = Color3.fromRGB(16, 18, 32),
+		Surface = Color3.fromRGB(22, 24, 40),
+		SurfaceMuted = Color3.fromRGB(18, 20, 34),
+		SurfaceHover = Color3.fromRGB(34, 38, 62),
+		RowBackground = Color3.fromRGB(24, 26, 44),
+		Accent = Color3.fromRGB(0, 220, 242),
+		AccentHover = Color3.fromRGB(120, 252, 255),
+		AccentMuted = Color3.fromRGB(0, 130, 150),
+		Glow = Color3.fromRGB(160, 255, 255),
+		Border = Color3.fromRGB(48, 52, 88),
+		BorderLight = Color3.fromRGB(68, 74, 118),
+		Text = Color3.fromRGB(238, 242, 255),
+		TextDim = Color3.fromRGB(130, 140, 175),
+		TabInactive = Color3.fromRGB(105, 115, 150),
 	},
 }
 
