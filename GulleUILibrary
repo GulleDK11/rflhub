@@ -346,12 +346,9 @@ local _defaultTokens = {
 		PaddingY = 10,
 		FadeInDuration = 0.4,
 		FadeOutDuration = 0.35,
-		-- Kant i typefarve; undgå for tyk stroke (hjørne-artefakter).
-		StrokeThickness = 1.15,
-		StrokeTransparency = 0.28,
-		-- Smal afrundet venstrestribe i typefarve (ikke fuld højde “blok”).
-		AccentRailWidth = 3,
-		AccentRailHeightScale = 0.5,
+		-- Neutral ydre kant (aldrig typefarve — farvet stroke giver orange/rød “halo” i hjørnerne).
+		FrameStrokeThickness = 1,
+		FrameStrokeTransparency = 0.62,
 	},
 }
 
@@ -578,7 +575,7 @@ end
 function Services.NotificationService:_spawnToast(item)
 	local theme = Services.ThemeService.Current
 	local nt = Services.ThemeService.Tokens.Notification
-	local function notifyChromeColors()
+	local function notifyTextColors()
 		local raw = tostring(item.Type or item.Level or item.Variant or item.NotifyType or "normal")
 		local k = string.lower((raw:gsub("^%s+", ""):gsub("%s+$", "")))
 		local function c3(x, fb)
@@ -588,30 +585,28 @@ function Services.NotificationService:_spawnToast(item)
 		local fbWarn = Color3.fromRGB(251, 191, 36)
 		local fbOk = Color3.fromRGB(52, 211, 153)
 		local fbAcc = Color3.fromRGB(234, 118, 42)
-		local fbText = Color3.fromRGB(246, 246, 244)
 		local fbDim = Color3.fromRGB(148, 146, 138)
 		if k == "error" or k == "danger" or k == "fail" or k == "failed" then
-			return c3(theme.Error, fbErr), c3(theme.Error, fbErr), c3(theme.TextDim, fbDim)
+			return c3(theme.Error, fbErr), c3(theme.TextDim, fbDim)
 		elseif k == "warning" or k == "warn" or k == "advarsel" then
-			return c3(theme.Warning, fbWarn), c3(theme.Warning, fbWarn), c3(theme.TextDim, fbDim)
+			return c3(theme.Warning, fbWarn), c3(theme.TextDim, fbDim)
 		elseif k == "info" or k == "information" then
-			return c3(theme.Warning, fbWarn), c3(theme.Warning, fbWarn), c3(theme.TextDim, fbDim)
+			return c3(theme.Warning, fbWarn), c3(theme.TextDim, fbDim)
 		elseif k == "success" or k == "ok" then
-			return c3(theme.Success, fbOk), c3(theme.Success, fbOk), c3(theme.TextDim, fbDim)
+			return c3(theme.Success, fbOk), c3(theme.TextDim, fbDim)
 		else
-			return c3(theme.Accent, fbAcc), c3(theme.Accent, fbAcc), c3(theme.TextDim, fbDim)
+			return c3(theme.Accent, fbAcc), c3(theme.TextDim, fbDim)
 		end
 	end
-	local borderC, titleC, bodyC = notifyChromeColors()
+	local titleC, bodyC = notifyTextColors()
 	local function surfaceFallback()
 		return (typeof(theme.Surface) == "Color3" and theme.Surface) or Color3.fromRGB(30, 30, 34)
 	end
 	local winCorner = (Services.ThemeService.Tokens.Window or {}).CornerRadius
 	local cornerR = math.max(0, math.floor(tonumber(nt.CornerRadius) or tonumber(winCorner) or 6))
-	local strokeThick = math.clamp(tonumber(nt.StrokeThickness) or 1.15, 0.5, 2.5)
-	local strokeT = math.clamp(tonumber(nt.StrokeTransparency) or 0.28, 0, 0.85)
-	local railW = math.max(2, math.floor(tonumber(nt.AccentRailWidth) or 3))
-	local railHScale = math.clamp(tonumber(nt.AccentRailHeightScale) or 0.5, 0.2, 0.92)
+	local frameStrokeThick = math.clamp(tonumber(nt.FrameStrokeThickness) or 1, 0, 2.5)
+	local frameStrokeT = math.clamp(tonumber(nt.FrameStrokeTransparency) or 0.62, 0, 0.95)
+	local borderNeutral = (typeof(theme.Border) == "Color3" and theme.Border) or Color3.fromRGB(48, 46, 44)
 	self._toastOrder = self._toastOrder + 1
 	if self._stack then
 		self._stack.Size = UDim2.new(0, nt.Width + 24, 1, -40)
@@ -648,27 +643,18 @@ function Services.NotificationService:_spawnToast(item)
 			Parent = parentFrame,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, cornerR), Parent = chrome })
-		local stroke = Instance.new("UIStroke")
-		stroke.Name = "ToastStroke"
-		stroke.Color = borderC
-		stroke.Thickness = strokeThick
-		stroke.Transparency = strokeT
-		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		pcall(function()
-			stroke.LineJoinMode = Enum.LineJoinMode.Round
-		end)
-		stroke.Parent = chrome
-		local rail = Utils.Create("Frame", {
-			Name = "ToastAccentRail",
-			BackgroundColor3 = borderC,
-			BorderSizePixel = 0,
-			AnchorPoint = Vector2.new(0, 0.5),
-			Position = UDim2.new(0, math.max(6, math.floor(padX * 0.5)), 0.5, 0),
-			Size = UDim2.new(0, railW, railHScale, 0),
-			ZIndex = 2,
-			Parent = chrome,
-		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(2, math.floor(railW / 2))), Parent = rail })
+		if frameStrokeThick > 0.05 then
+			local stroke = Instance.new("UIStroke")
+			stroke.Name = "ToastFrameStroke"
+			stroke.Color = borderNeutral
+			stroke.Thickness = frameStrokeThick
+			stroke.Transparency = frameStrokeT
+			stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			pcall(function()
+				stroke.LineJoinMode = Enum.LineJoinMode.Round
+			end)
+			stroke.Parent = chrome
+		end
 		return chrome
 	end
 
