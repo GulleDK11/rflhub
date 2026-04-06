@@ -120,6 +120,10 @@ local KeyUI = UI:CreateWindowAfterKey({
 	Keys = { "demo" }, -- whitelist; or Key = "single"
 	CaseInsensitive = true,
 	AllowAny = false, -- if true and no Keys/Key, any non-empty string passes
+	SaveKey = true, -- store valid key locally
+	Time = true, -- enable expiry on saved key
+	TimeDays = 2, -- saved key lifetime in days (default 2)
+	GetKeyURL = "https://discord.gg/your-invite", -- adds a "Get Key" button
 	-- KeyValidate = function(key) return true end,
 	-- KeyValidateAsync = function(key, done) done(true) end,
 	Title = "Key required",
@@ -137,6 +141,16 @@ local KeyUI = UI:CreateWindowAfterKey({
 -- KeyUI.Destroy()  -- optional manual teardown
 -- KeyUI.Screen     -- ScreenGui
 ```
+
+`CreateWindowAfterKey` aliases/options for key saving:
+- `Savekey` alias for `SaveKey`.
+- `LocalTime` or `RememberKey` alias for `Time`.
+- `RememberDays` or `KeySaveDays` alias for `TimeDays`.
+- Optional path override: `KeySaveFolder` + `KeySaveFile`.
+
+Get key button aliases:
+- `DiscordInvite`, `DiscordURL`, or `InviteURL` alias for `GetKeyURL`.
+- `GetKeyText` changes button text.
 
 ---
 
