@@ -565,6 +565,21 @@ end
 function Services.NotificationService:_spawnToast(item)
 	local theme = Services.ThemeService.Current
 	local nt = Services.ThemeService.Tokens.Notification
+	local function notifyChromeColors()
+		local k = string.lower(tostring(item.Type or item.Level or item.Variant or "normal"))
+		if k == "error" or k == "danger" or k == "fail" or k == "failed" then
+			return theme.Error, theme.Error, theme.TextDim
+		elseif k == "warning" or k == "warn" or k == "advarsel" then
+			return theme.Warning, theme.Warning, theme.TextDim
+		elseif k == "info" or k == "information" then
+			return theme.Warning, theme.Text, theme.TextDim
+		elseif k == "success" or k == "ok" then
+			return theme.Success, theme.Success, theme.TextDim
+		else
+			return theme.Accent, theme.Text, theme.TextDim
+		end
+	end
+	local borderC, titleC, bodyC = notifyChromeColors()
 	self._toastOrder = self._toastOrder + 1
 	if self._stack then
 		self._stack.Size = UDim2.new(0, nt.Width + 24, 1, -40)
@@ -595,7 +610,7 @@ function Services.NotificationService:_spawnToast(item)
 			BackgroundColor3 = theme.Surface,
 			BackgroundTransparency = 0,
 			BorderSizePixel = 1,
-			BorderColor3 = theme.Border,
+			BorderColor3 = borderC,
 			Size = UDim2.fromScale(1, 1),
 			Position = UDim2.fromScale(0, 0),
 			Parent = toastFade,
@@ -605,7 +620,7 @@ function Services.NotificationService:_spawnToast(item)
 		card.BackgroundColor3 = theme.Surface
 		card.BackgroundTransparency = 0
 		card.BorderSizePixel = 1
-		card.BorderColor3 = theme.Border
+		card.BorderColor3 = borderC
 	end
 	local contentRoot = toastFade or card
 	local mover = Utils.Create("Frame", {
@@ -646,7 +661,7 @@ function Services.NotificationService:_spawnToast(item)
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBold,
 		TextSize = nt.TitleSize,
-		TextColor3 = theme.Text,
+		TextColor3 = titleC,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextWrapped = true,
 		AutomaticSize = Enum.AutomaticSize.Y,
@@ -659,7 +674,7 @@ function Services.NotificationService:_spawnToast(item)
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
 		TextSize = nt.BodySize,
-		TextColor3 = theme.TextDim,
+		TextColor3 = bodyC,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextWrapped = true,
 		AutomaticSize = Enum.AutomaticSize.Y,
@@ -743,6 +758,7 @@ local function placeDeniedToastGui(guiParent)
 		Title = "GulleUI",
 		Message = "Place not allowed.",
 		Duration = 5,
+		Type = "error",
 	})
 	task.wait()
 	pcall(function()
