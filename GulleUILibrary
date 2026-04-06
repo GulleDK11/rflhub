@@ -325,6 +325,8 @@ local _defaultTokens = {
 		LoadingScreenMinDuration = 2,
 		WindowContentFadeIn = true,
 		WindowContentFadeOut = true,
+		-- Efter åbn: flyt hubben ud af `CanvasGroup` så UI ikke er sløret (resize/skalering). `false` = behold blur + luk via CanvasGroup-fade.
+		WindowCanvasDetachAfterOpen = true,
 		WindowCloseFadeDuration = 0.28,
 		KeyGateOpenDuration = 0.3,
 		KeyGateOpenScaleStart = 0.92,
@@ -2501,6 +2503,23 @@ end
 					loading.Visible = false
 				end
 			end)
+		end
+		-- CanvasGroup rasteriserer hele vinduet → ofte sløret tekst, værre ved resize. Flyt `main` til ScreenGui efter intro.
+		if
+			animTok.WindowCanvasDetachAfterOpen ~= false
+			and windowFadeRoot
+			and windowFadeRoot.Parent
+			and main.Parent == windowFadeRoot
+		then
+			main.Parent = screen
+			local nc = Services.NotificationService._container
+			if nc and nc.Parent == windowFadeRoot then
+				nc.Parent = screen
+			end
+			pcall(function()
+				windowFadeRoot:Destroy()
+			end)
+			window._windowFadeRoot = nil
 		end
 	end)
 
