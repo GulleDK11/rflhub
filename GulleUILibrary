@@ -1061,10 +1061,36 @@ function Core.CreateWindow(opts)
 	local colors = Core.GetColors(themeStub)
 	local tok = Core.GetTokens(themeStub)
 
-	local logoAsset = opts.Logo or opts.LogoImage
-	if type(logoAsset) ~= "string" or logoAsset == "" then
-		logoAsset = nil
+	local function normalizeLogoAsset(raw)
+		if raw == nil then
+			return nil
+		end
+		if type(raw) == "number" and raw > 0 then
+			return "rbxassetid://" .. tostring(math.floor(raw))
+		end
+		if type(raw) ~= "string" then
+			return nil
+		end
+		local s = tostring(raw):gsub("^%s+", ""):gsub("%s+$", "")
+		if s == "" then
+			return nil
+		end
+		local lower = string.lower(s)
+		if
+			string.sub(lower, 1, 14) == "rbxassetid://"
+			or string.sub(lower, 1, 12) == "rbxasset://"
+			or string.sub(lower, 1, 11) == "rbxthumb://"
+			or string.sub(lower, 1, 7) == "http://"
+			or string.sub(lower, 1, 8) == "https://"
+		then
+			return s
+		end
+		if s:match("^%d+$") then
+			return "rbxassetid://" .. s
+		end
+		return s
 	end
+	local logoAsset = normalizeLogoAsset(opts.Logo or opts.LogoImage)
 	local function normalizeLogoPosition(s)
 		if s == nil or s == "" then
 			return "LeftOfTitle"
@@ -1200,6 +1226,7 @@ function Core.CreateWindow(opts)
 			ScaleType = Enum.ScaleType.Fit,
 			Size = UDim2.fromOffset(logoSz, logoSz),
 			LayoutOrder = 0,
+			ZIndex = 2,
 			Parent = row,
 		})
 		if logoCorner and logoCorner > 0 then
@@ -1236,6 +1263,7 @@ function Core.CreateWindow(opts)
 			Size = UDim2.fromOffset(logoSz, logoSz),
 			Position = UDim2.new(0, 0, 0.5, 0),
 			AnchorPoint = Vector2.new(0, 0.5),
+			ZIndex = 2,
 			Parent = logoHost,
 		})
 		if logoCorner and logoCorner > 0 then
@@ -1347,26 +1375,6 @@ function Core.CreateWindow(opts)
 	local searchTop = sidePad + sidebarLogoBand
 	local searchUnder = searchTop + searchH + searchGap
 	local logoSidebarInst = nil
-	if logoAsset and logoPosition == "Sidebar" then
-		logoSidebarInst = Utils.Create("ImageLabel", {
-			Name = "WindowLogo",
-			BackgroundTransparency = 1,
-			Image = logoAsset,
-			ScaleType = Enum.ScaleType.Fit,
-			Size = UDim2.fromOffset(logoSz, logoSz),
-			Position = UDim2.new(0.5, 0, 0, sidePad + math.floor(logoSz / 2)),
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Parent = sidebar,
-		})
-		if logoCorner and logoCorner > 0 then
-			Utils.Create("UICorner", { CornerRadius = UDim.new(0, logoCorner), Parent = logoSidebarInst })
-		end
-		if wtok.LogoTintToText == true then
-			logoSidebarInst.ImageColor3 = colors.Text
-		else
-			logoSidebarInst.ImageColor3 = Color3.new(1, 1, 1)
-		end
-	end
 	local footerH = tok.Tab.SidebarFooterHeight or 56
 	local footerGap = 8
 	local profileBlockH = opts.HideSidebarProfile == true and 0 or (footerH + footerGap)
@@ -1427,6 +1435,28 @@ function Core.CreateWindow(opts)
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = tabList,
 	})
+
+	if logoAsset and logoPosition == "Sidebar" then
+		logoSidebarInst = Utils.Create("ImageLabel", {
+			Name = "WindowLogo",
+			BackgroundTransparency = 1,
+			Image = logoAsset,
+			ScaleType = Enum.ScaleType.Fit,
+			Size = UDim2.fromOffset(logoSz, logoSz),
+			Position = UDim2.new(0.5, 0, 0, sidePad + math.floor(logoSz / 2)),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			ZIndex = 3,
+			Parent = sidebar,
+		})
+		if logoCorner and logoCorner > 0 then
+			Utils.Create("UICorner", { CornerRadius = UDim.new(0, logoCorner), Parent = logoSidebarInst })
+		end
+		if wtok.LogoTintToText == true then
+			logoSidebarInst.ImageColor3 = colors.Text
+		else
+			logoSidebarInst.ImageColor3 = Color3.new(1, 1, 1)
+		end
+	end
 
 	local profileBarInst, profileNameInst, profileRankInst
 	if opts.HideSidebarProfile ~= true then
@@ -3537,6 +3567,10 @@ function Library:Init(opts)
 			DeveloperUserIds = opts.DeveloperUserIds,
 			SidebarRank = opts.SidebarRank,
 			HideSidebarProfile = opts.HideSidebarProfile,
+			Logo = opts.Logo,
+			LogoImage = opts.LogoImage,
+			LogoPosition = opts.LogoPosition,
+			LogoPlacement = opts.LogoPlacement,
 		})
 		api.Window = w
 		return w
