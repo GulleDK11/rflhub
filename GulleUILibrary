@@ -16,6 +16,7 @@ Services._allowedPlaceIds = nil
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
@@ -261,7 +262,9 @@ local _defaultTokens = {
 		LogoCornerRadius = 4,
 		-- `true` = ImageColor3 følger Text (monokrom ikon); `false` = hvid (bevar PNG-farver)
 		LogoTintToText = false,
-		LogoLoadingScale = 1.35,
+		LogoLoadingScale = 2.35,
+		-- Kun når `LogoPosition = "Loading"`: fast px-størrelse (prioriteres over LogoLoadingScale).
+		LogoLoadingSize = 96,
 	},
 	Tab = {
 		SidebarWidth = 168,
@@ -316,7 +319,9 @@ local _defaultTokens = {
 		WindowOpenDuration = 0.32,
 		WindowOpenScale = 1,
 		WindowOpenScaleStart = 0.94,
-		LoadingBarDuration = 0.35,
+		LoadingBarDuration = 1.25,
+		-- Mindst så længe loading-overlay vises (sekunder); progressbar + hub fade afventes.
+		LoadingScreenMinDuration = 2,
 		WindowContentFadeIn = true,
 		WindowContentFadeOut = true,
 		WindowCloseFadeDuration = 0.28,
@@ -566,17 +571,27 @@ function Services.NotificationService:_spawnToast(item)
 	local theme = Services.ThemeService.Current
 	local nt = Services.ThemeService.Tokens.Notification
 	local function notifyChromeColors()
-		local k = string.lower(tostring(item.Type or item.Level or item.Variant or "normal"))
+		local raw = tostring(item.Type or item.Level or item.Variant or item.NotifyType or "normal")
+		local k = string.lower((raw:gsub("^%s+", ""):gsub("%s+$", "")))
+		local function c3(x, fb)
+			return (typeof(x) == "Color3" and x) or fb
+		end
+		local fbErr = Color3.fromRGB(248, 113, 113)
+		local fbWarn = Color3.fromRGB(251, 191, 36)
+		local fbOk = Color3.fromRGB(52, 211, 153)
+		local fbAcc = Color3.fromRGB(234, 118, 42)
+		local fbText = Color3.fromRGB(246, 246, 244)
+		local fbDim = Color3.fromRGB(148, 146, 138)
 		if k == "error" or k == "danger" or k == "fail" or k == "failed" then
-			return theme.Error, theme.Error, theme.TextDim
+			return c3(theme.Error, fbErr), c3(theme.Error, fbErr), c3(theme.TextDim, fbDim)
 		elseif k == "warning" or k == "warn" or k == "advarsel" then
-			return theme.Warning, theme.Warning, theme.TextDim
+			return c3(theme.Warning, fbWarn), c3(theme.Warning, fbWarn), c3(theme.TextDim, fbDim)
 		elseif k == "info" or k == "information" then
-			return theme.Warning, theme.Text, theme.TextDim
+			return c3(theme.Warning, fbWarn), c3(theme.Text, fbText), c3(theme.TextDim, fbDim)
 		elseif k == "success" or k == "ok" then
-			return theme.Success, theme.Success, theme.TextDim
+			return c3(theme.Success, fbOk), c3(theme.Success, fbOk), c3(theme.TextDim, fbDim)
 		else
-			return theme.Accent, theme.Text, theme.TextDim
+			return c3(theme.Accent, fbAcc), c3(theme.Text, fbText), c3(theme.TextDim, fbDim)
 		end
 	end
 	local borderC, titleC, bodyC = notifyChromeColors()
@@ -609,18 +624,30 @@ function Services.NotificationService:_spawnToast(item)
 			Name = "ToastChrome",
 			BackgroundColor3 = theme.Surface,
 			BackgroundTransparency = 0,
-			BorderSizePixel = 1,
-			BorderColor3 = borderC,
+			BorderSizePixel = 0,
 			Size = UDim2.fromScale(1, 1),
 			Position = UDim2.fromScale(0, 0),
 			Parent = toastFade,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, nt.CornerRadius), Parent = chrome })
+		Utils.Create("UIStroke", {
+			Color = borderC,
+			Thickness = 2,
+			Transparency = 0.12,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			Parent = chrome,
+		})
 	else
 		card.BackgroundColor3 = theme.Surface
 		card.BackgroundTransparency = 0
-		card.BorderSizePixel = 1
-		card.BorderColor3 = borderC
+		card.BorderSizePixel = 0
+		Utils.Create("UIStroke", {
+			Color = borderC,
+			Thickness = 2,
+			Transparency = 0.12,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			Parent = card,
+		})
 	end
 	local contentRoot = toastFade or card
 	local mover = Utils.Create("Frame", {
@@ -1583,6 +1610,19 @@ function Core.CreateWindow(opts)
 		ClipsDescendants = false,
 		Parent = contentHost,
 	})
+	-- Sidste lag over fanens indhold: dropdown-lister klippes ellers af ScrollingFrame og skjules af senere sektioner.
+	local dropdownMount = Utils.Create("Frame", {
+		Name = "GulleDropdownMount",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Position = UDim2.fromScale(0, 0),
+		ZIndex = 45,
+		ClipsDescendants = false,
+		Active = false,
+		Selectable = false,
+		Parent = contentHost,
+	})
 
 	local loading = Utils.Create("Frame", {
 		BackgroundColor3 = colors.Background,
@@ -1611,7 +1651,13 @@ function Core.CreateWindow(opts)
 	local loadLayoutOrder = 0
 	local logoLoadingInst = nil
 	if logoAsset and logoPosition == "Loading" then
-		local loadLogoSz = math.max(logoSz, math.floor(logoSz * (tonumber(wtok.LogoLoadingScale) or 1.35)))
+		local loadLogoPx = tonumber(wtok.LogoLoadingSize)
+		local loadLogoSz
+		if loadLogoPx and loadLogoPx > 0 then
+			loadLogoSz = math.max(8, math.floor(loadLogoPx))
+		else
+			loadLogoSz = math.max(logoSz, math.floor(logoSz * (tonumber(wtok.LogoLoadingScale) or 2.35)))
+		end
 		logoLoadingInst = Utils.Create("ImageLabel", {
 			Name = "WindowLogo",
 			BackgroundTransparency = 1,
@@ -1711,6 +1757,9 @@ function Core.CreateWindow(opts)
 		_tabList = tabList,
 		_tabLayout = tabLayout,
 		_pages = pages,
+		_dropdownMount = dropdownMount,
+		_dropdownRenderConn = nil,
+		_dropdownClose = nil,
 		_tabs = {},
 		_activeTab = nil,
 		_dragConns = {},
@@ -1742,6 +1791,18 @@ function Core.CreateWindow(opts)
 
 	function window:Notify(data)
 		Services.NotificationService:Notify(data)
+	end
+
+	function window:_closeGulleDropdown()
+		if self._dropdownClose then
+			local fn = self._dropdownClose
+			self._dropdownClose = nil
+			pcall(fn)
+		end
+		if self._dropdownRenderConn then
+			self._dropdownRenderConn:Disconnect()
+			self._dropdownRenderConn = nil
+		end
 	end
 
 	function window:SetTitle(text)
@@ -1965,6 +2026,7 @@ function Core.CreateWindow(opts)
 			return
 		end
 		self._destroyed = true
+		self:_closeGulleDropdown()
 		if self._unsubscribeTheme then
 			self._unsubscribeTheme()
 		end
@@ -2362,19 +2424,23 @@ end
 				{ Scale = tok.Animation.WindowOpenScale or 1 }
 			)
 		end
-		local barDur = tok.Animation.LoadingBarDuration or 1
+		local barDur = tok.Animation.LoadingBarDuration or 1.25
+		local loadingMin = tonumber(tok.Animation.LoadingScreenMinDuration) or 2
 		Utils.Tween(
 			loadBarFill,
 			TweenInfo.new(barDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 			{ Size = UDim2.new(1, 0, 1, 0) }
 		)
-		local hold = math.max(openDur, barDur, 0.2)
+		local hold = math.max(openDur, barDur, loadingMin, 0.2)
 		task.wait(hold)
 		loading.BackgroundTransparency = 1
 		loadTitle.TextTransparency = 1
 		loadSub.TextTransparency = 1
 		loadBarBg.BackgroundTransparency = 1
 		loadBarFill.BackgroundTransparency = 1
+		if logoLoadingInst then
+			logoLoadingInst.ImageTransparency = 1
+		end
 		loading.Visible = false
 	end)
 
@@ -2908,6 +2974,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			LayoutOrder = 2,
 			Parent = wrap,
 		})
+		local dropdownMount = win and win._dropdownMount
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = listFrame })
 		Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.5, Parent = listFrame })
 		Utils.Create("UIPadding", {
@@ -2923,6 +2990,34 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 
 		local open = false
+		local function syncDropdownListGeometry()
+			if not open or not dropdownMount or listFrame.Parent ~= dropdownMount then
+				return
+			end
+			local ap = openBtn.AbsolutePosition
+			local asz = openBtn.AbsoluteSize
+			local mp = dropdownMount.AbsolutePosition
+			local w = math.max(math.floor(asz.X), 80)
+			listFrame.Position = UDim2.fromOffset(math.floor(ap.X - mp.X), math.floor(ap.Y - mp.Y + asz.Y + 2))
+			listFrame.Size = UDim2.fromOffset(w, 0)
+		end
+		local function closeDropdownUI()
+			open = false
+			if win._dropdownRenderConn then
+				win._dropdownRenderConn:Disconnect()
+				win._dropdownRenderConn = nil
+			end
+			if win._dropdownClose == closeDropdownUI then
+				win._dropdownClose = nil
+			end
+			listFrame.Visible = false
+			listFrame.BackgroundTransparency = 1
+			listFrame.ZIndex = 5
+			listFrame.Parent = wrap
+			listFrame.Position = UDim2.fromScale(0, 0)
+			listFrame.Size = UDim2.new(1, 0, 0, 0)
+			listFrame.LayoutOrder = 2
+		end
 		local function rebuild()
 			for _, c in ipairs(listFrame:GetChildren()) do
 				if c:IsA("TextButton") then
@@ -2948,9 +3043,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 					if flag then
 						Services.StateService:SetFlag(flag, current)
 					end
-					open = false
-					listFrame.BackgroundTransparency = 1
-					listFrame.Visible = false
+					closeDropdownUI()
 					if opts.Callback then
 						task.spawn(opts.Callback, current)
 					end
@@ -2960,16 +3053,32 @@ function Elements.CreateSection(tab, arg1, arg2)
 		rebuild()
 
 		openBtn.MouseButton1Click:Connect(function()
-			open = not open
-			listFrame.Visible = open
 			if open then
+				closeDropdownUI()
+				return
+			end
+			if dropdownMount then
+				win:_closeGulleDropdown()
+				open = true
+				win._dropdownClose = closeDropdownUI
+				listFrame.Parent = dropdownMount
+				listFrame.LayoutOrder = 0
+				listFrame.ZIndex = 50
+				listFrame.Visible = true
+				listFrame.BackgroundTransparency = 1
+				syncDropdownListGeometry()
+				win._dropdownRenderConn = RunService.Heartbeat:Connect(syncDropdownListGeometry)
+				Utils.Tween(listFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					BackgroundTransparency = 0,
+				})
+			else
+				open = true
+				listFrame.Visible = true
 				listFrame.Size = UDim2.new(1, 0, 0, 0)
 				listFrame.BackgroundTransparency = 1
 				Utils.Tween(listFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 					BackgroundTransparency = 0,
 				})
-			else
-				listFrame.BackgroundTransparency = 1
 			end
 		end)
 
@@ -4057,6 +4166,7 @@ function Library:Init(opts)
 				Title = "UI loaded",
 				Message = "Enter your key to continue.",
 				Duration = 3.5,
+				Type = "info",
 			})
 		end)
 
