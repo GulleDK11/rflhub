@@ -1190,6 +1190,59 @@ function Core.CreateWindow(opts)
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		Parent = resolveGuiParent(opts),
 	})
+	-- Fake blur/depth backdrop layers (Roblox has no real background blur)
+	local backdropBase = Utils.Create("Frame", {
+		Name = "BackdropBase",
+		BackgroundColor3 = colors.Background,
+		BackgroundTransparency = 0.28,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 0,
+		Parent = screen,
+	})
+	local backdropMid = Utils.Create("Frame", {
+		Name = "BackdropMid",
+		BackgroundColor3 = colors.Surface,
+		BackgroundTransparency = 0.6,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 0,
+		Parent = screen,
+	})
+	Utils.Create("UIGradient", {
+		Rotation = 90,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, colors.SurfaceHover),
+			ColorSequenceKeypoint.new(1, colors.Background),
+		}),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.65),
+			NumberSequenceKeypoint.new(1, 0.92),
+		}),
+		Parent = backdropMid,
+	})
+	local backdropGlow = Utils.Create("Frame", {
+		Name = "BackdropGlow",
+		BackgroundColor3 = colors.Accent,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 0,
+		Parent = screen,
+	})
+	Utils.Create("UIGradient", {
+		Rotation = -25,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, colors.Accent),
+			ColorSequenceKeypoint.new(1, colors.Info),
+		}),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.93),
+			NumberSequenceKeypoint.new(0.5, 0.98),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Parent = backdropGlow,
+	})
 
 	local windowFadeRoot = Utils.TryCreateCanvasGroup({
 		Name = "GulleWindowFade",
@@ -1224,6 +1277,60 @@ function Core.CreateWindow(opts)
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		Parent = main,
 	})
+	-- Soft stacked shadows behind main for smoother depth.
+	local mainShadowFar = Utils.Create("Frame", {
+		Name = "MainShadowFar",
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.9,
+		BorderSizePixel = 0,
+		ZIndex = 0,
+		Parent = mainParent,
+	})
+	local mainShadowMid = Utils.Create("Frame", {
+		Name = "MainShadowMid",
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.84,
+		BorderSizePixel = 0,
+		ZIndex = 0,
+		Parent = mainParent,
+	})
+	local mainGlowSoft = Utils.Create("Frame", {
+		Name = "MainGlowSoft",
+		BackgroundColor3 = colors.Accent,
+		BackgroundTransparency = 0.96,
+		BorderSizePixel = 0,
+		ZIndex = 0,
+		Parent = mainParent,
+	})
+	Utils.Create("UIGradient", {
+		Rotation = 35,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, colors.Accent),
+			ColorSequenceKeypoint.new(1, colors.Info),
+		}),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.35),
+			NumberSequenceKeypoint.new(1, 0.8),
+		}),
+		Parent = mainGlowSoft,
+	})
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 16)), Parent = mainShadowFar })
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 10)), Parent = mainShadowMid })
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 14)), Parent = mainGlowSoft })
+	local function syncMainDepthLayers()
+		local mPos = main.Position
+		local mSize = main.Size
+		mainShadowFar.Size = UDim2.new(mSize.X.Scale, mSize.X.Offset + 36, mSize.Y.Scale, mSize.Y.Offset + 36)
+		mainShadowFar.Position = UDim2.new(mPos.X.Scale, mPos.X.Offset + 2, mPos.Y.Scale, mPos.Y.Offset + 16)
+		mainShadowFar.AnchorPoint = main.AnchorPoint
+		mainShadowMid.Size = UDim2.new(mSize.X.Scale, mSize.X.Offset + 22, mSize.Y.Scale, mSize.Y.Offset + 22)
+		mainShadowMid.Position = UDim2.new(mPos.X.Scale, mPos.X.Offset + 1, mPos.Y.Scale, mPos.Y.Offset + 9)
+		mainShadowMid.AnchorPoint = main.AnchorPoint
+		mainGlowSoft.Size = UDim2.new(mSize.X.Scale, mSize.X.Offset + 14, mSize.Y.Scale, mSize.Y.Offset + 14)
+		mainGlowSoft.Position = UDim2.new(mPos.X.Scale, mPos.X.Offset, mPos.Y.Scale, mPos.Y.Offset + 4)
+		mainGlowSoft.AnchorPoint = main.AnchorPoint
+	end
+	syncMainDepthLayers()
 
 	local accent = nil
 	if (tok.Window.AccentBarHeight or 0) > 0 then
@@ -1401,6 +1508,31 @@ function Core.CreateWindow(opts)
 
 	local minBtn = makeTitleBtn("−")
 	local closeBtn = makeTitleBtn("×")
+	local function wireTitleBtnFx(b, hoverT)
+		local sc = Utils.Create("UIScale", { Scale = 1, Parent = b })
+		b.MouseEnter:Connect(function()
+			Utils.Tween(
+				b,
+				TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ BackgroundTransparency = hoverT, BackgroundColor3 = colors.Surface }
+			)
+		end)
+		b.MouseLeave:Connect(function()
+			Utils.Tween(
+				b,
+				TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ BackgroundTransparency = 0.4, BackgroundColor3 = colors.SurfaceHover }
+			)
+		end)
+		b.MouseButton1Down:Connect(function()
+			Utils.Tween(sc, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 0.94 })
+		end)
+		b.MouseButton1Up:Connect(function()
+			Utils.Tween(sc, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+		end)
+	end
+	wireTitleBtnFx(minBtn, 0.2)
+	wireTitleBtnFx(closeBtn, 0.12)
 
 	local body = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
@@ -1678,17 +1810,34 @@ function Core.CreateWindow(opts)
 		Parent = loadMount,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = loadingBg })
-	local loadStack = Utils.Create("Frame", {
+	local loadCenter = Utils.Create("Frame", {
+		Name = "LoadingCenter",
 		BackgroundTransparency = 1,
-		Size = UDim2.fromOffset(320, 120),
+		Size = UDim2.fromScale(1, 1),
+		Position = UDim2.fromScale(0.5, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		ZIndex = 51,
+		Parent = loadMount,
+	})
+	local loadStack = Utils.Create("Frame", {
+		Name = "LoadingStack",
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(0, 320, 0, 0),
 		Position = UDim2.fromScale(0.5, 0.5),
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		ZIndex = 2,
-		Parent = loadMount,
+		Parent = loadCenter,
+	})
+	Utils.Create("UIPadding", {
+		PaddingTop = UDim.new(0, 2),
+		PaddingBottom = UDim.new(0, 2),
+		Parent = loadStack,
 	})
 	Utils.Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Vertical,
 		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
 		Padding = UDim.new(0, 8),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = loadStack,
@@ -1729,6 +1878,7 @@ function Core.CreateWindow(opts)
 		TextSize = 22,
 		TextColor3 = colors.Text,
 		Size = UDim2.new(1, 0, 0, 28),
+		TextXAlignment = Enum.TextXAlignment.Center,
 		Text = loadingTitle,
 		ZIndex = 52,
 		LayoutOrder = loadLayoutOrder,
@@ -1740,6 +1890,7 @@ function Core.CreateWindow(opts)
 		TextSize = 14,
 		TextColor3 = colors.TextDim,
 		Size = UDim2.new(1, 0, 0, 20),
+		TextXAlignment = Enum.TextXAlignment.Center,
 		Text = loadingSub,
 		ZIndex = 52,
 		LayoutOrder = loadLayoutOrder + 1,
@@ -2044,6 +2195,14 @@ function Core.CreateWindow(opts)
 
 	Core.AddThemeRef(window, main, "BackgroundColor3", "Background")
 	Core.AddThemeRef(window, mainStroke, "Color", "Border")
+	Core.AddThemeRef(window, backdropBase, "BackgroundColor3", "Background")
+	Core.AddThemeRef(window, backdropMid, "BackgroundColor3", "Surface")
+	Core.AddThemeRef(window, backdropGlow, "BackgroundColor3", "Accent")
+	Core.AddThemeRef(window, mainGlowSoft, "BackgroundColor3", "Accent")
+	Core.AddThemeRef(window, minBtn, "BackgroundColor3", "SurfaceHover")
+	Core.AddThemeRef(window, minBtn, "TextColor3", "TextDim")
+	Core.AddThemeRef(window, closeBtn, "BackgroundColor3", "SurfaceHover")
+	Core.AddThemeRef(window, closeBtn, "TextColor3", "TextDim")
 	if accent then
 		Core.AddThemeRef(window, accent, "BackgroundColor3", "Accent")
 	end
@@ -2152,6 +2311,8 @@ function Core.CreateWindow(opts)
 			dragging = false
 		end
 	end))
+	table.insert(window._dragConns, main:GetPropertyChangedSignal("Position"):Connect(syncMainDepthLayers))
+	table.insert(window._dragConns, main:GetPropertyChangedSignal("Size"):Connect(syncMainDepthLayers))
 
 	local rsDragging, rsStart, rsSize
 	table.insert(window._dragConns, resizeGrip.InputBegan:Connect(function(input)
