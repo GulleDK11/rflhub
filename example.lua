@@ -1,7 +1,8 @@
 --[[
 	GulleUI — example hub (all controls + key flow).
 
-	Entry: UI:CreateWindowAfterKey — built-in key ScreenGui; valid key here: demo
+	Entry: UI:CreateWindowAfterKey — Junkie key gate (jnkie.com); set Junkie.Service / Identifier / Provider from your dashboard.
+	To try the builtin whitelist instead: KeySystem = "builtin", Keys = { "demo" }, remove or comment Junkie.
 	Alternative without key UI: UI:OpenAfterValidate({ Validate = function() return true end, Window = ..., Build = ... })
 
 	Local file: comment out HttpGet and use readfile (executor).
@@ -15,15 +16,20 @@ local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Gulle
 local UI = Library:Init()
 
 UI:CreateWindowAfterKey({
-	Keys = { "1" },
-	-- Async instead of Keys (only one path is used on submit):
-	-- KeyValidateAsync = function(key, done)
-	-- 	task.defer(function()
-	-- 		done(tostring(key) == "demo")
-	-- 	end)
-	-- end,
+	KeySystem = "junkie",
+	Junkie = {
+		Service = "YOUR_SERVICE", -- dashboard → service name
+		Identifier = "12345", -- dashboard → user ID
+		Provider = "Mixed", -- your provider name
+		-- If Junkie shows "No script key provided" before the key field, enable ONE of:
+		-- Keyless = true,
+		-- BootstrapScriptKey = "paste_script_key_from_dashboard",
+		LibraryURL = "https://jnkie.com/sdk/library.lua",
+		UseGetKeyLink = true,
+	},
+	-- Builtin demo (only if KeySystem = "builtin"): Keys = { "demo" },
 	Title = "Key system",
-	Description = "Enter your keyw.",
+	Description = "Enter your Junkie key to continue.",
 	OnSuccess = function(key)
 		print("[GulleUI] Key OK:", key)
 	end,
