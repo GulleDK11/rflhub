@@ -4533,12 +4533,6 @@ function Library:Init(opts)
 			if type(url) ~= "string" or url == "" then
 				return false
 			end
-			local okGui = pcall(function()
-				GuiService:OpenBrowserWindow(url)
-			end)
-			if okGui then
-				return true
-			end
 			local copied = false
 			if setclipboard then
 				pcall(function()
@@ -4548,9 +4542,10 @@ function Library:Init(opts)
 			end
 			Services.NotificationService:Notify({
 				Title = "Get Key",
-				Message = copied and "Invite copied to clipboard." or "Could not open browser for invite link.",
+				Message = copied and "Invite copied. Paste it in your browser to open."
+					or "Clipboard unavailable. Copy this link manually: " .. tostring(url),
 				Duration = 3.5,
-				Type = copied and "success" or "warning",
+				Type = copied and "success" or "info",
 			})
 			return copied
 		end
