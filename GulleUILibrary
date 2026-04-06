@@ -1281,32 +1281,56 @@ function Core.CreateWindow(opts)
 		Name = "MainBorderGlow",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ZIndex = 0,
-		Parent = mainParent,
+		Size = UDim2.new(1, 20, 1, 20),
+		Position = UDim2.fromScale(0.5, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		ZIndex = 1,
+		Parent = main,
 	})
 	local mainBorderGlowStroke = Utils.Create("UIStroke", {
 		Color = colors.Accent,
-		Thickness = 4,
-		Transparency = 0.74,
+		Thickness = 6,
+		Transparency = 0.58,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		Parent = mainBorderGlow,
 	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 12)), Parent = mainBorderGlow })
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 10)), Parent = mainBorderGlow })
 	local mainBorderRing = Utils.Create("Frame", {
 		Name = "MainBorderRing",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ZIndex = 0,
-		Parent = mainParent,
+		Size = UDim2.new(1, 8, 1, 8),
+		Position = UDim2.fromScale(0.5, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		ZIndex = 1,
+		Parent = main,
 	})
 	local mainBorderRingStroke = Utils.Create("UIStroke", {
 		Color = colors.Accent,
-		Thickness = 1.5,
-		Transparency = 0.32,
+		Thickness = 2,
+		Transparency = 0.16,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		Parent = mainBorderRing,
 	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 6)), Parent = mainBorderRing })
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 5)), Parent = mainBorderRing })
+	local mainBorderShadow = Utils.Create("Frame", {
+		Name = "MainBorderShadow",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 28, 1, 28),
+		Position = UDim2.fromScale(0.5, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		ZIndex = 0,
+		Parent = main,
+	})
+	local mainBorderShadowStroke = Utils.Create("UIStroke", {
+		Color = Color3.new(0, 0, 0),
+		Thickness = 12,
+		Transparency = 0.84,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Parent = mainBorderShadow,
+	})
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(0, tok.Window.CornerRadius + 14)), Parent = mainBorderShadow })
 	-- Acrylic/noise paint style from common Roblox UI blur methods.
 	local mainNoiseLow = Utils.Create("ImageLabel", {
 		Name = "MainNoiseLow",
@@ -1415,12 +1439,6 @@ function Core.CreateWindow(opts)
 	local function syncMainDepthLayers()
 		local mPos = main.Position
 		local mSize = main.Size
-		mainBorderGlow.Size = UDim2.new(mSize.X.Scale, mSize.X.Offset + 18, mSize.Y.Scale, mSize.Y.Offset + 18)
-		mainBorderGlow.Position = UDim2.new(mPos.X.Scale, mPos.X.Offset, mPos.Y.Scale, mPos.Y.Offset + 4)
-		mainBorderGlow.AnchorPoint = main.AnchorPoint
-		mainBorderRing.Size = UDim2.new(mSize.X.Scale, mSize.X.Offset + 8, mSize.Y.Scale, mSize.Y.Offset + 8)
-		mainBorderRing.Position = UDim2.new(mPos.X.Scale, mPos.X.Offset, mPos.Y.Scale, mPos.Y.Offset + 2)
-		mainBorderRing.AnchorPoint = main.AnchorPoint
 		mainNeonShell.Size = UDim2.new(mSize.X.Scale, mSize.X.Offset + 44, mSize.Y.Scale, mSize.Y.Offset + 38)
 		mainNeonShell.Position = UDim2.new(mPos.X.Scale, mPos.X.Offset, mPos.Y.Scale, mPos.Y.Offset + 2)
 		mainNeonShell.AnchorPoint = main.AnchorPoint
@@ -2303,6 +2321,7 @@ function Core.CreateWindow(opts)
 	Core.AddThemeRef(window, mainTopSheen, "BackgroundColor3", "Text")
 	Core.AddThemeRef(window, mainBorderGlowStroke, "Color", "Accent")
 	Core.AddThemeRef(window, mainBorderRingStroke, "Color", "Accent")
+	Core.AddThemeRef(window, mainBorderShadowStroke, "Color", "Border")
 	Core.AddThemeRef(window, mainNeonShell, "ImageColor3", "Accent")
 	Core.AddThemeRef(window, mainGlowSoft, "BackgroundColor3", "Accent")
 	Core.AddThemeRef(window, mainShadowFar, "BackgroundColor3", "Accent")
