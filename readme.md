@@ -11,7 +11,7 @@ Single-file Roblox UI built from Instances only. Default look: dark charcoal sur
 Put this at the top of your script (replace the URL with your raw host or use `readfile` locally).
 
 ```lua
-local Library = loadstring(game:HttpGet("YOUR_RAW_URL"))()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/GulleDK11/rflhub/refs/heads/main/GulleUILibrary"))()
 local UI = Library:Init({
 	-- AllowedPlaceIds = { game.PlaceId }, -- optional: only these PlaceIds may open the UI; else notify + error + destroy
 })
