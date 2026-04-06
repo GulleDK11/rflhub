@@ -4131,7 +4131,7 @@ function Library:Init(opts)
 	function api.NewWindow(_, opts)
 		opts = opts or {}
 		if opts.PrintCredits == true then
-			print("GulleUI — single-file Roblox UI (flat layout). API: Create* + optional rolibwaita-style New* (see GulleUILibrary.md).")
+			print("GulleUI — Made by GULLE. ©2026")
 		end
 		local w = Core.CreateWindow({
 			Name = opts.Name,
@@ -4165,7 +4165,7 @@ function Library:Init(opts)
 	function api.CreateWindow(_, opts)
 		opts = opts or {}
 		if opts.PrintCredits == true then
-			print("GulleUI — single-file Roblox UI. See GulleUILibrary.md for API.")
+			print("GulleUI — Made by GULLE. ©2026")
 		end
 		local w = Core.CreateWindow(opts)
 		api.Window = w
