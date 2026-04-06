@@ -338,6 +338,7 @@ local _defaultTokens = {
 	},
 	Notification = {
 		Width = 280,
+		-- Samme visuelle radius som hub (`Window.CornerRadius`, default 6).
 		CornerRadius = 6,
 		TitleSize = 15,
 		BodySize = 13,
@@ -345,6 +346,12 @@ local _defaultTokens = {
 		PaddingY = 10,
 		FadeInDuration = 0.4,
 		FadeOutDuration = 0.35,
+		-- Kant i typefarve; undgå for tyk stroke (hjørne-artefakter).
+		StrokeThickness = 1.15,
+		StrokeTransparency = 0.28,
+		-- Smal afrundet venstrestribe i typefarve (ikke fuld højde “blok”).
+		AccentRailWidth = 3,
+		AccentRailHeightScale = 0.5,
 	},
 }
 
@@ -588,19 +595,23 @@ function Services.NotificationService:_spawnToast(item)
 		elseif k == "warning" or k == "warn" or k == "advarsel" then
 			return c3(theme.Warning, fbWarn), c3(theme.Warning, fbWarn), c3(theme.TextDim, fbDim)
 		elseif k == "info" or k == "information" then
-			return c3(theme.Warning, fbWarn), c3(theme.Text, fbText), c3(theme.TextDim, fbDim)
+			return c3(theme.Warning, fbWarn), c3(theme.Warning, fbWarn), c3(theme.TextDim, fbDim)
 		elseif k == "success" or k == "ok" then
 			return c3(theme.Success, fbOk), c3(theme.Success, fbOk), c3(theme.TextDim, fbDim)
 		else
-			return c3(theme.Accent, fbAcc), c3(theme.Text, fbText), c3(theme.TextDim, fbDim)
+			return c3(theme.Accent, fbAcc), c3(theme.Accent, fbAcc), c3(theme.TextDim, fbDim)
 		end
 	end
 	local borderC, titleC, bodyC = notifyChromeColors()
-	local function lerpColor3(a, b, t)
-		return Color3.new(a.R + (b.R - a.R) * t, a.G + (b.G - a.G) * t, a.B + (b.B - a.B) * t)
+	local function surfaceFallback()
+		return (typeof(theme.Surface) == "Color3" and theme.Surface) or Color3.fromRGB(30, 30, 34)
 	end
-	local surfaceTint = lerpColor3(theme.Surface, borderC, 0.2)
-	local accentW = 7
+	local winCorner = (Services.ThemeService.Tokens.Window or {}).CornerRadius
+	local cornerR = math.max(0, math.floor(tonumber(nt.CornerRadius) or tonumber(winCorner) or 6))
+	local strokeThick = math.clamp(tonumber(nt.StrokeThickness) or 1.15, 0.5, 2.5)
+	local strokeT = math.clamp(tonumber(nt.StrokeTransparency) or 0.28, 0, 0.85)
+	local railW = math.max(2, math.floor(tonumber(nt.AccentRailWidth) or 3))
+	local railHScale = math.clamp(tonumber(nt.AccentRailHeightScale) or 0.5, 0.2, 0.92)
 	self._toastOrder = self._toastOrder + 1
 	if self._stack then
 		self._stack.Size = UDim2.new(0, nt.Width + 24, 1, -40)
@@ -617,7 +628,7 @@ function Services.NotificationService:_spawnToast(item)
 		ClipsDescendants = true,
 		Parent = self._stack or self._container,
 	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, nt.CornerRadius), Parent = card })
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, cornerR), Parent = card })
 	local toastFade = Utils.TryCreateCanvasGroup({
 		Name = "ToastFade",
 		GroupTransparency = 1,
@@ -625,48 +636,56 @@ function Services.NotificationService:_spawnToast(item)
 		Position = UDim2.fromScale(0, 0),
 		Parent = card,
 	})
-	if toastFade then
+	local function attachToastChrome(parentFrame)
 		local chrome = Utils.Create("Frame", {
 			Name = "ToastChrome",
-			BackgroundColor3 = surfaceTint,
+			BackgroundColor3 = surfaceFallback(),
 			BackgroundTransparency = 0,
 			BorderSizePixel = 0,
 			Size = UDim2.fromScale(1, 1),
 			Position = UDim2.fromScale(0, 0),
 			ZIndex = 1,
-			Parent = toastFade,
+			Parent = parentFrame,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, nt.CornerRadius), Parent = chrome })
-		Utils.Create("Frame", {
-			Name = "ToastAccent",
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, cornerR), Parent = chrome })
+		local stroke = Instance.new("UIStroke")
+		stroke.Name = "ToastStroke"
+		stroke.Color = borderC
+		stroke.Thickness = strokeThick
+		stroke.Transparency = strokeT
+		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		pcall(function()
+			stroke.LineJoinMode = Enum.LineJoinMode.Round
+		end)
+		stroke.Parent = chrome
+		local rail = Utils.Create("Frame", {
+			Name = "ToastAccentRail",
 			BackgroundColor3 = borderC,
 			BorderSizePixel = 0,
-			Size = UDim2.new(0, accentW, 1, 0),
-			Position = UDim2.fromScale(0, 0),
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, math.max(6, math.floor(padX * 0.5)), 0.5, 0),
+			Size = UDim2.new(0, railW, railHScale, 0),
 			ZIndex = 2,
-			Parent = toastFade,
+			Parent = chrome,
 		})
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(2, math.floor(railW / 2))), Parent = rail })
+		return chrome
+	end
+
+	if toastFade then
+		attachToastChrome(toastFade)
 	else
-		card.BackgroundColor3 = surfaceTint
-		card.BackgroundTransparency = 0
+		card.BackgroundTransparency = 1
 		card.BorderSizePixel = 0
-		Utils.Create("Frame", {
-			Name = "ToastAccent",
-			BackgroundColor3 = borderC,
-			BorderSizePixel = 0,
-			Size = UDim2.new(0, accentW, 1, 0),
-			Position = UDim2.fromScale(0, 0),
-			ZIndex = 2,
-			Parent = card,
-		})
+		attachToastChrome(card)
 	end
 	local contentRoot = toastFade or card
 	local mover = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Size = UDim2.new(1, -accentW, 1, 0),
-		Position = UDim2.new(0, accentW, 0, 0),
-		ZIndex = 3,
+		Size = UDim2.new(1, 0, 1, 0),
+		Position = UDim2.new(0, 0, 0, 0),
+		ZIndex = 4,
 		ClipsDescendants = true,
 		Parent = contentRoot,
 	})
