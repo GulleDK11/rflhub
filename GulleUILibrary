@@ -1824,7 +1824,9 @@ function Core.CreateWindow(opts)
 	}
 
 	do
-		if opts.MobileOpenButton ~= false then
+		-- Touch-first: skip on desktop unless MobileOpenButtonTouchOnly == false (e.g. Studio testing).
+		local touchOnly = opts.MobileOpenButtonTouchOnly ~= false
+		if opts.MobileOpenButton ~= false and (not touchOnly or UserInputService.TouchEnabled) then
 			local wMob = tok.Window or {}
 			local mobSize = math.clamp(
 				math.floor(tonumber(opts.MobileOpenButtonSize) or tonumber(wMob.MobileOpenButtonSize) or 44),
@@ -1845,7 +1847,6 @@ function Core.CreateWindow(opts)
 				Parent = screen.Parent,
 			})
 			local margin = math.clamp(math.floor(tonumber(opts.MobileOpenButtonMargin) or 14), 8, 28)
-			local tapPx = math.clamp(math.floor(tonumber(opts.MobileOpenButtonTapThreshold) or 18), 8, 32)
 			local holder = Utils.Create("Frame", {
 				Name = "MobileOpenHolder",
 				BackgroundTransparency = 1,
@@ -1901,6 +1902,7 @@ function Core.CreateWindow(opts)
 					Parent = iconHost,
 				})
 			end
+
 			local function fabViewport()
 				local cam = workspace.CurrentCamera
 				local vp = (cam and cam.ViewportSize) or Vector2.new(800, 600)
@@ -1910,173 +1912,36 @@ function Core.CreateWindow(opts)
 				end)
 				return vp, topInset
 			end
-			-- InputObject.Position is Vector3; GuiObject.AbsolutePosition is Vector2 — always mix as Vector2 for drag math.
-			local function fabInputVec2(pos)
-				return Vector2.new(pos.X, pos.Y)
-			end
-			local function clampFabTopLeft(absPos)
-				local vp, topInset = fabViewport()
-				local w = math.max(holder.AbsoluteSize.X, mobSize)
-				local h = math.max(holder.AbsoluteSize.Y, mobSize)
-				local minX, minY = margin, topInset + margin
-				local maxX = vp.X - margin - w
-				local maxY = vp.Y - margin - h
-				if maxX < minX then
-					maxX = minX
-				end
-				if maxY < minY then
-					maxY = minY
-				end
-				return Vector2.new(math.clamp(absPos.X, minX, maxX), math.clamp(absPos.Y, minY, maxY))
-			end
 			local function placeFabTopCenter()
 				if window._destroyed or not holder.Parent then
 					return
 				end
 				local vp, topInset = fabViewport()
 				local w = math.max(holder.AbsoluteSize.X, mobSize)
-				local x = (vp.X - w) / 2
-				local y = topInset + margin
-				local p = clampFabTopLeft(Vector2.new(x, y))
+				local h = math.max(holder.AbsoluteSize.Y, mobSize)
+				local minX, minY = margin, topInset + margin
+				local maxX = math.max(minX, vp.X - margin - w)
+				local maxY = math.max(minY, vp.Y - margin - h)
+				local x = math.clamp((vp.X - w) / 2, minX, maxX)
+				local y = math.clamp(topInset + margin, minY, maxY)
 				holder.AnchorPoint = Vector2.new(0, 0)
-				holder.Position = UDim2.fromOffset(p.X, p.Y)
+				holder.Position = UDim2.fromOffset(x, y)
 			end
 
-			local fabPointerDown = false
-			local fabDragging = false
-			local fabStartInput = nil
-			local fabStartHolderAbs = nil
-
-			if opts.MobileOpenButtonDraggable ~= false then
-				hit.InputBegan:Connect(function(input)
-					if window._destroyed then
-						return
-					end
-					if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
-						return
-					end
-					fabPointerDown = true
-					fabDragging = false
-					fabStartInput = fabInputVec2(input.Position)
-					fabStartHolderAbs = holder.AbsolutePosition
-				end)
-				table.insert(
-					window._dragConns,
-					UserInputService.InputChanged:Connect(function(input)
-						if not fabPointerDown or window._destroyed or not holder.Visible then
-							return
-						end
-						if
-							input.UserInputType ~= Enum.UserInputType.MouseMovement
-							and input.UserInputType ~= Enum.UserInputType.Touch
-						then
-							return
-						end
-						local cur = fabInputVec2(input.Position)
-						local delta = cur - fabStartInput
-						if delta.Magnitude > tapPx then
-							fabDragging = true
-						end
-						if fabDragging then
-							local p = clampFabTopLeft(fabStartHolderAbs + delta)
-							holder.Position = UDim2.fromOffset(p.X, p.Y)
-						end
-					end)
-				)
-				table.insert(window._dragConns, UserInputService.InputEnded:Connect(function(input)
-					if not fabPointerDown then
-						return
-					end
-					if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
-						return
-					end
-					fabPointerDown = false
-					local opened = false
-					if not fabDragging and fabStartInput then
-						local d = (fabInputVec2(input.Position) - fabStartInput).Magnitude
-						if d <= tapPx and not window._destroyed then
-							screen.Enabled = true
-							opened = true
-						end
-					end
-					fabDragging = false
-					fabStartInput = nil
-					fabStartHolderAbs = nil
-					if not opened and holder.Visible and not window._destroyed then
-						local p = clampFabTopLeft(holder.AbsolutePosition)
-						holder.Position = UDim2.fromOffset(p.X, p.Y)
-					end
-				end))
-			else
-				hit.Activated:Connect(function()
-					if window._destroyed then
-						return
-					end
-					screen.Enabled = true
-				end)
-			end
-
-			task.defer(placeFabTopCenter)
-
-			-- Re-clamp offset when viewport / fullscreen changes so the chip stays inside the screen.
-			local function refitFabToViewport()
-				if window._destroyed or not holder.Parent then
-					return
-				end
-				local xo = holder.Position.X.Offset
-				local yo = holder.Position.Y.Offset
-				local p = clampFabTopLeft(Vector2.new(xo, yo))
-				holder.Position = UDim2.fromOffset(p.X, p.Y)
-			end
-
-			local fabVpSizeConn = nil
-			local function hookFabViewportSize()
-				if fabVpSizeConn then
-					pcall(function()
-						fabVpSizeConn:Disconnect()
-					end)
-					fabVpSizeConn = nil
-				end
-				local cam = workspace.CurrentCamera
-				if not cam then
-					return
-				end
-				fabVpSizeConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-					task.defer(refitFabToViewport)
-				end)
-			end
-			hookFabViewportSize()
-			local fabCamConn = workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+			hit.Activated:Connect(function()
 				if window._destroyed then
 					return
 				end
-				task.defer(function()
-					hookFabViewportSize()
-					refitFabToViewport()
-				end)
+				screen.Enabled = true
 			end)
-			table.insert(window._dragConns, function()
-				pcall(function()
-					if fabVpSizeConn then
-						fabVpSizeConn:Disconnect()
-					end
-				end)
-				pcall(function()
-					if fabCamConn then
-						fabCamConn:Disconnect()
-					end
-				end)
-			end)
+
+			task.defer(placeFabTopCenter)
 
 			local function syncMobileOpenVisibility()
 				if window._destroyed or not holder.Parent then
 					return
 				end
-				local show = not screen.Enabled
-				holder.Visible = show
-				if show then
-					task.defer(refitFabToViewport)
-				end
+				holder.Visible = not screen.Enabled
 			end
 			screen:GetPropertyChangedSignal("Enabled"):Connect(syncMobileOpenVisibility)
 			syncMobileOpenVisibility()
@@ -4193,8 +4058,7 @@ function Library:Init(opts)
 			MobileOpenButtonCorner = opts.MobileOpenButtonCorner,
 			MobileOpenButtonMargin = opts.MobileOpenButtonMargin,
 			MobileOpenButtonDisplayOrder = opts.MobileOpenButtonDisplayOrder,
-			MobileOpenButtonDraggable = opts.MobileOpenButtonDraggable,
-			MobileOpenButtonTapThreshold = opts.MobileOpenButtonTapThreshold,
+			MobileOpenButtonTouchOnly = opts.MobileOpenButtonTouchOnly,
 		})
 		api.Window = w
 		return w
