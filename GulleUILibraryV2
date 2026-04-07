@@ -1631,7 +1631,7 @@ function Core.CreateWindow(opts)
 		Transparency = 0.55,
 		Parent = searchWrap,
 	})
-	local searchIcon = Utils.Create("ImageLabel", {
+	local searchIcon = Utils.Create("ImageButton", {
 		BackgroundTransparency = 1,
 		Image = "rbxassetid://6031094678",
 		ImageColor3 = colors.TextDim,
@@ -1639,11 +1639,12 @@ function Core.CreateWindow(opts)
 		Size = UDim2.fromOffset(15, 15),
 		Position = UDim2.new(0, 10, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
+		AutoButtonColor = false,
 		Parent = searchWrap,
 	})
 	local searchBox = Utils.Create("TextBox", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -62, 1, 0),
+		Size = UDim2.new(1, -36, 1, 0),
 		Position = UDim2.fromOffset(30, 0),
 		Font = Enum.Font.Gotham,
 		TextSize = 13,
@@ -1655,21 +1656,6 @@ function Core.CreateWindow(opts)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = searchWrap,
 	})
-	local searchClear = Utils.Create("TextButton", {
-		Name = "SearchClear",
-		BackgroundTransparency = 1,
-		Text = "×",
-		Font = Enum.Font.GothamBold,
-		TextSize = 16,
-		TextColor3 = colors.TextDim,
-		Size = UDim2.fromOffset(22, 22),
-		Position = UDim2.new(1, -26, 0.5, 0),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Visible = false,
-		AutoButtonColor = false,
-		Parent = searchWrap,
-	})
-
 	local tabList = Utils.Create("ScrollingFrame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -2305,7 +2291,6 @@ function Core.CreateWindow(opts)
 	Core.AddThemeRef(window, searchStroke, "Color", "Border")
 	Core.AddThemeRef(window, searchIcon, "ImageColor3", "TextDim")
 	Core.AddThemeRef(window, searchBox, "TextColor3", "Text")
-	Core.AddThemeRef(window, searchClear, "TextColor3", "TextDim")
 	if profileBarInst then
 		Core.AddThemeRef(window, profileBarInst, "BackgroundColor3", "BackgroundElevated")
 		Core.AddThemeRef(window, profileNameInst, "TextColor3", "Text")
@@ -3061,15 +3046,15 @@ function Core.CreateWindow(opts)
 	return tabObj
 end
 
-	-- Toasts must work before the hub exists (e.g. key gate / place denied); reparent container if parent changed.
-	do
-		local notifyParent = windowFadeRoot or screen
-		local c = Services.NotificationService._container
-		if c and c.Parent and c.Parent ~= notifyParent then
-			c.Parent = notifyParent
-		end
-	end
 	Services.NotificationService:_ensureContainer(windowFadeRoot or screen)
+	task.defer(function()
+		Services.NotificationService:Notify({
+			Title = "UI loaded",
+			Message = "Welcome.",
+			Duration = 2.4,
+			Type = "success",
+		})
+	end)
 
 	if configEnabled then
 		table.insert(Services.ConfigService._autoWindows, window)
@@ -3181,14 +3166,14 @@ end
 	end)
 
 	searchBox:GetPropertyChangedSignal("Text"):Connect(function()
-		local q = searchBox.Text or ""
-		searchClear.Visible = q ~= ""
-		window:_applyTabSearch(q)
+		window:_applyTabSearch(searchBox.Text or "")
 	end)
-	searchClear.MouseButton1Click:Connect(function()
-		searchBox.Text = ""
-		searchClear.Visible = false
-		window:_applyTabSearch("")
+	searchIcon.MouseButton1Click:Connect(function()
+		local q = searchBox.Text or ""
+		if q ~= "" then
+			searchBox.Text = ""
+			window:_applyTabSearch("")
+		end
 		searchBox:CaptureFocus()
 	end)
 
@@ -5779,6 +5764,12 @@ function Library:Init(opts)
 					task.wait(keyPauseBeforeHub)
 				end
 				finishOpen(trimmed)
+				Services.NotificationService:Notify({
+					Title = "Welcome",
+					Message = "Key accepted.",
+					Duration = 2.8,
+					Type = "success",
+				})
 			end)
 		end
 
