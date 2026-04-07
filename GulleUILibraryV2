@@ -330,6 +330,9 @@ local _defaultTokens = {
 		CircleToggleSize = 24,
 		CircleToggleGlyphSize = 10,
 		CircleToggleInset = 3,
+		RowIconDefault = "",
+		RowIconSize = 14,
+		RowIconGap = 8,
 		LabelTextSize = 13,
 		SecondaryTextSize = 12,
 		ButtonHeight = 30,
@@ -2987,6 +2990,27 @@ local function ElemCtx(windowRef)
 	return Services.ThemeService.Current, Services.ThemeService.Tokens
 end
 
+local function addRowIcon(row, iconId, theme, etok)
+	local resolvedIcon = iconId
+	if type(resolvedIcon) ~= "string" or resolvedIcon == "" then
+		resolvedIcon = etok.Control and etok.Control.RowIconDefault or nil
+	end
+	if type(resolvedIcon) ~= "string" or resolvedIcon == "" then
+		return 0
+	end
+	local iconSize = math.max(12, math.floor(tonumber(etok.Control.RowIconSize) or 14))
+	local iconGap = math.max(4, math.floor(tonumber(etok.Control.RowIconGap) or 8))
+	Utils.Create("ImageLabel", {
+		BackgroundTransparency = 1,
+		Image = resolvedIcon,
+		ImageColor3 = theme.TextDim,
+		Size = UDim2.fromOffset(iconSize, iconSize),
+		Position = UDim2.new(0, 0, 0.5, -math.floor(iconSize / 2)),
+		Parent = row,
+	})
+	return iconSize + iconGap
+end
+
 -- Parent must be a GuiObject frame (e.g. section rowsHost). Never parent rows to UIListLayout — they will not show (Rayfield/wind pattern: layout + siblings).
 local function createControlRowCard(rowsParent, theme, etok, win)
 	local padX = etok.Section.RowPaddingX or 8
@@ -3169,13 +3193,15 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Size = UDim2.new(1, 0, 0, etok.Control.ToggleRowHeight),
 			Parent = card,
 		})
+		local iconOff = addRowIcon(row, opts.Icon, theme, etok)
 		local name = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Size = UDim2.new(1, -54, 1, 0),
+			Size = UDim2.new(1, -(54 + iconOff), 1, 0),
+			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Toggle",
 			Parent = row,
 		})
@@ -3327,13 +3353,15 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Size = UDim2.new(1, 0, 0, etok.Control.ToggleRowHeight),
 			Parent = card,
 		})
+		local iconOff = addRowIcon(row, opts.Icon, theme, etok)
 		Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Size = UDim2.new(1, -46, 1, 0),
+			Size = UDim2.new(1, -(46 + iconOff), 1, 0),
+			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Toggle",
 			Parent = row,
 		})
@@ -3469,13 +3497,15 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Size = UDim2.new(1, 0, 0, 16),
 			Parent = wrap,
 		})
+		local iconOff = addRowIcon(top, opts.Icon, theme, etok)
 		Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Size = UDim2.new(1 - (tonumber(etok.Control.SliderValueChipWidthScale) or 0.32), 0, 1, 0),
+			Size = UDim2.new(1 - (tonumber(etok.Control.SliderValueChipWidthScale) or 0.32), -iconOff, 1, 0),
+			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Slider",
 			Parent = top,
 		})
@@ -3620,16 +3650,24 @@ function Elements.CreateSection(tab, arg1, arg2)
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = wrap,
 		})
+		local labelRow = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 16),
+			LayoutOrder = 0,
+			Parent = wrap,
+		})
+		local iconOff = addRowIcon(labelRow, opts.Icon, theme, etok)
 		Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Size = UDim2.new(1, 0, 0, 16),
+			Size = UDim2.new(1, -iconOff, 1, 0),
+			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Dropdown",
 			LayoutOrder = 0,
-			Parent = wrap,
+			Parent = labelRow,
 		})
 		local dr = etok.Control.DefaultRadius
 		local rowH = etok.Control.ToggleRowHeight
@@ -3690,10 +3728,10 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Name = "DropdownChevron",
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamBold,
-			TextSize = 11,
+			TextSize = 10,
 			TextColor3 = theme.TextDim,
-			Text = "▼",
-			Size = UDim2.fromOffset(18, 18),
+			Text = "▦",
+			Size = UDim2.fromOffset(16, 16),
 			LayoutOrder = 1,
 			Active = false,
 			Selectable = false,
@@ -3795,7 +3833,6 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 		local open = false
 		local function setTriggerOpenVisual(isOpen)
-			chevron.Text = isOpen and "▲" or "▼"
 			chevron.TextColor3 = isOpen and theme.Accent or theme.TextDim
 			triggerStroke.Color = isOpen and theme.Accent or theme.Border
 			triggerStroke.Transparency = isOpen and 0.22 or 0.55
@@ -4034,15 +4071,22 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Size = UDim2.new(1, 0, 0, etok.Control.InputRowHeight),
 			Parent = card,
 		})
+		local labelRow = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 16),
+			Parent = wrap,
+		})
+		local iconOff = addRowIcon(labelRow, opts.Icon, theme, etok)
 		Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Size = UDim2.new(1, 0, 0, 16),
+			Size = UDim2.new(1, -iconOff, 1, 0),
+			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Input",
-			Parent = wrap,
+			Parent = labelRow,
 		})
 		local box = Utils.Create("TextBox", {
 			BackgroundColor3 = theme.BackgroundElevated,
@@ -4153,6 +4197,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			LayoutOrder = 0,
 			Parent = wrap,
 		})
+		local iconOff = addRowIcon(row, opts.Icon, theme, etok)
 		local dr = etok.Control.DefaultRadius
 		local thk = etok.Control.SliderTrackThickness
 		local chRowH = etok.Control.ColorChannelRowHeight or 22
@@ -4162,7 +4207,8 @@ function Elements.CreateSection(tab, arg1, arg2)
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Size = UDim2.new(1, -40, 1, 0),
+			Size = UDim2.new(1, -(40 + iconOff), 1, 0),
+			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Color",
 			Parent = row,
 		})
@@ -4344,13 +4390,15 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Size = UDim2.new(1, 0, 0, etok.Control.KeybindRowHeight + 2),
 			Parent = card,
 		})
+		local iconOff = addRowIcon(row, opts.Icon, theme, etok)
 		Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Size = UDim2.new(1, -120, 1, 0),
+			Size = UDim2.new(1, -(120 + iconOff), 1, 0),
+			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Keybind",
 			Parent = row,
 		})
@@ -5509,7 +5557,7 @@ Library.V2ModernTheme = {
 			CornerRadius = 8,
 			TitleBarHeight = 43,
 			BodyTop = 62,
-			BackgroundTransparency = 0.03,
+			BackgroundTransparency = 0.05,
 			NoiseLowTransparency = 0.994,
 			NoiseHighTransparency = 0.972,
 			TitleSize = 16,
@@ -5523,9 +5571,9 @@ Library.V2ModernTheme = {
 			ItemIconSize = 14,
 			ItemPaddingX = 9,
 			ItemInnerGap = 7,
-			ItemInactiveTransparency = 0.28,
-			ItemActiveTransparency = 0.08,
-			ItemHoverTransparency = 0.16,
+			ItemInactiveTransparency = 0.3,
+			ItemActiveTransparency = 0.1,
+			ItemHoverTransparency = 0.19,
 			ActiveIndicatorWidth = 3,
 			ItemSpacing = 3,
 			SidebarPadding = 8,
@@ -5533,8 +5581,8 @@ Library.V2ModernTheme = {
 			SidebarTransparency = 0.06,
 			ContentShellTransparency = 0.04,
 			ColumnGap = 12,
-			ColumnCardTransparency = 0.09,
-			ColumnCardStrokeTransparency = 0.9,
+			ColumnCardTransparency = 0.12,
+			ColumnCardStrokeTransparency = 0.92,
 			ColumnCardPadding = 8,
 		},
 		Section = {
@@ -5548,22 +5596,23 @@ Library.V2ModernTheme = {
 			RowStrokeTransparency = 0.93,
 			RowBackgroundTransparency = 0.14,
 			CardEnabled = true,
-			CardTransparency = 0.12,
-			CardStrokeTransparency = 0.88,
+			CardTransparency = 0.16,
+			CardStrokeTransparency = 0.9,
 			CardPadding = 7,
 		},
 		Control = {
 			DefaultRadius = 6,
+			RowIconDefault = "rbxassetid://74523675899900",
 			LabelTextSize = 12,
 			SecondaryTextSize = 11,
-			ButtonHeight = 28,
-			ToggleRowHeight = 27,
-			SliderBlockHeight = 29,
-			InputRowHeight = 40,
+			ButtonHeight = 27,
+			ToggleRowHeight = 26,
+			SliderBlockHeight = 28,
+			InputRowHeight = 38,
 			InputHeight = 25,
-			DropdownRowOpen = 28,
+			DropdownRowOpen = 27,
 			SliderValueChipWidthScale = 0.30,
-			SliderValueChipStrokeTransparency = 0.56,
+			SliderValueChipStrokeTransparency = 0.62,
 		},
 		Notification = {
 			CornerRadius = 8,
