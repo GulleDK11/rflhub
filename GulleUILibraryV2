@@ -19,6 +19,7 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local GuiService = game:GetService("GuiService")
+local TextService = game:GetService("TextService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -286,7 +287,7 @@ local _defaultTokens = {
 		ItemInactiveTransparency = 0.22,
 		ItemActiveTransparency = 0.05,
 		ItemHoverTransparency = 0.12,
-		ActiveIndicatorWidth = 3,
+		ActiveIndicatorWidth = 2,
 		SidebarPadding = 10,
 		ItemSpacing = 3,
 		ScrollBarThickness = 2,
@@ -375,18 +376,20 @@ local _defaultTokens = {
 		TabContentFadeIn = false,
 	},
 	Notification = {
-		Width = 280,
+		Width = 300,
 		-- Same visual radius as the hub (`Window.CornerRadius`, default 6).
-		CornerRadius = 6,
-		TitleSize = 15,
-		BodySize = 13,
-		PaddingX = 12,
-		PaddingY = 10,
+		CornerRadius = 8,
+		TitleSize = 14,
+		BodySize = 12,
+		PaddingX = 11,
+		PaddingY = 9,
 		FadeInDuration = 0.4,
 		FadeOutDuration = 0.35,
 		-- Neutral outer edge (never type color — colored stroke causes orange/red “halos” in corners).
 		FrameStrokeThickness = 1,
 		FrameStrokeTransparency = 0.62,
+		-- CanvasGroup can make text look soft on some clients; disabled by default for crisp toasts.
+		UseCanvasGroupFade = false,
 	},
 }
 
@@ -574,13 +577,47 @@ end
 
 -- #region NotificationService
 Services.NotificationService = {
+	_rootGui = nil,
 	_container = nil,
 	_stack = nil,
 	_toastOrder = 0,
 }
 
 function Services.NotificationService:_ensureContainer(parent)
+	local function resolveHost()
+		if typeof(parent) == "Instance" then
+			if parent:IsA("PlayerGui") or parent:IsA("CoreGui") then
+				return parent
+			end
+			if parent:IsA("ScreenGui") then
+				return parent.Parent
+			end
+			if parent:IsA("LayerCollector") then
+				return parent.Parent
+			end
+		end
+		return getGuiParent()
+	end
+	local host = resolveHost()
+	if not self._rootGui or not self._rootGui.Parent then
+		self._rootGui = Utils.Create("ScreenGui", {
+			Name = "GulleUI_Notifications",
+			ResetOnSpawn = false,
+			ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+			DisplayOrder = 900,
+			Parent = host,
+		})
+	else
+		self._rootGui.Enabled = true
+		if host and self._rootGui.Parent ~= host then
+			self._rootGui.Parent = host
+		end
+	end
+
 	if self._container and self._container.Parent then
+		if self._container.Parent ~= self._rootGui then
+			self._container.Parent = self._rootGui
+		end
 		if self._stack and self._stack.Parent then
 			return
 		end
@@ -595,7 +632,7 @@ function Services.NotificationService:_ensureContainer(parent)
 			Active = false,
 			Selectable = false,
 			ClipsDescendants = false,
-			Parent = parent,
+			Parent = self._rootGui,
 		})
 	end
 	if not self._stack or not self._stack.Parent then
@@ -624,8 +661,11 @@ function Services.NotificationService:_spawnToast(item)
 	local theme = Services.ThemeService.Current
 	local nt = Services.ThemeService.Tokens.Notification
 	local function notifyTextColors()
-		local raw = tostring(item.Type or item.Level or item.Variant or item.NotifyType or "normal")
-		local k = string.lower((raw:gsub("^%s+", ""):gsub("%s+$", "")))
+		local rawType = item.Type
+		local k = ""
+		if type(rawType) == "string" then
+			k = string.lower((rawType:gsub("^%s+", ""):gsub("%s+$", "")))
+		end
 		local function c3(x, fb)
 			return (typeof(x) == "Color3" and x) or fb
 		end
@@ -637,7 +677,7 @@ function Services.NotificationService:_spawnToast(item)
 		local fbDim = Color3.fromRGB(148, 146, 138)
 		if k == "error" or k == "danger" or k == "fail" or k == "failed" then
 			return c3(theme.Error, fbErr), c3(theme.TextDim, fbDim)
-		elseif k == "warning" or k == "warn" or k == "advarsel" then
+		elseif k == "warning" or k == "warn" then
 			return c3(theme.Warning, fbWarn), c3(theme.TextDim, fbDim)
 		elseif k == "info" or k == "information" then
 			return c3(theme.Info, fbInfo), c3(theme.TextDim, fbDim)
@@ -673,18 +713,21 @@ function Services.NotificationService:_spawnToast(item)
 		Parent = self._stack or self._container,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, cornerR), Parent = card })
-	local toastFade = Utils.TryCreateCanvasGroup({
-		Name = "ToastFade",
-		GroupTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Position = UDim2.fromScale(0, 0),
-		Parent = card,
-	})
+	local toastFade = nil
+	if nt.UseCanvasGroupFade == true then
+		toastFade = Utils.TryCreateCanvasGroup({
+			Name = "ToastFade",
+			GroupTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			Position = UDim2.fromScale(0, 0),
+			Parent = card,
+		})
+	end
 	local function attachToastChrome(parentFrame)
 		local chrome = Utils.Create("Frame", {
 			Name = "ToastChrome",
-			BackgroundColor3 = surfaceFallback(),
-			BackgroundTransparency = 0,
+			BackgroundColor3 = (typeof(theme.BackgroundElevated) == "Color3" and theme.BackgroundElevated) or surfaceFallback(),
+			BackgroundTransparency = 0.08,
 			BorderSizePixel = 0,
 			Size = UDim2.fromScale(1, 1),
 			Position = UDim2.fromScale(0, 0),
@@ -740,7 +783,7 @@ function Services.NotificationService:_spawnToast(item)
 	})
 	local innerList = Utils.Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Vertical,
-		Padding = UDim.new(0, 6),
+		Padding = UDim.new(0, 5),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = inner,
 	})
@@ -750,6 +793,21 @@ function Services.NotificationService:_spawnToast(item)
 		card.Size = UDim2.new(0, nt.Width, 0, math.max(32, math.ceil(h)))
 	end
 	innerList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(refreshCardHeight)
+	local titleRow = Utils.Create("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 14),
+		LayoutOrder = 0,
+		Parent = inner,
+	})
+	local toneDot = Utils.Create("Frame", {
+		BackgroundColor3 = titleC,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(6, 6),
+		Position = UDim2.new(0, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		Parent = titleRow,
+	})
+	Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = toneDot })
 	local title = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
 		Font = Enum.Font.GothamBold,
@@ -758,10 +816,11 @@ function Services.NotificationService:_spawnToast(item)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextWrapped = true,
 		AutomaticSize = Enum.AutomaticSize.Y,
-		Size = UDim2.new(1, 0, 0, 0),
+		Size = UDim2.new(1, -10, 0, 0),
+		Position = UDim2.fromOffset(10, 0),
 		Text = item.Title or "Notice",
-		LayoutOrder = 0,
-		Parent = inner,
+		LayoutOrder = 1,
+		Parent = titleRow,
 	})
 	local body = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
@@ -773,7 +832,7 @@ function Services.NotificationService:_spawnToast(item)
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Size = UDim2.new(1, 0, 0, 0),
 		Text = item.Message or item.Content or "",
-		LayoutOrder = 1,
+		LayoutOrder = 2,
 		Parent = inner,
 	})
 	task.defer(refreshCardHeight)
@@ -1359,94 +1418,70 @@ function Core.CreateWindow(opts)
 	local titleControlsW = tok.Window.TitleControlsWidth or 100
 	local leftDrag = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -titleControlsW, 1, 0),
+		Size = UDim2.new(1, 0, 1, 0),
 		Position = UDim2.fromOffset(0, 0),
 		Parent = titleBar,
 	})
 
+	local titleCenter = Utils.Create("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 6, 0.5, -3),
+		Size = UDim2.new(1, -(titleControlsW + 12), 1, 0),
+		ZIndex = 4,
+		Parent = leftDrag,
+	})
+	local centerRow = Utils.Create("Frame", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 0, 0.5, -4),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.new(0, 0, 1, 0),
+		Parent = titleCenter,
+	})
+	Utils.Create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalAlignment = Enum.HorizontalAlignment.Left,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		Padding = UDim.new(0, logoAsset and logoPad or 0),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = centerRow,
+	})
+
+	local logoTitlebarInst = nil
+	if logoAsset and logoPosition ~= "Sidebar" and logoPosition ~= "Loading" then
+		logoTitlebarInst = Utils.Create("ImageLabel", {
+			Name = "WindowLogo",
+			BackgroundTransparency = 1,
+			Image = logoAsset,
+			ScaleType = Enum.ScaleType.Fit,
+			Size = UDim2.fromOffset(logoSz, logoSz),
+			LayoutOrder = 0,
+			ZIndex = 5,
+			Parent = centerRow,
+		})
+		if logoCorner and logoCorner > 0 then
+			Utils.Create("UICorner", { CornerRadius = UDim.new(0, logoCorner), Parent = logoTitlebarInst })
+		end
+		if wtok.LogoTintToText == true then
+			logoTitlebarInst.ImageColor3 = colors.Text
+		else
+			logoTitlebarInst.ImageColor3 = Color3.new(1, 1, 1)
+		end
+	end
+
 	local titleStack = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, 0),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.new(0, 0, 1, 0),
+		LayoutOrder = 1,
+		Parent = centerRow,
 	})
-	local logoTitlebarInst = nil
-	if logoAsset and logoPosition == "LeftOfTitle" then
-		local row = Utils.Create("Frame", {
-			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 1, 0),
-			Parent = leftDrag,
-		})
-		Utils.Create("UIListLayout", {
-			FillDirection = Enum.FillDirection.Horizontal,
-			VerticalAlignment = Enum.VerticalAlignment.Center,
-			HorizontalAlignment = Enum.HorizontalAlignment.Left,
-			Padding = UDim.new(0, logoPad),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			Parent = row,
-		})
-		logoTitlebarInst = Utils.Create("ImageLabel", {
-			Name = "WindowLogo",
-			BackgroundTransparency = 1,
-			Image = logoAsset,
-			ScaleType = Enum.ScaleType.Fit,
-			Size = UDim2.fromOffset(logoSz, logoSz),
-			LayoutOrder = 0,
-			ZIndex = 2,
-			Parent = row,
-		})
-		if logoCorner and logoCorner > 0 then
-			Utils.Create("UICorner", { CornerRadius = UDim.new(0, logoCorner), Parent = logoTitlebarInst })
-		end
-		if wtok.LogoTintToText == true then
-			logoTitlebarInst.ImageColor3 = colors.Text
-		else
-			logoTitlebarInst.ImageColor3 = Color3.new(1, 1, 1)
-		end
-		titleStack.Parent = row
-		titleStack.Size = UDim2.new(1, -(logoSz + logoPad), 1, 0)
-		titleStack.LayoutOrder = 1
-	elseif logoAsset and logoPosition == "AboveTitle" then
-		Utils.Create("UIListLayout", {
-			FillDirection = Enum.FillDirection.Vertical,
-			VerticalAlignment = Enum.VerticalAlignment.Top,
-			HorizontalAlignment = Enum.HorizontalAlignment.Left,
-			Padding = UDim.new(0, 2),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			Parent = leftDrag,
-		})
-		local logoHost = Utils.Create("Frame", {
-			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, logoSz + 6),
-			LayoutOrder = 0,
-			Parent = leftDrag,
-		})
-		logoTitlebarInst = Utils.Create("ImageLabel", {
-			Name = "WindowLogo",
-			BackgroundTransparency = 1,
-			Image = logoAsset,
-			ScaleType = Enum.ScaleType.Fit,
-			Size = UDim2.fromOffset(logoSz, logoSz),
-			Position = UDim2.new(0, 0, 0.5, 0),
-			AnchorPoint = Vector2.new(0, 0.5),
-			ZIndex = 2,
-			Parent = logoHost,
-		})
-		if logoCorner and logoCorner > 0 then
-			Utils.Create("UICorner", { CornerRadius = UDim.new(0, logoCorner), Parent = logoTitlebarInst })
-		end
-		if wtok.LogoTintToText == true then
-			logoTitlebarInst.ImageColor3 = colors.Text
-		else
-			logoTitlebarInst.ImageColor3 = Color3.new(1, 1, 1)
-		end
-		titleStack.Parent = leftDrag
-		titleStack.Size = UDim2.new(1, 0, 0, 40)
-		titleStack.LayoutOrder = 1
-	else
-		titleStack.Parent = leftDrag
-	end
 	Utils.Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Vertical,
-		Padding = UDim.new(0, 2),
+		Padding = UDim.new(0, 1),
+		HorizontalAlignment = Enum.HorizontalAlignment.Left,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = titleStack,
 	})
@@ -1457,7 +1492,8 @@ function Core.CreateWindow(opts)
 		TextSize = tok.Window.TitleSize,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = colors.Text,
-		Size = UDim2.new(1, 0, 0, 22),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.new(0, 0, 0, 20),
 		Text = displayName,
 		LayoutOrder = 0,
 		Parent = titleStack,
@@ -1469,7 +1505,8 @@ function Core.CreateWindow(opts)
 		TextSize = tok.Window.SubtitleSize,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = colors.TextDim,
-		Size = UDim2.new(1, 0, 0, 16),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.new(0, 0, 0, 14),
 		Text = subtitle,
 		Visible = subtitle ~= "",
 		LayoutOrder = 1,
@@ -1479,7 +1516,7 @@ function Core.CreateWindow(opts)
 	local titleControls = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.new(0, titleControlsW, 1, 0),
-		Position = UDim2.new(1, 0, 0, 0),
+		Position = UDim2.new(1, 0, 0, -4),
 		AnchorPoint = Vector2.new(1, 0),
 		Parent = titleBar,
 	})
@@ -1497,50 +1534,48 @@ function Core.CreateWindow(opts)
 			Text = kind == "close" and "×" or "−",
 			Font = Enum.Font.GothamBold,
 			TextSize = 12,
-			TextColor3 = kind == "close" and Color3.fromRGB(255, 199, 204) or colors.TextDim,
-			BackgroundColor3 = kind == "close" and Color3.fromRGB(95, 56, 61) or colors.Surface,
-			BackgroundTransparency = 0.2,
-			Size = UDim2.fromOffset(22, 18),
+			TextColor3 = colors.TextDim,
+			BackgroundColor3 = colors.Surface,
+			BackgroundTransparency = 0.16,
+			Size = UDim2.fromOffset(16, 16),
 			AutoButtonColor = false,
 			BorderSizePixel = 0,
 			Parent = titleControls,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 5), Parent = b })
-		local stroke = Utils.Create("UIStroke", {
-			Color = kind == "close" and Color3.fromRGB(140, 84, 92) or colors.Border,
+		Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = b })
+		Utils.Create("UIStroke", {
+			Color = colors.Border,
 			Thickness = 1,
-			Transparency = kind == "close" and 0.2 or 0.55,
+			Transparency = 0.55,
 			Parent = b,
 		})
-		local base = b.BackgroundColor3
-		local hover = kind == "close" and Color3.fromRGB(122, 68, 77) or colors.SurfaceHover
-		return b, stroke, base, hover
+		local baseText = b.TextColor3
+		local hoverText = colors.Text
+		return b, baseText, hoverText
 	end
 
-	local minBtn, minBtnStroke, minBase, minHover = makeTitleBtn("min")
-	local closeBtn, closeBtnStroke, closeBase, closeHover = makeTitleBtn("close")
-	minBtn.BackgroundColor3 = minBase
-	closeBtn.BackgroundColor3 = closeBase
+	local minBtn, minBase, minHover = makeTitleBtn("min")
+	local closeBtn, closeBase, closeHover = makeTitleBtn("close")
 	local function wireTitleBtnFx(b, isClose)
 		local sc = Utils.Create("UIScale", { Scale = 1, Parent = b })
-		local baseBg = isClose and closeBase or minBase
-		local hoverBg = isClose and closeHover or minHover
+		local baseText = isClose and closeBase or minBase
+		local hoverText = isClose and closeHover or minHover
 		b.MouseEnter:Connect(function()
 			Utils.Tween(
 				b,
 				TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ BackgroundTransparency = 0.08, BackgroundColor3 = hoverBg }
+				{ TextColor3 = hoverText }
 			)
 		end)
 		b.MouseLeave:Connect(function()
 			Utils.Tween(
 				b,
 				TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ BackgroundTransparency = 0.2, BackgroundColor3 = baseBg }
+				{ TextColor3 = baseText }
 			)
 		end)
 		b.MouseButton1Down:Connect(function()
-			Utils.Tween(sc, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 0.86 })
+			Utils.Tween(sc, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 0.9 })
 		end)
 		b.MouseButton1Up:Connect(function()
 			Utils.Tween(sc, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
@@ -1664,7 +1699,7 @@ function Core.CreateWindow(opts)
 	if opts.HideSidebarProfile ~= true then
 		profileBarInst = Utils.Create("Frame", {
 			BackgroundColor3 = colors.BackgroundElevated,
-			BackgroundTransparency = 0.15,
+			BackgroundTransparency = 0.08,
 			BorderSizePixel = 0,
 			Size = UDim2.new(1, -sidePad * 2, 0, footerH),
 			Position = UDim2.new(0, sidePad, 1, -sidePad),
@@ -1704,44 +1739,61 @@ function Core.CreateWindow(opts)
 		})
 		Utils.Create("UIListLayout", {
 			FillDirection = Enum.FillDirection.Vertical,
-			Padding = UDim.new(0, 2),
+			Padding = UDim.new(0, 1),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = textCol,
 		})
 		profileNameInst = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamBold,
-			TextSize = 13,
+			TextSize = 14,
 			TextColor3 = colors.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd,
-			Size = UDim2.new(1, -18, 0, 16),
+			Size = UDim2.new(1, 0, 0, 18),
 			Text = "@" .. LocalPlayer.Name,
 			LayoutOrder = 0,
 			Parent = textCol,
 		})
 		local profileIconAsset = tok.Tab.ProfileNameIcon or logoAsset or "rbxassetid://74523675899900"
+		local rankRow = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.new(0, 0, 0, 13),
+			LayoutOrder = 1,
+			Parent = textCol,
+		})
+		Utils.Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Left,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 2),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = rankRow,
+		})
 		profileRankInst = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = 11,
 			TextColor3 = windowSidebarRankLabel() == "Developer" and colors.DeveloperRank or colors.TextDim,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Size = UDim2.new(1, -14, 0, 14),
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.new(0, 0, 0, 13),
 			Text = windowSidebarRankLabel(),
-			LayoutOrder = 1,
-			Parent = textCol,
+			LayoutOrder = 0,
+			Parent = rankRow,
 		})
 		profileNameIconInst = Utils.Create("ImageLabel", {
 			BackgroundTransparency = 1,
 			Image = profileIconAsset,
 			ImageColor3 = colors.Accent,
 			ScaleType = Enum.ScaleType.Fit,
-			Size = UDim2.fromOffset(10, 10),
-			Position = UDim2.new(1, 0, 0.5, 0),
-			AnchorPoint = Vector2.new(1, 0.5),
+			Size = UDim2.fromOffset(11, 11),
+			Position = UDim2.fromOffset(0, 0),
+			AnchorPoint = Vector2.new(0, 0),
 			ZIndex = 2,
-			Parent = profileRankInst,
+			LayoutOrder = 1,
+			Parent = rankRow,
 		})
 		task.defer(function()
 			local ok, content = pcall(function()
@@ -2177,7 +2229,12 @@ function Core.CreateWindow(opts)
 		if type(newTheme) ~= "table" then
 			return
 		end
-		Services.ThemeService:ModifyTheme(newTheme)
+		-- Full preset switch (resets to defaults + applies preset) when tokens/colors are provided.
+		if type(newTheme.Tokens) == "table" or type(newTheme.Colors) == "table" then
+			Services.ThemeService:ApplyPreset(newTheme)
+		else
+			Services.ThemeService:ModifyTheme(newTheme)
+		end
 	end
 
 	function window:SetVisible(visible)
@@ -2535,22 +2592,29 @@ function Core.CreateWindow(opts)
 			TextSize = tTab.ItemTextSize or 13,
 			TextColor3 = wc.TabInactive,
 			BackgroundColor3 = wc.SurfaceMuted,
-			BackgroundTransparency = tTab.ItemInactiveTransparency or 0.22,
+			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, tok.Tab.ItemHeight),
 			AutoButtonColor = false,
 			BorderSizePixel = 0,
 			Parent = tabList,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Tab.ItemRadius), Parent = btn })
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tTab.ItemRadius or 10), Parent = btn })
+		local tabStroke = Utils.Create("UIStroke", {
+			Color = wc.Border,
+			Thickness = 1,
+			Transparency = 1,
+			Parent = btn,
+		})
+		Core.AddThemeRef(window, tabStroke, "Color", "Border")
 		local activeMark = Utils.Create("Frame", {
 			BackgroundColor3 = wc.Accent,
 			BackgroundTransparency = 1,
-			Size = UDim2.new(0, tTab.ActiveIndicatorWidth or 3, 1, -8),
+			Size = UDim2.new(0, tTab.ActiveIndicatorWidth or 2, 1, -10),
 			Position = UDim2.fromOffset(2, 4),
 			BorderSizePixel = 0,
 			Parent = btn,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 2), Parent = activeMark })
+		Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = activeMark })
 		Core.AddThemeRef(window, activeMark, "BackgroundColor3", "Accent")
 
 		local row = Utils.Create("Frame", {
@@ -2572,6 +2636,7 @@ function Core.CreateWindow(opts)
 				BackgroundTransparency = 1,
 				Image = iconId,
 				ImageColor3 = wc.TabInactive,
+				ImageTransparency = 0,
 				Size = UDim2.fromOffset(tTab.ItemIconSize or 16, tTab.ItemIconSize or 16),
 				LayoutOrder = 0,
 				Parent = row,
@@ -2584,9 +2649,11 @@ function Core.CreateWindow(opts)
 			Font = Enum.Font.Gotham,
 			TextSize = tTab.ItemTextSize or 13,
 			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Center,
+			TextWrapped = true,
 			TextColor3 = wc.TabInactive,
-			AutomaticSize = Enum.AutomaticSize.X,
-			Size = UDim2.new(0, 0, 1, 0),
+			AutomaticSize = Enum.AutomaticSize.None,
+			Size = UDim2.new(1, -(tabIcon and ((tTab.ItemIconSize or 16) + (tTab.ItemInnerGap or 8)) or 0), 1, 0),
 			LayoutOrder = 1,
 			Parent = row,
 		})
@@ -2634,7 +2701,7 @@ function Core.CreateWindow(opts)
 		local pagePB = tTab.PagePaddingBottom or 6
 		local pagePL = tTab.PagePaddingLeft or 4
 		local pagePR = tTab.PagePaddingRight or 6
-		Utils.Create("UIPadding", {
+		local pagePadding = Utils.Create("UIPadding", {
 			PaddingTop = UDim.new(0, pagePT),
 			PaddingBottom = UDim.new(0, pagePB),
 			PaddingLeft = UDim.new(0, pagePL),
@@ -2682,7 +2749,7 @@ function Core.CreateWindow(opts)
 		})
 		Core.AddThemeRef(window, leftShell, "BackgroundColor3", "SurfaceMuted")
 		Core.AddThemeRef(window, leftShellStroke, "Color", "Border")
-		Utils.Create("UIPadding", {
+		local leftShellPadding = Utils.Create("UIPadding", {
 			PaddingTop = UDim.new(0, colPad),
 			PaddingBottom = UDim.new(0, colPad),
 			PaddingLeft = UDim.new(0, colPad),
@@ -2724,7 +2791,7 @@ function Core.CreateWindow(opts)
 		})
 		Core.AddThemeRef(window, rightShell, "BackgroundColor3", "SurfaceMuted")
 		Core.AddThemeRef(window, rightShellStroke, "Color", "Border")
-		Utils.Create("UIPadding", {
+		local rightShellPadding = Utils.Create("UIPadding", {
 			PaddingTop = UDim.new(0, colPad),
 			PaddingBottom = UDim.new(0, colPad),
 			PaddingLeft = UDim.new(0, colPad),
@@ -2749,6 +2816,7 @@ function Core.CreateWindow(opts)
 		local tabObj = {
 			_window = window,
 			_button = btn,
+			_tabStroke = tabStroke,
 			_label = tabLbl,
 			_page = page,
 			_activeMark = activeMark,
@@ -2762,6 +2830,27 @@ function Core.CreateWindow(opts)
 			_contentRightShell = rightShell,
 			_searchText = string.lower(tostring(tabName)),
 		}
+		local function syncCompressedTopOffset()
+			if window._destroyed or not pagePadding or not pagePadding.Parent then
+				return
+			end
+			local h = main.AbsoluteSize.Y
+			local startH = tonumber(tTab.CompressShiftStartHeight) or 470
+			local minH = tonumber(tTab.CompressShiftMinHeight) or 320
+			local maxShift = tonumber(tTab.CompressShiftMax) or 9
+			local extra = 0
+			if h < startH then
+				local denom = math.max(1, startH - minH)
+				local alpha = math.clamp((startH - h) / denom, 0, 1)
+				extra = math.floor(maxShift * alpha + 0.5)
+			end
+			pagePadding.PaddingTop = UDim.new(0, pagePT + extra)
+			local shellExtra = math.floor(extra * 0.5 + 0.5)
+			leftShellPadding.PaddingTop = UDim.new(0, colPad + shellExtra)
+			rightShellPadding.PaddingTop = UDim.new(0, colPad + shellExtra)
+		end
+		syncCompressedTopOffset()
+		table.insert(window._dragConns, main:GetPropertyChangedSignal("AbsoluteSize"):Connect(syncCompressedTopOffset))
 
 		function tabObj:CreateSection(a, b)
 			if type(a) == "table" then
@@ -2822,17 +2911,23 @@ function Core.CreateWindow(opts)
 				if t._tabPageFade then
 					t._tabPageFade.GroupTransparency = 1
 				end
-				t._button.BackgroundTransparency = tTab.ItemInactiveTransparency or 0.22
+				t._button.BackgroundTransparency = 1
 				window:_tweenSidebarTab(
 					t._button,
 					t._label,
 					th.SurfaceMuted,
 					th.TabInactive,
-					tTab.ItemInactiveTransparency or 0.22
+					1
 				)
+				if t._tabStroke then
+					Utils.Tween(t._tabStroke, TweenInfo.new(window._tabAnim.BtnDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+						Transparency = 1,
+					})
+				end
 				if t._icon then
 					Utils.Tween(t._icon, TweenInfo.new(window._tabAnim.BtnDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 						ImageColor3 = th.TabInactive,
+						ImageTransparency = 0,
 					})
 				end
 				if t._activeMark then
@@ -2850,9 +2945,13 @@ function Core.CreateWindow(opts)
 				th.Text,
 				tTab.ItemActiveTransparency or 0.05
 			)
+			Utils.Tween(tabStroke, TweenInfo.new(window._tabAnim.BtnDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Transparency = tTab.ItemStrokeActiveTransparency or 0.32,
+			})
 			if tabIcon then
 				Utils.Tween(tabIcon, TweenInfo.new(window._tabAnim.BtnDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 					ImageColor3 = th.Text,
+					ImageTransparency = 0,
 				})
 			end
 			activeMark.BackgroundTransparency = 0
@@ -2892,9 +2991,13 @@ function Core.CreateWindow(opts)
 					th.TabInactive,
 					tTab.ItemHoverTransparency or 0.12
 				)
+				Utils.Tween(tabStroke, TweenInfo.new(window._tabAnim.BtnDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					Transparency = tTab.ItemStrokeHoverTransparency or 0.48,
+				})
 				if tabIcon then
 					Utils.Tween(tabIcon, TweenInfo.new(window._tabAnim.BtnDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 						ImageColor3 = th.TabInactive,
+						ImageTransparency = 0,
 					})
 				end
 			end
@@ -2907,11 +3010,15 @@ function Core.CreateWindow(opts)
 					tabLbl,
 					th.SurfaceMuted,
 					th.TabInactive,
-					tTab.ItemInactiveTransparency or 0.22
+					1
 				)
+				Utils.Tween(tabStroke, TweenInfo.new(window._tabAnim.BtnDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					Transparency = 1,
+				})
 				if tabIcon then
 					Utils.Tween(tabIcon, TweenInfo.new(window._tabAnim.BtnDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 						ImageColor3 = th.TabInactive,
+						ImageTransparency = 0,
 					})
 				end
 			end
@@ -3204,7 +3311,10 @@ function Elements.CreateSection(tab, arg1, arg2)
 		TextSize = etok.Section.HeaderTextSize,
 		TextColor3 = theme.TextDim,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		Size = UDim2.new(1, 0, 0, headerH),
+		TextYAlignment = Enum.TextYAlignment.Center,
+		TextWrapped = true,
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 0),
 		Text = titleText,
 		LayoutOrder = lo,
 		Parent = wrap,
@@ -3294,6 +3404,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		local row = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, rowH),
+			ClipsDescendants = false,
 			Parent = card,
 		})
 		local iconOff = addRowIcon(row, opts.Icon, theme, etok)
@@ -3303,12 +3414,29 @@ function Elements.CreateSection(tab, arg1, arg2)
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Size = UDim2.new(1, -(swW + 8 + iconOff), 1, 0),
+			TextYAlignment = Enum.TextYAlignment.Center,
+			TextWrapped = true,
+			Size = UDim2.new(1, -(swW + 8 + iconOff), 0, rowH),
 			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Toggle",
 			Parent = row,
 		})
-
+		local function refreshToggleLabelLayout()
+			if not row.Parent or not name.Parent or not switch or not switch.Parent then
+				return
+			end
+			local avail = math.max(40, row.AbsoluteSize.X - (swW + 8 + iconOff))
+			local bounds = TextService:GetTextSize(
+				tostring(name.Text or ""),
+				etok.Control.LabelTextSize,
+				Enum.Font.Gotham,
+				Vector2.new(avail, 1000)
+			)
+			local needed = math.max(rowH, math.ceil(bounds.Y + 4))
+			row.Size = UDim2.new(1, 0, 0, needed)
+			name.Size = UDim2.new(1, -(swW + 8 + iconOff), 0, needed)
+			switch.Position = UDim2.new(1, -swW, 0.5, -math.floor(swH / 2))
+		end
 		local switch = Utils.Create("TextButton", {
 			BackgroundTransparency = 1,
 			Size = UDim2.fromOffset(swW, swH),
@@ -3317,6 +3445,8 @@ function Elements.CreateSection(tab, arg1, arg2)
 			AutoButtonColor = false,
 			Parent = row,
 		})
+		refreshToggleLabelLayout()
+		table.insert(win._dragConns, row:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshToggleLabelLayout))
 		local track = Utils.Create("Frame", {
 			BackgroundColor3 = value and theme.Accent or theme.Surface,
 			Size = UDim2.fromScale(1, 1),
@@ -3451,36 +3581,58 @@ function Elements.CreateSection(tab, arg1, arg2)
 		local value = flag and Services.StateService:GetFlag(flag) or def
 
 		local card = newRowCard(theme, etok)
+		local csz = math.max(18, math.floor(tonumber(etok.Control.CircleToggleSize) or 24))
+		local cInset = math.max(2, math.floor(tonumber(etok.Control.CircleToggleInset) or 3))
+		local glyphSize = math.max(6, math.floor(tonumber(etok.Control.CircleToggleGlyphSize) or 10))
+		local rowH = math.max(tonumber(etok.Control.ToggleRowHeight) or 24, csz + 2)
 		local row = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, etok.Control.ToggleRowHeight),
+			Size = UDim2.new(1, 0, 0, rowH),
+			ClipsDescendants = true,
 			Parent = card,
 		})
 		local iconOff = addRowIcon(row, opts.Icon, theme, etok)
-		Utils.Create("TextLabel", {
+		local circleLabel = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Size = UDim2.new(1, -(46 + iconOff), 1, 0),
+			TextYAlignment = Enum.TextYAlignment.Center,
+			TextWrapped = true,
+			Size = UDim2.new(1, -(csz + 8 + iconOff), 0, rowH),
 			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Toggle",
 			Parent = row,
 		})
 
-		local csz = math.max(18, math.floor(tonumber(etok.Control.CircleToggleSize) or 24))
-		local cInset = math.max(2, math.floor(tonumber(etok.Control.CircleToggleInset) or 3))
-		local glyphSize = math.max(6, math.floor(tonumber(etok.Control.CircleToggleGlyphSize) or 10))
-
 		local click = Utils.Create("TextButton", {
 			BackgroundTransparency = 1,
 			Size = UDim2.fromOffset(csz, csz),
-			Position = UDim2.new(1, -csz, 0.5, -math.floor(csz / 2)),
+			Position = UDim2.new(1, -1, 0.5, 0),
+			AnchorPoint = Vector2.new(1, 0.5),
 			Text = "",
 			AutoButtonColor = false,
 			Parent = row,
 		})
+		local function refreshCircleLabelLayout()
+			if not row.Parent or not circleLabel or not circleLabel.Parent or not click.Parent then
+				return
+			end
+			local avail = math.max(40, row.AbsoluteSize.X - (csz + 8 + iconOff))
+			local bounds = TextService:GetTextSize(
+				tostring(circleLabel.Text or ""),
+				etok.Control.LabelTextSize,
+				Enum.Font.Gotham,
+				Vector2.new(avail, 1000)
+			)
+			local needed = math.max(rowH, math.ceil(bounds.Y + 4))
+			row.Size = UDim2.new(1, 0, 0, needed)
+			circleLabel.Size = UDim2.new(1, -(csz + 8 + iconOff), 0, needed)
+			click.Position = UDim2.new(1, -1, 0.5, 0)
+		end
+		refreshCircleLabelLayout()
+		table.insert(win._dragConns, row:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshCircleLabelLayout))
 		local ring = Utils.Create("Frame", {
 			BackgroundColor3 = theme.Surface,
 			Size = UDim2.fromScale(1, 1),
@@ -3592,12 +3744,19 @@ function Elements.CreateSection(tab, arg1, arg2)
 		local card = newRowCard(theme, etok)
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, etok.Control.SliderBlockHeight),
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
 			Parent = card,
+		})
+		Utils.Create("UIListLayout", {
+			Padding = UDim.new(0, 5),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = wrap,
 		})
 		local top = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 16),
+			Size = UDim2.new(1, 0, 0, 24),
+			LayoutOrder = 0,
 			Parent = wrap,
 		})
 		local iconOff = addRowIcon(top, opts.Icon, theme, etok)
@@ -3607,16 +3766,19 @@ function Elements.CreateSection(tab, arg1, arg2)
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
+			TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Center,
 			Size = UDim2.new(1 - (tonumber(etok.Control.SliderValueChipWidthScale) or 0.32), -iconOff, 1, 0),
 			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Slider",
 			Parent = top,
 		})
+		local chipScale = tonumber(etok.Control.SliderValueChipWidthScale) or 0.32
 		local valueChip = Utils.Create("Frame", {
 			BackgroundColor3 = theme.SurfaceMuted,
 			BorderSizePixel = 0,
-			Size = UDim2.new(tonumber(etok.Control.SliderValueChipWidthScale) or 0.32, 0, 1, 0),
-			Position = UDim2.new(1 - (tonumber(etok.Control.SliderValueChipWidthScale) or 0.32), 0, 0, 0),
+			Size = UDim2.new(chipScale, 0, 1, 0),
+			Position = UDim2.new(1 - chipScale, 0, 0, 0),
 			Parent = top,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(4, etok.Control.DefaultRadius - 1)), Parent = valueChip })
@@ -3626,14 +3788,16 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Transparency = tonumber(etok.Control.SliderValueChipStrokeTransparency) or 0.62,
 			Parent = valueChip,
 		})
-		local valLabel = Utils.Create("TextLabel", {
+		local valLabel = Utils.Create("TextBox", {
+			Name = "SliderValueInput",
 			BackgroundTransparency = 1,
+			ClearTextOnFocus = false,
 			Font = Enum.Font.GothamMedium,
 			TextSize = etok.Control.SecondaryTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Center,
 			Size = UDim2.fromScale(1, 1),
-			Text = "+" .. tostring(value),
+			Text = "",
 			Parent = valueChip,
 		})
 		if win then
@@ -3642,42 +3806,97 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 		local tr = etok.Control.DefaultRadius
 		local thk = etok.Control.SliderTrackThickness
+		local function formatNumber(n)
+			if typeof(n) ~= "number" then
+				return tostring(n)
+			end
+			local rounded = math.floor(n)
+			if math.abs(n - rounded) < 1e-6 then
+				return tostring(rounded)
+			end
+			return string.format("%.3f", n):gsub("0+$", ""):gsub("%.$", "")
+		end
+		local function formatDisplay(n)
+			if n >= 0 then
+				return "+" .. formatNumber(n)
+			end
+			return formatNumber(n)
+		end
+		local function snapValue(nv)
+			local n = tonumber(nv)
+			if not n then
+				return nil
+			end
+			local inc = opts.Increment
+			if type(inc) == "number" and inc > 0 then
+				n = minv + math.floor((n - minv) / inc + 0.5) * inc
+			end
+			if opts.Rounding then
+				n = math.floor(n + 0.5)
+			end
+			return Utils.Clamp(n, minv, maxv)
+		end
+		local function sliderRatio(v)
+			local span = maxv - minv
+			if math.abs(span) < 1e-9 then
+				return 0
+			end
+			return (v - minv) / span
+		end
+		local trackRow = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, math.max(10, thk + 4)),
+			LayoutOrder = 1,
+			Parent = wrap,
+		})
 		local track = Utils.Create("Frame", {
 			BackgroundColor3 = theme.Surface,
-			Position = UDim2.fromOffset(0, 19),
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 0, 0.5, 0),
 			Size = UDim2.new(1, 0, 0, thk),
 			BorderSizePixel = 0,
-			Parent = wrap,
+			Parent = trackRow,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tr), Parent = track })
 		local fill = Utils.Create("Frame", {
 			BackgroundColor3 = theme.Accent,
-			Size = UDim2.new((value - minv) / (maxv - minv), 0, 1, 0),
+			Size = UDim2.new(sliderRatio(value), 0, 1, 0),
 			BorderSizePixel = 0,
 			Parent = track,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tr), Parent = fill })
+		valLabel.Text = formatDisplay(value)
 
 		local dragging = false
-		local function setFromX(x)
-			local rel = Utils.Clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
-			local nv = minv + rel * (maxv - minv)
-			local inc = opts.Increment
-			if type(inc) == "number" and inc > 0 then
-				nv = minv + math.floor((nv - minv) / inc + 0.5) * inc
+		local editingValue = false
+		local function setSliderValue(nv, emitCallback)
+			local snapped = snapValue(nv)
+			if not snapped then
+				return false
 			end
-			if opts.Rounding then
-				nv = math.floor(nv + 0.5)
+			if math.abs(snapped - value) < 1e-9 then
+				if not editingValue then
+					valLabel.Text = formatDisplay(value)
+				end
+				return false
 			end
-			value = Utils.Clamp(nv, minv, maxv)
-			fill.Size = UDim2.new((value - minv) / (maxv - minv), 0, 1, 0)
-			valLabel.Text = "+" .. tostring(value)
+			value = snapped
+			fill.Size = UDim2.new(sliderRatio(value), 0, 1, 0)
+			if not editingValue then
+				valLabel.Text = formatDisplay(value)
+			end
 			if flag then
 				Services.StateService:SetFlag(flag, value)
 			end
-			if opts.Callback then
+			if emitCallback and opts.Callback then
 				task.spawn(opts.Callback, value)
 			end
+			return true
+		end
+		local function setFromX(x)
+			local rel = Utils.Clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+			local nv = minv + rel * (maxv - minv)
+			setSliderValue(nv, true)
 		end
 
 		local inputBegan = track.InputBegan:Connect(function(input)
@@ -3699,26 +3918,37 @@ function Elements.CreateSection(tab, arg1, arg2)
 				setFromX(input.Position.X)
 			end
 		end)
+		valLabel.Focused:Connect(function()
+			editingValue = true
+			valLabel.Text = formatNumber(value)
+		end)
+		valLabel.FocusLost:Connect(function()
+			local typed = tostring(valLabel.Text or "")
+			local parsed = tonumber((typed:gsub(",", ".")))
+			editingValue = false
+			if parsed then
+				setSliderValue(parsed, true)
+			else
+				valLabel.Text = formatDisplay(value)
+			end
+		end)
 
 		if flag then
 			Services.StateService:OnFlagChanged(flag, function(v)
 				local n = tonumber(v)
 				if n and math.abs(n - value) > 1e-5 then
 					value = Utils.Clamp(n, minv, maxv)
-					fill.Size = UDim2.new((value - minv) / (maxv - minv), 0, 1, 0)
-					valLabel.Text = "+" .. tostring(value)
+					fill.Size = UDim2.new(sliderRatio(value), 0, 1, 0)
+					if not editingValue then
+						valLabel.Text = formatDisplay(value)
+					end
 				end
 			end)
 		end
 
 		return elementApi(card, {
 			Set = function(_, v)
-				value = Utils.Clamp(tonumber(v) or value, minv, maxv)
-				fill.Size = UDim2.new((value - minv) / (maxv - minv), 0, 1, 0)
-				valLabel.Text = tostring(value)
-				if flag then
-					Services.StateService:SetFlag(flag, value)
-				end
+				setSliderValue(v, false)
 			end,
 			Get = function()
 				return value
@@ -3755,7 +3985,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 		local labelRow = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 16),
+			Size = UDim2.new(1, 0, 0, 26),
 			LayoutOrder = 0,
 			Parent = wrap,
 		})
@@ -3766,6 +3996,8 @@ function Elements.CreateSection(tab, arg1, arg2)
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
+			TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Center,
 			Size = UDim2.new(1, -iconOff, 1, 0),
 			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Dropdown",
@@ -4171,12 +4403,19 @@ function Elements.CreateSection(tab, arg1, arg2)
 		local card = newRowCard(theme, etok)
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, etok.Control.InputRowHeight),
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
 			Parent = card,
+		})
+		Utils.Create("UIListLayout", {
+			Padding = UDim.new(0, 2),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = wrap,
 		})
 		local labelRow = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 16),
+			Size = UDim2.new(1, 0, 0, 26),
+			LayoutOrder = 0,
 			Parent = wrap,
 		})
 		local iconOff = addRowIcon(labelRow, opts.Icon, theme, etok)
@@ -4186,6 +4425,8 @@ function Elements.CreateSection(tab, arg1, arg2)
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
+			TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Center,
 			Size = UDim2.new(1, -iconOff, 1, 0),
 			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Input",
@@ -4193,8 +4434,8 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 		local box = Utils.Create("TextBox", {
 			BackgroundColor3 = theme.BackgroundElevated,
-			Position = UDim2.fromOffset(0, 18),
 			Size = UDim2.new(1, 0, 0, etok.Control.InputHeight),
+			LayoutOrder = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
@@ -4296,8 +4537,9 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 		local row = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, etok.Control.ToggleRowHeight),
+			Size = UDim2.new(1, 0, 0, math.max(etok.Control.ToggleRowHeight, 28)),
 			LayoutOrder = 0,
+			ClipsDescendants = true,
 			Parent = wrap,
 		})
 		local iconOff = addRowIcon(row, opts.Icon, theme, etok)
@@ -4310,6 +4552,8 @@ function Elements.CreateSection(tab, arg1, arg2)
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
+			TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Center,
 			Size = UDim2.new(1, -(40 + iconOff), 1, 0),
 			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Color",
@@ -4490,7 +4734,8 @@ function Elements.CreateSection(tab, arg1, arg2)
 		local card = newRowCard(theme, etok)
 		local row = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, etok.Control.KeybindRowHeight + 2),
+			Size = UDim2.new(1, 0, 0, etok.Control.KeybindRowHeight + 10),
+			ClipsDescendants = true,
 			Parent = card,
 		})
 		local iconOff = addRowIcon(row, opts.Icon, theme, etok)
@@ -4500,6 +4745,8 @@ function Elements.CreateSection(tab, arg1, arg2)
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
+			TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Center,
 			Size = UDim2.new(1, -(120 + iconOff), 1, 0),
 			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Keybind",
@@ -4886,7 +5133,33 @@ function Library:Init(opts)
 		if not currentPlaceAllowed() then
 			placeDeniedToastGui(guiParent)
 		end
-		local themeStub = { _themeOverride = type(opts.KeyTheme) == "table" and opts.KeyTheme or nil }
+		local keyThemeMerged = {}
+		local function mergeThemeOverride(src)
+			if type(src) ~= "table" then
+				return
+			end
+			if type(src.Colors) == "table" then
+				keyThemeMerged.Colors = keyThemeMerged.Colors or {}
+				Utils.DeepMerge(keyThemeMerged.Colors, src.Colors)
+			end
+			if type(src.Tokens) == "table" then
+				keyThemeMerged.Tokens = keyThemeMerged.Tokens or {}
+				Utils.DeepMerge(keyThemeMerged.Tokens, src.Tokens)
+			end
+			for k, v in pairs(src) do
+				if k ~= "Colors" and k ~= "Tokens" then
+					if type(v) == "table" then
+						keyThemeMerged[k] = keyThemeMerged[k] or {}
+						Utils.DeepMerge(keyThemeMerged[k], v)
+					else
+						keyThemeMerged[k] = v
+					end
+				end
+			end
+		end
+		mergeThemeOverride(winOpts.Theme)
+		mergeThemeOverride(opts.KeyTheme)
+		local themeStub = { _themeOverride = next(keyThemeMerged) and keyThemeMerged or nil }
 		local C = Core.GetColors(themeStub)
 		local tok = Core.GetTokens(themeStub)
 		local animTok = tok.Animation or {}
@@ -5042,11 +5315,8 @@ function Library:Init(opts)
 		})
 		Services.NotificationService:_ensureContainer(screen)
 
-		local keyFadeRoot = Utils.TryCreateCanvasGroup({
-			Name = "GulleKeyFade",
-			GroupTransparency = (animTok.KeyGateContentFadeIn == false) and 0 or 1,
-			Parent = screen,
-		})
+		-- Keep key gate crisp: avoid CanvasGroup fade, which can blur text on some clients.
+		local keyFadeRoot = nil
 		local overlayParent = keyFadeRoot or screen
 
 		local overlay = Utils.Create("Frame", {
@@ -5062,13 +5332,14 @@ function Library:Init(opts)
 			Name = "Card",
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromOffset(380, 0),
+			Size = UDim2.fromOffset(410, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
-			BackgroundColor3 = C.Surface,
+			BackgroundColor3 = C.BackgroundElevated,
+			BackgroundTransparency = 0.04,
 			BorderSizePixel = 0,
 			Parent = overlay,
 		})
-		local cardStrokeTargetT = 0.5
+		local cardStrokeTargetT = 0.34
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = card })
 		local cardStroke = Utils.Create("UIStroke", {
 			Color = C.Border,
@@ -5077,12 +5348,11 @@ function Library:Init(opts)
 			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 			Parent = card,
 		})
-
 		Utils.Create("UIPadding", {
-			PaddingTop = UDim.new(0, 18),
-			PaddingBottom = UDim.new(0, 18),
-			PaddingLeft = UDim.new(0, 18),
-			PaddingRight = UDim.new(0, 18),
+			PaddingTop = UDim.new(0, 14),
+			PaddingBottom = UDim.new(0, 14),
+			PaddingLeft = UDim.new(0, 16),
+			PaddingRight = UDim.new(0, 16),
 			Parent = card,
 		})
 
@@ -5095,7 +5365,7 @@ function Library:Init(opts)
 		})
 		Utils.Create("UIListLayout", {
 			FillDirection = Enum.FillDirection.Vertical,
-			Padding = UDim.new(0, 10),
+			Padding = UDim.new(0, 8),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = stack,
 		})
@@ -5108,6 +5378,7 @@ function Library:Init(opts)
 			TextColor3 = C.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Text = titleText,
+			LayoutOrder = 0,
 			Parent = stack,
 		})
 
@@ -5121,20 +5392,22 @@ function Library:Init(opts)
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextWrapped = true,
 			Text = descText,
+			LayoutOrder = 1,
 			Parent = stack,
 		})
 
 		local inputWrap = Utils.Create("Frame", {
 			BackgroundColor3 = C.SurfaceMuted,
 			BorderSizePixel = 0,
-			Size = UDim2.new(1, 0, 0, tok.Control.InputRowHeight),
+			Size = UDim2.new(1, 0, 0, 38),
+			LayoutOrder = 2,
 			Parent = stack,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Control.DefaultRadius), Parent = inputWrap })
 		Utils.Create("UIStroke", { Color = C.Border, Thickness = 1, Transparency = 0.65, Parent = inputWrap })
 		Utils.Create("UIPadding", {
-			PaddingLeft = UDim.new(0, 10),
-			PaddingRight = UDim.new(0, 10),
+			PaddingLeft = UDim.new(0, 12),
+			PaddingRight = UDim.new(0, 12),
 			Parent = inputWrap,
 		})
 
@@ -5163,12 +5436,14 @@ function Library:Init(opts)
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextWrapped = true,
 			Text = wrongDefault,
+			LayoutOrder = 3,
 			Parent = stack,
 		})
 
 		local btnRow = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, tok.Control.ButtonHeight),
+			LayoutOrder = 4,
 			Parent = stack,
 		})
 		Utils.Create("UIListLayout", {
@@ -5612,7 +5887,11 @@ function Library:Init(opts)
 	end
 
 	function api.ModifyTheme(_, partial)
+	if type(partial) == "table" and (type(partial.Tokens) == "table" or type(partial.Colors) == "table") then
+		Services.ThemeService:ApplyPreset(partial)
+	else
 		Services.ThemeService:ModifyTheme(partial)
+	end
 	end
 
 	function api.LoadConfiguration(_)
@@ -5658,9 +5937,9 @@ Library.V2ModernTheme = {
 	Tokens = {
 		Window = {
 			CornerRadius = 8,
-			TitleBarHeight = 43,
+			TitleBarHeight = 36,
 			TitleBarTop = 14,
-			BodyTop = 62,
+			BodyTop = 54,
 			TitleControlsWidth = 62,
 			BackgroundTransparency = 0.02,
 			NoiseLowTransparency = 0.997,
@@ -5679,7 +5958,7 @@ Library.V2ModernTheme = {
 			ItemInactiveTransparency = 0.3,
 			ItemActiveTransparency = 0.1,
 			ItemHoverTransparency = 0.19,
-			ActiveIndicatorWidth = 3,
+			ActiveIndicatorWidth = 2,
 			ItemSpacing = 3,
 			SidebarPadding = 8,
 			ContentGap = 6,
@@ -5731,6 +6010,7 @@ Library.V2ModernTheme = {
 		Notification = {
 			CornerRadius = 8,
 			FrameStrokeTransparency = 0.7,
+			UseCanvasGroupFade = false,
 		},
 	},
 	Colors = {
@@ -5756,8 +6036,8 @@ Library.V2SlateTheme = {
 	Tokens = {
 		Window = {
 			CornerRadius = 8,
-			TitleBarHeight = 43,
-			BodyTop = 62,
+			TitleBarHeight = 36,
+			BodyTop = 54,
 			BackgroundTransparency = 0.04,
 			TitleSize = 16,
 			SubtitleSize = 11,
@@ -5805,8 +6085,8 @@ Library.V2EmberTheme = {
 	Tokens = {
 		Window = {
 			CornerRadius = 8,
-			TitleBarHeight = 43,
-			BodyTop = 62,
+			TitleBarHeight = 36,
+			BodyTop = 54,
 			BackgroundTransparency = 0.04,
 			TitleSize = 16,
 			SubtitleSize = 11,
@@ -5847,6 +6127,102 @@ Library.V2EmberTheme = {
 		BorderLight = Color3.fromRGB(102, 73, 69),
 		TabInactive = Color3.fromRGB(166, 138, 133),
 		DeveloperRank = Color3.fromRGB(255, 164, 132),
+	},
+}
+
+Library.V2BlockyTheme = {
+	Tokens = {
+		Window = {
+			CornerRadius = 0,
+			TitleBarHeight = 36,
+			BodyTop = 54,
+			BackgroundTransparency = 0.02,
+			TitleSize = 16,
+			SubtitleSize = 11,
+		},
+		Tab = {
+			SidebarWidth = 168,
+			ItemHeight = 30,
+			ItemRadius = 0,
+			ItemTextSize = 13,
+			ItemIconSize = 14,
+			ItemPaddingX = 9,
+			ItemInnerGap = 7,
+			ItemInactiveTransparency = 0.3,
+			ItemActiveTransparency = 0.1,
+			ItemHoverTransparency = 0.19,
+			ActiveIndicatorWidth = 2,
+			ItemSpacing = 3,
+			SidebarPadding = 8,
+			ContentGap = 6,
+			SidebarTransparency = 0.1,
+			ContentShellTransparency = 0.1,
+			ColumnGap = 8,
+			ColumnCardTransparency = 0.08,
+			ColumnCardStrokeTransparency = 0.82,
+			ColumnCardPadding = 6,
+			PagePaddingTop = 2,
+			PagePaddingBottom = 4,
+			PagePaddingLeft = 2,
+			PagePaddingRight = 4,
+			SectionStackPadding = 5,
+			SearchHeight = 30,
+		},
+		Section = {
+			HeaderTextSize = 12,
+			DescriptionTextSize = 11,
+			TitleSpacing = 4,
+			BoxRadius = 0,
+			RowSpacing = 6,
+			RowPaddingX = 9,
+			RowPaddingY = 4,
+			RowStrokeTransparency = 0.72,
+			RowBackgroundTransparency = 0.08,
+			CardEnabled = true,
+			CardTransparency = 0.08,
+			CardStrokeTransparency = 0.72,
+			CardPadding = 7,
+		},
+		Control = {
+			DefaultRadius = 0,
+			TogglePill = false,
+			RowIconDefault = "rbxassetid://74523675899900",
+			LabelTextSize = 12,
+			SecondaryTextSize = 11,
+			ButtonHeight = 27,
+			ToggleRowHeight = 24,
+			CircleToggleSize = 22,
+			CircleToggleGlyphSize = 8,
+			CircleToggleInset = 3,
+			SliderBlockHeight = 28,
+			InputRowHeight = 38,
+			InputHeight = 25,
+			DropdownRowOpen = 27,
+			SliderValueChipWidthScale = 0.30,
+			SliderValueChipStrokeTransparency = 0.45,
+		},
+		Notification = {
+			CornerRadius = 0,
+			FrameStrokeTransparency = 0.45,
+			UseCanvasGroupFade = false,
+		},
+	},
+	Colors = {
+		Background = Color3.fromRGB(16, 17, 20),
+		BackgroundElevated = Color3.fromRGB(20, 22, 26),
+		Surface = Color3.fromRGB(27, 30, 35),
+		SurfaceMuted = Color3.fromRGB(24, 27, 31),
+		SurfaceHover = Color3.fromRGB(36, 40, 46),
+		RowBackground = Color3.fromRGB(28, 31, 36),
+		Accent = Color3.fromRGB(89, 168, 255),
+		AccentHover = Color3.fromRGB(114, 184, 255),
+		AccentMuted = Color3.fromRGB(67, 132, 203),
+		Text = Color3.fromRGB(233, 237, 244),
+		TextDim = Color3.fromRGB(148, 156, 170),
+		Border = Color3.fromRGB(82, 92, 106),
+		BorderLight = Color3.fromRGB(99, 111, 127),
+		TabInactive = Color3.fromRGB(126, 135, 150),
+		DeveloperRank = Color3.fromRGB(130, 194, 255),
 	},
 }
 
