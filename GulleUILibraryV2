@@ -1359,8 +1359,8 @@ function Core.CreateWindow(opts)
 	local titleControlsW = tok.Window.TitleControlsWidth or 100
 	local leftDrag = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -titleControlsW, 1, 0),
-		Position = UDim2.fromOffset(0, 0),
+		Size = UDim2.new(1, -(titleControlsW + 8), 1, 0),
+		Position = UDim2.fromOffset(titleControlsW + 8, 0),
 		Parent = titleBar,
 	})
 
@@ -1479,15 +1479,15 @@ function Core.CreateWindow(opts)
 	local titleControls = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.new(0, titleControlsW, 1, 0),
-		Position = UDim2.new(1, 0, 0, 0),
-		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.fromOffset(0, 0),
+		AnchorPoint = Vector2.new(0, 0),
 		Parent = titleBar,
 	})
 	Utils.Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
-		HorizontalAlignment = Enum.HorizontalAlignment.Right,
+		HorizontalAlignment = Enum.HorizontalAlignment.Left,
 		VerticalAlignment = Enum.VerticalAlignment.Center,
-		Padding = UDim.new(0, 6),
+		Padding = UDim.new(0, 2),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = titleControls,
 	})
@@ -1496,78 +1496,48 @@ function Core.CreateWindow(opts)
 		local b = Utils.Create("TextButton", {
 			Text = "",
 			BackgroundColor3 = colors.Surface,
-			BackgroundTransparency = 0.18,
-			Size = UDim2.fromOffset(22, 22),
+			BackgroundTransparency = 1,
+			Size = UDim2.fromOffset(12, 12),
 			AutoButtonColor = false,
 			BorderSizePixel = 0,
 			Parent = titleControls,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = b })
+		Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = b })
 		local stroke = Utils.Create("UIStroke", {
-			Color = colors.Border,
+			Color = kind == "close" and Color3.fromRGB(150, 72, 72) or Color3.fromRGB(146, 132, 76),
 			Thickness = 1,
-			Transparency = 0.6,
+			Transparency = 0.18,
 			Parent = b,
 		})
-		local glyphHost = Utils.Create("Frame", {
-			BackgroundTransparency = 1,
-			Size = UDim2.fromScale(1, 1),
-			Parent = b,
-		})
-		if kind == "min" then
-			local line = Utils.Create("Frame", {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.5, 0.58),
-				Size = UDim2.fromOffset(9, 1),
-				BorderSizePixel = 0,
-				BackgroundColor3 = colors.TextDim,
-				Parent = glyphHost,
-			})
-			return b, stroke, line
-		end
-		local lineA = Utils.Create("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromOffset(9, 1),
-			Rotation = 45,
-			BorderSizePixel = 0,
-			BackgroundColor3 = Color3.fromRGB(239, 140, 145),
-			Parent = glyphHost,
-		})
-		local lineB = Utils.Create("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromOffset(9, 1),
-			Rotation = -45,
-			BorderSizePixel = 0,
-			BackgroundColor3 = Color3.fromRGB(239, 140, 145),
-			Parent = glyphHost,
-		})
-		return b, stroke, lineA, lineB
+		local base = kind == "close" and Color3.fromRGB(230, 85, 85) or Color3.fromRGB(232, 187, 72)
+		local hover = kind == "close" and Color3.fromRGB(244, 105, 105) or Color3.fromRGB(244, 203, 92)
+		return b, stroke, base, hover
 	end
 
-	local minBtn, minBtnStroke, minGlyph = makeTitleBtn("min")
-	local closeBtn, closeBtnStroke, closeGlyphA, closeGlyphB = makeTitleBtn("close")
+	local minBtn, minBtnStroke, minBase, minHover = makeTitleBtn("min")
+	local closeBtn, closeBtnStroke, closeBase, closeHover = makeTitleBtn("close")
+	minBtn.BackgroundColor3 = minBase
+	closeBtn.BackgroundColor3 = closeBase
 	local function wireTitleBtnFx(b, isClose)
 		local sc = Utils.Create("UIScale", { Scale = 1, Parent = b })
-		local baseBg = colors.Surface
-		local hoverBg = isClose and Color3.fromRGB(103, 58, 64) or colors.SurfaceHover
+		local baseBg = isClose and closeBase or minBase
+		local hoverBg = isClose and closeHover or minHover
 		b.MouseEnter:Connect(function()
 			Utils.Tween(
 				b,
 				TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ BackgroundTransparency = 0.08, BackgroundColor3 = hoverBg }
+				{ BackgroundTransparency = 0, BackgroundColor3 = hoverBg }
 			)
 		end)
 		b.MouseLeave:Connect(function()
 			Utils.Tween(
 				b,
 				TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ BackgroundTransparency = 0.22, BackgroundColor3 = baseBg }
+				{ BackgroundTransparency = 0, BackgroundColor3 = baseBg }
 			)
 		end)
 		b.MouseButton1Down:Connect(function()
-			Utils.Tween(sc, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 0.92 })
+			Utils.Tween(sc, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 0.86 })
 		end)
 		b.MouseButton1Up:Connect(function()
 			Utils.Tween(sc, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
@@ -1687,7 +1657,7 @@ function Core.CreateWindow(opts)
 		end
 	end
 
-	local profileBarInst, profileNameInst, profileRankInst
+	local profileBarInst, profileNameInst, profileRankInst, profileNameIconInst
 	if opts.HideSidebarProfile ~= true then
 		profileBarInst = Utils.Create("Frame", {
 			BackgroundColor3 = colors.BackgroundElevated,
@@ -1742,9 +1712,21 @@ function Core.CreateWindow(opts)
 			TextColor3 = colors.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd,
-			Size = UDim2.new(1, 0, 0, 16),
+			Size = UDim2.new(1, -18, 0, 16),
 			Text = "@" .. LocalPlayer.Name,
 			LayoutOrder = 0,
+			Parent = textCol,
+		})
+		local profileIconAsset = tok.Tab.ProfileNameIcon or logoAsset or "rbxassetid://74523675899900"
+		profileNameIconInst = Utils.Create("ImageLabel", {
+			BackgroundTransparency = 1,
+			Image = profileIconAsset,
+			ImageColor3 = colors.Accent,
+			ScaleType = Enum.ScaleType.Fit,
+			Size = UDim2.fromOffset(12, 12),
+			Position = UDim2.new(1, -1, 0, 2),
+			AnchorPoint = Vector2.new(1, 0),
+			ZIndex = 2,
 			Parent = textCol,
 		})
 		profileRankInst = Utils.Create("TextLabel", {
@@ -2239,12 +2221,6 @@ function Core.CreateWindow(opts)
 
 	Core.AddThemeRef(window, main, "BackgroundColor3", "Background")
 	Core.AddThemeRef(window, mainStroke, "Color", "Border")
-	Core.AddThemeRef(window, minBtn, "BackgroundColor3", "Surface")
-	Core.AddThemeRef(window, minBtnStroke, "Color", "Border")
-	Core.AddThemeRef(window, minGlyph, "BackgroundColor3", "TextDim")
-	Core.AddThemeRef(window, closeBtnStroke, "Color", "Border")
-	Core.AddThemeRef(window, closeGlyphA, "BackgroundColor3", "Error")
-	Core.AddThemeRef(window, closeGlyphB, "BackgroundColor3", "Error")
 	if accent then
 		Core.AddThemeRef(window, accent, "BackgroundColor3", "Accent")
 	end
@@ -2258,6 +2234,9 @@ function Core.CreateWindow(opts)
 	if profileBarInst then
 		Core.AddThemeRef(window, profileBarInst, "BackgroundColor3", "BackgroundElevated")
 		Core.AddThemeRef(window, profileNameInst, "TextColor3", "Text")
+		if profileNameIconInst then
+			Core.AddThemeRef(window, profileNameIconInst, "ImageColor3", "Accent")
+		end
 	end
 	Core.AddThemeRef(window, sideStroke, "Color", "Border")
 	Core.AddThemeRef(window, tabList, "ScrollBarImageColor3", "Accent")
@@ -3111,7 +3090,7 @@ local function addRowIcon(row, iconId, theme, etok)
 end
 
 -- Parent must be a GuiObject frame (e.g. section rowsHost). Never parent rows to UIListLayout — they will not show (Rayfield/wind pattern: layout + siblings).
-local function createControlRowCard(rowsParent, theme, etok, win)
+local function createControlRowCard(rowsParent, theme, etok, win, layoutOrder)
 	local padX = etok.Section.RowPaddingX or 8
 	local padY = etok.Section.RowPaddingY or 4
 	local card = Utils.Create("Frame", {
@@ -3120,6 +3099,7 @@ local function createControlRowCard(rowsParent, theme, etok, win)
 		BorderSizePixel = 0,
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = type(layoutOrder) == "number" and layoutOrder or 0,
 		Parent = rowsParent,
 	})
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, etok.Section.BoxRadius), Parent = card })
@@ -3277,7 +3257,12 @@ function Elements.CreateSection(tab, arg1, arg2)
 		Core.AddThemeRef(win, wrapStroke, "Color", "Border")
 	end
 
-	local section = { _box = rowsHost, _list = rowsHost, _tab = tab, _wrap = wrap }
+	local section = { _box = rowsHost, _list = rowsHost, _tab = tab, _wrap = wrap, _nextRowOrder = 0 }
+	local function newRowCard(themeNow, etokNow)
+		local card = createControlRowCard(rowsHost, themeNow, etokNow, win, section._nextRowOrder)
+		section._nextRowOrder = section._nextRowOrder + 1
+		return card
+	end
 
 	function section:Remove()
 		if wrap.Parent then
@@ -3295,7 +3280,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		end
 		local value = flag and Services.StateService:GetFlag(flag) or def
 
-		local card = createControlRowCard(rowsHost, theme, etok, win)
+		local card = newRowCard(theme, etok)
 		local rowH = math.max(22, math.floor(tonumber(etok.Control.ToggleRowHeight) or 26))
 		local swH = math.max(20, rowH - 2)
 		local swW = math.floor(swH * 1.9 + 0.5)
@@ -3395,7 +3380,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 	function section:CreateButton(opts)
 		opts = opts or {}
 		local theme, etok = ElemCtx(win)
-		local card = createControlRowCard(rowsHost, theme, etok, win)
+		local card = newRowCard(theme, etok)
 		local btnStroke
 		local btn = Utils.Create("TextButton", {
 			BackgroundColor3 = theme.Surface,
@@ -3462,7 +3447,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		end
 		local value = flag and Services.StateService:GetFlag(flag) or def
 
-		local card = createControlRowCard(rowsHost, theme, etok, win)
+		local card = newRowCard(theme, etok)
 		local row = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, etok.Control.ToggleRowHeight),
@@ -3601,7 +3586,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		local value = flag and Services.StateService:GetFlag(flag) or def
 		value = Utils.Clamp(tonumber(value) or def, minv, maxv)
 
-		local card = createControlRowCard(rowsHost, theme, etok, win)
+		local card = newRowCard(theme, etok)
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, etok.Control.SliderBlockHeight),
@@ -3753,7 +3738,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			return Color3.new(a.R + (b.R - a.R) * k, a.G + (b.G - a.G) * k, a.B + (b.B - a.B) * k)
 		end
 
-		local card = createControlRowCard(rowsHost, theme, etok, win)
+		local card = newRowCard(theme, etok)
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, 0),
@@ -4180,7 +4165,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Services.StateService:SetFlag(flag, Services.StateService:GetFlag(flag) ~= nil and Services.StateService:GetFlag(flag) or def)
 		end
 
-		local card = createControlRowCard(rowsHost, theme, etok, win)
+		local card = newRowCard(theme, etok)
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, etok.Control.InputRowHeight),
@@ -4294,7 +4279,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		end
 		local col = getColor()
 
-		local card = createControlRowCard(rowsHost, theme, etok, win)
+		local card = newRowCard(theme, etok)
 		local wrap = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, 0),
@@ -4499,7 +4484,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			end
 		end
 
-		local card = createControlRowCard(rowsHost, theme, etok, win)
+		local card = newRowCard(theme, etok)
 		local row = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, etok.Control.KeybindRowHeight + 2),
@@ -5671,7 +5656,9 @@ Library.V2ModernTheme = {
 		Window = {
 			CornerRadius = 8,
 			TitleBarHeight = 43,
+			TitleBarTop = 11,
 			BodyTop = 62,
+			TitleControlsWidth = 44,
 			BackgroundTransparency = 0.1,
 			NoiseLowTransparency = 0.997,
 			NoiseHighTransparency = 0.985,
@@ -5679,7 +5666,7 @@ Library.V2ModernTheme = {
 			SubtitleSize = 11,
 		},
 		Tab = {
-			SidebarWidth = 176,
+			SidebarWidth = 168,
 			ItemHeight = 30,
 			ItemRadius = 6,
 			ItemTextSize = 13,
@@ -5692,13 +5679,19 @@ Library.V2ModernTheme = {
 			ActiveIndicatorWidth = 3,
 			ItemSpacing = 3,
 			SidebarPadding = 8,
-			ContentGap = 8,
+			ContentGap = 6,
 			SidebarTransparency = 0.1,
 			ContentShellTransparency = 0.1,
-			ColumnGap = 12,
+			ColumnGap = 8,
 			ColumnCardTransparency = 0.1,
 			ColumnCardStrokeTransparency = 0.95,
-			ColumnCardPadding = 8,
+			ColumnCardPadding = 6,
+			PagePaddingTop = 2,
+			PagePaddingBottom = 4,
+			PagePaddingLeft = 2,
+			PagePaddingRight = 4,
+			SectionStackPadding = 5,
+			SearchHeight = 30,
 		},
 		Section = {
 			HeaderTextSize = 12,
