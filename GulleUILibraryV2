@@ -1359,8 +1359,8 @@ function Core.CreateWindow(opts)
 	local titleControlsW = tok.Window.TitleControlsWidth or 100
 	local leftDrag = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -(titleControlsW + 8), 1, 0),
-		Position = UDim2.fromOffset(titleControlsW + 8, 0),
+		Size = UDim2.new(1, -titleControlsW, 1, 0),
+		Position = UDim2.fromOffset(0, 0),
 		Parent = titleBar,
 	})
 
@@ -1479,38 +1479,41 @@ function Core.CreateWindow(opts)
 	local titleControls = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
 		Size = UDim2.new(0, titleControlsW, 1, 0),
-		Position = UDim2.fromOffset(0, 0),
-		AnchorPoint = Vector2.new(0, 0),
+		Position = UDim2.new(1, 0, 0, 0),
+		AnchorPoint = Vector2.new(1, 0),
 		Parent = titleBar,
 	})
 	Utils.Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
-		HorizontalAlignment = Enum.HorizontalAlignment.Left,
+		HorizontalAlignment = Enum.HorizontalAlignment.Right,
 		VerticalAlignment = Enum.VerticalAlignment.Center,
-		Padding = UDim.new(0, 2),
+		Padding = UDim.new(0, 4),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = titleControls,
 	})
 
 	local function makeTitleBtn(kind)
 		local b = Utils.Create("TextButton", {
-			Text = "",
-			BackgroundColor3 = colors.Surface,
-			BackgroundTransparency = 1,
-			Size = UDim2.fromOffset(12, 12),
+			Text = kind == "close" and "×" or "−",
+			Font = Enum.Font.GothamBold,
+			TextSize = 12,
+			TextColor3 = kind == "close" and Color3.fromRGB(255, 199, 204) or colors.TextDim,
+			BackgroundColor3 = kind == "close" and Color3.fromRGB(95, 56, 61) or colors.Surface,
+			BackgroundTransparency = 0.2,
+			Size = UDim2.fromOffset(22, 18),
 			AutoButtonColor = false,
 			BorderSizePixel = 0,
 			Parent = titleControls,
 		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = b })
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 5), Parent = b })
 		local stroke = Utils.Create("UIStroke", {
-			Color = kind == "close" and Color3.fromRGB(150, 72, 72) or Color3.fromRGB(146, 132, 76),
+			Color = kind == "close" and Color3.fromRGB(140, 84, 92) or colors.Border,
 			Thickness = 1,
-			Transparency = 0.18,
+			Transparency = kind == "close" and 0.2 or 0.55,
 			Parent = b,
 		})
-		local base = kind == "close" and Color3.fromRGB(230, 85, 85) or Color3.fromRGB(232, 187, 72)
-		local hover = kind == "close" and Color3.fromRGB(244, 105, 105) or Color3.fromRGB(244, 203, 92)
+		local base = b.BackgroundColor3
+		local hover = kind == "close" and Color3.fromRGB(122, 68, 77) or colors.SurfaceHover
 		return b, stroke, base, hover
 	end
 
@@ -1526,14 +1529,14 @@ function Core.CreateWindow(opts)
 			Utils.Tween(
 				b,
 				TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ BackgroundTransparency = 0, BackgroundColor3 = hoverBg }
+				{ BackgroundTransparency = 0.08, BackgroundColor3 = hoverBg }
 			)
 		end)
 		b.MouseLeave:Connect(function()
 			Utils.Tween(
 				b,
 				TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ BackgroundTransparency = 0, BackgroundColor3 = baseBg }
+				{ BackgroundTransparency = 0.2, BackgroundColor3 = baseBg }
 			)
 		end)
 		b.MouseButton1Down:Connect(function()
@@ -1723,11 +1726,11 @@ function Core.CreateWindow(opts)
 			Image = profileIconAsset,
 			ImageColor3 = colors.Accent,
 			ScaleType = Enum.ScaleType.Fit,
-			Size = UDim2.fromOffset(12, 12),
-			Position = UDim2.new(1, -1, 0, 2),
-			AnchorPoint = Vector2.new(1, 0),
+			Size = UDim2.fromOffset(11, 11),
+			Position = UDim2.new(1, -2, 0.5, 0),
+			AnchorPoint = Vector2.new(1, 0.5),
 			ZIndex = 2,
-			Parent = textCol,
+			Parent = profileNameInst,
 		})
 		profileRankInst = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
@@ -5656,10 +5659,10 @@ Library.V2ModernTheme = {
 		Window = {
 			CornerRadius = 8,
 			TitleBarHeight = 43,
-			TitleBarTop = 11,
+			TitleBarTop = 14,
 			BodyTop = 62,
-			TitleControlsWidth = 44,
-			BackgroundTransparency = 0.1,
+			TitleControlsWidth = 62,
+			BackgroundTransparency = 0.02,
 			NoiseLowTransparency = 0.997,
 			NoiseHighTransparency = 0.985,
 			TitleSize = 16,
@@ -5755,7 +5758,7 @@ Library.V2SlateTheme = {
 			CornerRadius = 8,
 			TitleBarHeight = 43,
 			BodyTop = 62,
-			BackgroundTransparency = 0.1,
+			BackgroundTransparency = 0.04,
 			TitleSize = 16,
 			SubtitleSize = 11,
 		},
@@ -5804,7 +5807,7 @@ Library.V2EmberTheme = {
 			CornerRadius = 8,
 			TitleBarHeight = 43,
 			BodyTop = 62,
-			BackgroundTransparency = 0.1,
+			BackgroundTransparency = 0.04,
 			TitleSize = 16,
 			SubtitleSize = 11,
 		},
