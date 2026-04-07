@@ -1,11 +1,10 @@
 --[[
 	GulleUI — example hub (all controls + key flow).
 
-	Entry: UI:CreateWindowAfterKey — Junkie key gate (jnkie.com); set Junkie.Service / Identifier / Provider from your dashboard.
-	To try the builtin whitelist instead: KeySystem = "builtin", Keys = { "demo" }, remove or comment Junkie.
-	Alternative without key UI: UI:OpenAfterValidate({ Validate = function() return true end, Window = ..., Build = ... })
+	Junkie-only key gate — https://docs.jnkie.com/roblox-sdk/inline-ui
+	Fill Junkie.Service, Identifier, Provider from the Junkie dashboard; use Keyless or BootstrapScriptKey if the SDK asks for SCRIPT_KEY before input.
 
-	Local file: comment out HttpGet and use readfile (executor).
+	Local file: swap HttpGet for readfile("GulleUILibrary.lua").
 ]]
 
 -- local Library = loadstring(readfile("GulleUILibrary.lua"))()
@@ -18,16 +17,14 @@ local UI = Library:Init()
 UI:CreateWindowAfterKey({
 	KeySystem = "junkie",
 	Junkie = {
-		Service = "YOUR_SERVICE", -- dashboard → service name
-		Identifier = "12345", -- dashboard → user ID
-		Provider = "Mixed", -- your provider name
-		-- If Junkie shows "No script key provided" before the key field, enable ONE of:
+		Service = "YOUR_SERVICE",
+		Identifier = "12345",
+		Provider = "Mixed",
 		-- Keyless = true,
 		-- BootstrapScriptKey = "paste_script_key_from_dashboard",
-		LibraryURL = "https://jnkie.com/sdk/library.lua",
-		UseGetKeyLink = true,
+		-- LibraryURL = "https://jnkie.com/sdk/library.lua",
+		-- UseGetKeyLink = true,
 	},
-	-- Builtin demo (only if KeySystem = "builtin"): Keys = { "demo" },
 	Title = "Key system",
 	Description = "Enter your Junkie key to continue.",
 	OnSuccess = function(key)
@@ -88,6 +85,15 @@ SecCore:CreateToggle({
 	Flag = "god_mode",
 	Callback = function(v)
 		print("[Toggle] God Mode:", v)
+	end,
+})
+
+SecCore:CreateCircleToggle({
+	Name = "Shield (Circle Toggle)",
+	Default = true,
+	Flag = "shield_mode",
+	Callback = function(v)
+		print("[CircleToggle] Shield:", v)
 	end,
 })
 
