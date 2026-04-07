@@ -306,6 +306,9 @@ local _defaultTokens = {
 	Control = {
 		DefaultRadius = 6,
 		TogglePill = true,
+		CircleToggleSize = 24,
+		CircleToggleGlyphSize = 10,
+		CircleToggleInset = 3,
 		LabelTextSize = 13,
 		SecondaryTextSize = 12,
 		ButtonHeight = 30,
@@ -3100,6 +3103,140 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 	end
 
+	function section:CreateCircleToggle(opts)
+		opts = opts or {}
+		local theme, etok = ElemCtx(win)
+		local flag = opts.Flag
+		local def = opts.Default == true
+		if flag then
+			Services.StateService:SetFlag(flag, Services.StateService:GetFlag(flag) ~= nil and Services.StateService:GetFlag(flag) or def)
+		end
+		local value = flag and Services.StateService:GetFlag(flag) or def
+
+		local card = createControlRowCard(rowsHost, theme, etok, win)
+		local row = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, etok.Control.ToggleRowHeight),
+			Parent = card,
+		})
+		Utils.Create("TextLabel", {
+			BackgroundTransparency = 1,
+			Font = Enum.Font.Gotham,
+			TextSize = etok.Control.LabelTextSize,
+			TextColor3 = theme.Text,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Size = UDim2.new(1, -46, 1, 0),
+			Text = opts.Name or "Toggle",
+			Parent = row,
+		})
+
+		local csz = math.max(18, math.floor(tonumber(etok.Control.CircleToggleSize) or 24))
+		local cInset = math.max(2, math.floor(tonumber(etok.Control.CircleToggleInset) or 3))
+		local glyphSize = math.max(6, math.floor(tonumber(etok.Control.CircleToggleGlyphSize) or 10))
+
+		local click = Utils.Create("TextButton", {
+			BackgroundTransparency = 1,
+			Size = UDim2.fromOffset(csz, csz),
+			Position = UDim2.new(1, -csz, 0.5, -math.floor(csz / 2)),
+			Text = "",
+			AutoButtonColor = false,
+			Parent = row,
+		})
+		local ring = Utils.Create("Frame", {
+			BackgroundColor3 = theme.Surface,
+			Size = UDim2.fromScale(1, 1),
+			BorderSizePixel = 0,
+			Parent = click,
+		})
+		Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = ring })
+		local ringStroke = Utils.Create("UIStroke", {
+			Color = theme.Border,
+			Thickness = 1,
+			Transparency = 0.2,
+			Parent = ring,
+		})
+		local glyphWrap = Utils.Create("Frame", {
+			BackgroundColor3 = theme.Accent,
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = value and UDim2.fromScale(1, 1) or UDim2.fromScale(0.2, 0.2),
+			BackgroundTransparency = value and 0 or 1,
+			Parent = ring,
+		})
+		Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = glyphWrap })
+		local square = Utils.Create("Frame", {
+			BackgroundColor3 = Color3.new(1, 1, 1),
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(glyphSize, glyphSize),
+			BackgroundTransparency = value and 0 or 1,
+			Parent = glyphWrap,
+		})
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 2), Parent = square })
+		Utils.Create("UIPadding", {
+			PaddingLeft = UDim.new(0, cInset),
+			PaddingRight = UDim.new(0, cInset),
+			PaddingTop = UDim.new(0, cInset),
+			PaddingBottom = UDim.new(0, cInset),
+			Parent = glyphWrap,
+		})
+
+		local function setState(v, animate)
+			value = v
+			if flag then
+				Services.StateService:SetFlag(flag, v)
+			end
+			local th = select(1, ElemCtx(win))
+			if animate then
+				Utils.Tween(ring, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					BackgroundColor3 = v and th.Accent or th.Surface,
+				})
+				Utils.Tween(glyphWrap, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					BackgroundTransparency = v and 0 or 1,
+					Size = v and UDim2.fromScale(1, 1) or UDim2.fromScale(0.2, 0.2),
+				})
+				Utils.Tween(square, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					BackgroundTransparency = v and 0 or 1,
+				})
+				Utils.Tween(ringStroke, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					Color = v and th.Accent or th.Border,
+				})
+			else
+				ring.BackgroundColor3 = v and th.Accent or th.Surface
+				glyphWrap.BackgroundTransparency = v and 0 or 1
+				glyphWrap.Size = v and UDim2.fromScale(1, 1) or UDim2.fromScale(0.2, 0.2)
+				square.BackgroundTransparency = v and 0 or 1
+				ringStroke.Color = v and th.Accent or th.Border
+			end
+			if opts.Callback then
+				task.spawn(opts.Callback, v)
+			end
+		end
+
+		click.MouseButton1Click:Connect(function()
+			setState(not value, true)
+		end)
+
+		if flag then
+			Services.StateService:OnFlagChanged(flag, function(v)
+				if type(v) == "boolean" and v ~= value then
+					setState(v, true)
+				end
+			end)
+		end
+
+		return elementApi(card, {
+			Set = function(_, v)
+				setState(v, true)
+			end,
+			Get = function()
+				return value
+			end,
+		})
+	end
+
 	function section:CreateSlider(opts)
 		opts = opts or {}
 		local theme, etok = ElemCtx(win)
@@ -4141,6 +4278,15 @@ function Elements.CreateSection(tab, arg1, arg2)
 			o.Default = opts.CurrentState
 		end
 		return self:CreateToggle(o)
+	end
+
+	function section:NewCircleToggle(opts)
+		opts = opts or {}
+		local o = Utils.DeepCopy(opts)
+		if opts.CurrentState ~= nil then
+			o.Default = opts.CurrentState
+		end
+		return self:CreateCircleToggle(o)
 	end
 
 	function section:NewTextBox(opts)
