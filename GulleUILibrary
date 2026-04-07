@@ -4973,6 +4973,12 @@ function Library:Init(opts)
 			if opts.PrintCredits == true then
 				print("GulleUI — CreateWindowAfterKey → CreateWindow. See GulleUILibrary.md.")
 			end
+			if opts.DeferWindowOpen == true then
+				if type(opts.OnSuccess) == "function" then
+					pcall(opts.OnSuccess, usedKey)
+				end
+				return nil
+			end
 			local w = Core.CreateWindow(winOpts)
 			if not w then
 				warn("[GulleUI] CreateWindowAfterKey: CreateWindow returned nil.")
