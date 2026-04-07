@@ -418,6 +418,8 @@ Services.ThemeService = {
 	_defaultTokens = _defaultTokens,
 	Presets = {},
 	_windowCallbacks = {},
+	-- Last hub window from CreateWindow; used so Notify/_spawnToast matches per-window Theme overrides.
+	_toastColorWindow = nil,
 }
 
 Services.ThemeService.TokenGroupKeys = _tokenGroupKeys
@@ -441,6 +443,17 @@ function Services.ThemeService:_applyPresetTable(preset)
 		if _tokenGroupKeys[k] and type(v) == "table" then
 			self.Tokens[k] = self.Tokens[k] or {}
 			Utils.DeepMerge(self.Tokens[k], v)
+		end
+	end
+	-- V2 library themes (V2SlateTheme, etc.) only set surface/accent text colors. Defaults still carry
+	-- semantic notify colors (e.g. blue Info), so toasts looked "stuck" on blue instead of the preset Accent.
+	if type(preset.Colors) == "table" then
+		local C = self.Current
+		if preset.Colors.Info == nil and typeof(C.Accent) == "Color3" then
+			C.Info = C.Accent
+		end
+		if preset.Colors.Success == nil and typeof(C.Accent) == "Color3" then
+			C.Success = C.Accent
 		end
 	end
 end
@@ -658,8 +671,10 @@ function Services.NotificationService:_ensureContainer(parent)
 end
 
 function Services.NotificationService:_spawnToast(item)
-	local theme = Services.ThemeService.Current
-	local nt = Services.ThemeService.Tokens.Notification
+	local tw = Services.ThemeService._toastColorWindow
+	local themeWin = tw and not tw._destroyed and tw or nil
+	local theme = themeWin and Core.GetColors(themeWin) or Services.ThemeService.Current
+	local nt = (Core.GetTokens(themeWin).Notification) or Services.ThemeService.Tokens.Notification
 	local function notifyTextColors()
 		local rawType = item.Type
 		local k = ""
@@ -671,18 +686,28 @@ function Services.NotificationService:_spawnToast(item)
 		end
 		local fbErr = Color3.fromRGB(248, 113, 113)
 		local fbWarn = Color3.fromRGB(251, 191, 36)
-		local fbInfo = Color3.fromRGB(96, 165, 250)
-		local fbOk = Color3.fromRGB(52, 211, 153)
-		local fbAcc = Color3.fromRGB(234, 118, 42)
 		local fbDim = Color3.fromRGB(148, 146, 138)
+		local fbAcc = Color3.fromRGB(234, 118, 42)
+		-- When semantic colors are missing, fall back to Accent so notifications match the active theme.
+		local acc = (typeof(theme.Accent) == "Color3" and theme.Accent) or fbAcc
+		local o = themeWin and themeWin._themeOverride or nil
+		local oColors = type(o) == "table" and o.Colors or nil
+		local infoMissingInOverride = type(oColors) == "table" and oColors.Info == nil
+		local successMissingInOverride = type(oColors) == "table" and oColors.Success == nil
 		if k == "error" or k == "danger" or k == "fail" or k == "failed" then
 			return c3(theme.Error, fbErr), c3(theme.TextDim, fbDim)
 		elseif k == "warning" or k == "warn" then
 			return c3(theme.Warning, fbWarn), c3(theme.TextDim, fbDim)
 		elseif k == "info" or k == "information" then
-			return c3(theme.Info, fbInfo), c3(theme.TextDim, fbDim)
+			if infoMissingInOverride then
+				return acc, c3(theme.TextDim, fbDim)
+			end
+			return c3(theme.Info, acc), c3(theme.TextDim, fbDim)
 		elseif k == "success" or k == "ok" then
-			return c3(theme.Success, fbOk), c3(theme.TextDim, fbDim)
+			if successMissingInOverride then
+				return acc, c3(theme.TextDim, fbDim)
+			end
+			return c3(theme.Success, acc), c3(theme.TextDim, fbDim)
 		else
 			return c3(theme.Accent, fbAcc), c3(theme.TextDim, fbDim)
 		end
@@ -691,7 +716,7 @@ function Services.NotificationService:_spawnToast(item)
 	local function surfaceFallback()
 		return (typeof(theme.Surface) == "Color3" and theme.Surface) or Color3.fromRGB(30, 30, 34)
 	end
-	local winCorner = (Services.ThemeService.Tokens.Window or {}).CornerRadius
+	local winCorner = (Core.GetTokens(themeWin).Window or {}).CornerRadius
 	local cornerR = math.max(0, math.floor(tonumber(nt.CornerRadius) or tonumber(winCorner) or 6))
 	local frameStrokeThick = math.clamp(tonumber(nt.FrameStrokeThickness) or 1, 0, 2.5)
 	local frameStrokeT = math.clamp(tonumber(nt.FrameStrokeTransparency) or 0.62, 0, 0.95)
@@ -2231,9 +2256,18 @@ function Core.CreateWindow(opts)
 		end
 		-- Full preset switch (resets to defaults + applies preset) when tokens/colors are provided.
 		if type(newTheme.Tokens) == "table" or type(newTheme.Colors) == "table" then
+			-- Set before ApplyPreset so ThemeService window callbacks use the new palette (not stale merge).
+			self._themeOverride = Utils.DeepCopy(newTheme)
 			Services.ThemeService:ApplyPreset(newTheme)
 		else
 			Services.ThemeService:ModifyTheme(newTheme)
+			Core.ApplyThemeRefs(self)
+			for _, hook in ipairs(self._tabThemeHooks or {}) do
+				pcall(hook)
+			end
+			if self._syncProfileRankColor then
+				self:_syncProfileRankColor()
+			end
 		end
 	end
 
@@ -2446,6 +2480,9 @@ function Core.CreateWindow(opts)
 			return
 		end
 		self._destroyed = true
+		if Services.ThemeService._toastColorWindow == self then
+			Services.ThemeService._toastColorWindow = nil
+		end
 		self:_closeGulleDropdown()
 		if self._unsubscribeTheme then
 			self._unsubscribeTheme()
@@ -3176,6 +3213,8 @@ end
 		end
 		searchBox:CaptureFocus()
 	end)
+
+	Services.ThemeService._toastColorWindow = window
 
 	return window
 end
@@ -5932,11 +5971,31 @@ function Library:Init(opts)
 	end
 
 	function api.ModifyTheme(_, partial)
-	if type(partial) == "table" and (type(partial.Tokens) == "table" or type(partial.Colors) == "table") then
-		Services.ThemeService:ApplyPreset(partial)
-	else
-		Services.ThemeService:ModifyTheme(partial)
-	end
+		if type(partial) ~= "table" then
+			return
+		end
+		local function refreshWindowTheme()
+			local w = api.Window
+			if not w then
+				return
+			end
+			Core.ApplyThemeRefs(w)
+			for _, hook in ipairs(w._tabThemeHooks or {}) do
+				pcall(hook)
+			end
+			if w._syncProfileRankColor then
+				w:_syncProfileRankColor()
+			end
+		end
+		if type(partial.Tokens) == "table" or type(partial.Colors) == "table" then
+			if api.Window then
+				api.Window._themeOverride = Utils.DeepCopy(partial)
+			end
+			Services.ThemeService:ApplyPreset(partial)
+		else
+			Services.ThemeService:ModifyTheme(partial)
+			refreshWindowTheme()
+		end
 	end
 
 	function api.LoadConfiguration(_)
