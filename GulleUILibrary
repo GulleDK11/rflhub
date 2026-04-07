@@ -2206,7 +2206,7 @@ function Core.CreateWindow(opts)
 		screen.Enabled = false
 	end)
 	closeBtn.MouseButton1Click:Connect(function()
-		screen.Enabled = false
+		window:Destroy()
 	end)
 
 	local dragging, dragStart, startPos
@@ -5140,13 +5140,25 @@ function Library:Init(opts)
 		end
 
 		local savedKey = loadSavedKey()
+		local autoSubmitSaved = false
 		if savedKey then
 			box.Text = savedKey
+			autoSubmitSaved = opts.AutoUseSavedKey ~= false
 		elseif not saveKey then
 			clearPersistedKey()
 		end
+		if autoSubmitSaved then
+			task.defer(function()
+				if not opened and not exiting then
+					trySubmit()
+				end
+			end)
+		end
 
 		task.defer(function()
+			if autoSubmitSaved then
+				return
+			end
 			if keyFadeRoot and keyFadeRoot:IsA("CanvasGroup") and animTok.KeyGateContentFadeIn ~= false then
 				keyFadeRoot.GroupTransparency = 1
 				Utils.Tween(
