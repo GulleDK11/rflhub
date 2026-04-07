@@ -1,1 +1,308 @@
+-- V2 hosted example (executor). For Studio usage, use ExampleV2_Studio.lua.
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/GulleDK11/rflhub/refs/heads/main/GulleUILibraryV2"))()
+local UI = Library:Init()
 
+local Window = UI:CreateWindow({
+	Name = "GulleUI V2 Example",
+	Subtitle = "Feature showcase",
+	Theme = Library.V2ModernTheme,
+	ToggleUIKeybind = Enum.KeyCode.RightShift,
+	LoadingTitle = "Gulle V2",
+	LoadingSubtitle = "Preparing interface...",
+	Logo = "rbxassetid://74523675899900",
+	LogoPosition = "LeftOfTitle",
+	MobileOpenButtonTouchOnly = true,
+	MobileOpenButton = true,
+	MobileOpenButtonImage = "rbxassetid://74523675899900",
+	ConfigurationSaving = {
+		Enabled = true,
+		FolderName = "GulleUIV2",
+		FileName = tostring(game.PlaceId),
+	},
+})
+
+local TabAim = Window:CreateTab({ Name = "Aim", Icon = "rbxassetid://74523675899900" })
+local TabRage = Window:CreateTab({ Name = "Rage", Icon = "rbxassetid://74523675899900" })
+local TabVisuals = Window:CreateTab({ Name = "Visuals", Icon = "rbxassetid://74523675899900" })
+local TabPlayer = Window:CreateTab({ Name = "Player", Icon = "rbxassetid://74523675899900" })
+Window:CreateTabSpacer("Misc")
+local TabMisc = Window:CreateTab({ Name = "Miscellaneous", Icon = "rbxassetid://74523675899900" })
+local TabSettings = Window:CreateTab({ Name = "Settings", Icon = "rbxassetid://74523675899900" })
+local TabMusic = Window:CreateTab({ Name = "Music", Icon = "rbxassetid://74523675899900" })
+local TabProfile = Window:CreateTab({ Name = "Profile", Icon = "rbxassetid://74523675899900" })
+
+local AimSections = TabAim:CreateSectionBundle({
+	Left = {
+		{ Name = "Aimbot", Description = "" },
+		{ Name = "Advanced", Description = "" },
+	},
+	Right = {
+		{ Name = "Visualize FOV", Description = "" },
+		{ Name = "Colors", Description = "" },
+	},
+})
+
+AimSections.Left[1]:CreateToggle({ Name = "Aimbot", Default = false, Flag = "v2_aimbot" })
+AimSections.Left[1]:CreateCircleToggle({ Name = "Visible Check", Default = true, Flag = "v2_visible" })
+AimSections.Left[1]:CreateDropdown({
+	Name = "Hit Part",
+	Options = { "Head", "Torso", "HumanoidRootPart" },
+	Default = "Head",
+	Search = true,
+	MaxVisibleRows = 6,
+	Flag = "v2_hitpart",
+})
+AimSections.Left[1]:CreateSlider({
+	Name = "FOV",
+	Min = 10,
+	Max = 360,
+	Default = 148,
+	Increment = 1,
+	Flag = "v2_fov",
+})
+
+AimSections.Left[2]:CreateToggle({ Name = "Deadzone", Default = true, Flag = "v2_deadzone" })
+AimSections.Left[2]:CreateSlider({
+	Name = "Smoothness",
+	Min = 0,
+	Max = 100,
+	Default = 35,
+	Increment = 1,
+	Flag = "v2_smoothness",
+})
+AimSections.Left[2]:CreateInput({
+	Name = "Blacklist",
+	Placeholder = "Comma separated users",
+	Default = "",
+	Trigger = "FocusLost",
+	Flag = "v2_blacklist",
+})
+
+AimSections.Right[1]:CreateToggle({ Name = "Fill FOV", Default = false, Flag = "v2_fillfov" })
+AimSections.Right[1]:CreateToggle({ Name = "Target Tracer", Default = false, Flag = "v2_tracer" })
+AimSections.Right[1]:CreateToggle({ Name = "Target Dot", Default = false, Flag = "v2_dot" })
+AimSections.Right[1]:CreateCircleToggle({ Name = "Mini Stats", Default = true, Flag = "v2_ministats" })
+
+AimSections.Right[2]:CreateColorPicker({
+	Name = "FOV Color",
+	Default = Color3.fromRGB(80, 150, 255),
+	Flag = "v2_fov_color",
+})
+AimSections.Right[2]:CreateColorPicker({
+	Name = "Tracer Color",
+	Default = Color3.fromRGB(80, 150, 255),
+	Flag = "v2_tracer_color",
+})
+AimSections.Right[2]:CreateColorPicker({
+	Name = "Dot Color",
+	Default = Color3.fromRGB(80, 150, 255),
+	Flag = "v2_dot_color",
+})
+
+local RageSections = TabRage:CreateSectionBundle({
+	Left = {
+		{ Name = "Main", Description = "" },
+		{ Name = "Automation", Description = "" },
+	},
+	Right = {
+		{ Name = "Targeting", Description = "" },
+		{ Name = "Safety", Description = "" },
+	},
+})
+RageSections.Left[1]:CreateLabel({ Text = "Button + divider + paragraph demo." })
+RageSections.Left[1]:CreateButton({
+	Name = "Force Notify",
+	Callback = function()
+		Window:Notify({ Title = "Rage", Message = "Action executed.", Duration = 2, Type = "warning" })
+	end,
+})
+RageSections.Left[1]:CreateDivider({})
+RageSections.Left[1]:CreateParagraph({ Text = "This section demonstrates non-input elements in V2 style." })
+RageSections.Left[2]:CreateToggle({ Name = "Auto Shoot", Default = false, Flag = "v2_auto_shoot" })
+RageSections.Left[2]:CreateKeybind({ Name = "Auto Shoot Key", Default = Enum.KeyCode.X, Flag = "v2_auto_shoot_key" })
+RageSections.Right[1]:CreateDropdown({
+	Name = "Target Priority",
+	Options = { "Distance", "FOV", "Health" },
+	Default = "FOV",
+	Flag = "v2_target_priority",
+})
+RageSections.Right[1]:CreateCircleToggle({ Name = "Silent Aim", Default = false, Flag = "v2_silent" })
+RageSections.Right[2]:CreateToggle({ Name = "Team Check", Default = true, Flag = "v2_teamcheck" })
+RageSections.Right[2]:CreateInput({ Name = "Whitelist", Placeholder = "Player1, Player2", Default = "", Flag = "v2_whitelist" })
+
+local VisualSections = TabVisuals:CreateSectionBundle({
+	Left = {
+		{ Name = "ESP", Description = "" },
+		{ Name = "World", Description = "" },
+	},
+	Right = {
+		{ Name = "Colors", Description = "" },
+		{ Name = "Preview", Description = "" },
+	},
+})
+VisualSections.Left[1]:CreateToggle({ Name = "ESP", Default = false, Flag = "v2_esp" })
+VisualSections.Left[1]:CreateSlider({ Name = "ESP Distance", Min = 50, Max = 1000, Default = 300, Increment = 10, Flag = "v2_esp_dist" })
+VisualSections.Left[2]:CreateToggle({ Name = "Fullbright", Default = false, Flag = "v2_fullbright" })
+VisualSections.Left[2]:CreateSlider({ Name = "Time Of Day", Min = 0, Max = 24, Default = 12, Increment = 1, Flag = "v2_time" })
+VisualSections.Right[1]:CreateColorPicker({ Name = "ESP Color", Default = Color3.fromRGB(90, 170, 255), Flag = "v2_esp_color" })
+VisualSections.Right[1]:CreateColorPicker({ Name = "Box Color", Default = Color3.fromRGB(255, 255, 255), Flag = "v2_box_color" })
+VisualSections.Right[2]:CreateButton({
+	Name = "Notify",
+	Callback = function()
+		Window:Notify({
+			Title = "V2 Theme",
+			Message = "Modern preset loaded.",
+			Duration = 3,
+			Type = "info",
+		})
+	end,
+})
+
+local PlayerSections = TabPlayer:CreateSectionBundle({
+	Left = {
+		{ Name = "Identity", Description = "" },
+	},
+	Right = {
+		{ Name = "Movement", Description = "" },
+	},
+})
+PlayerSections.Left[1]:CreateInput({
+	Name = "Custom Name",
+	Placeholder = "Type here...",
+	Default = "",
+	Trigger = "TextChanged",
+	Flag = "v2_name",
+})
+PlayerSections.Left[1]:CreateKeybind({
+	Name = "Panic Key",
+	Default = Enum.KeyCode.P,
+	Flag = "v2_panic_key",
+})
+PlayerSections.Right[1]:CreateSlider({ Name = "WalkSpeed", Min = 16, Max = 100, Default = 16, Increment = 1, Flag = "v2_walkspeed" })
+PlayerSections.Right[1]:CreateSlider({ Name = "JumpPower", Min = 50, Max = 150, Default = 50, Increment = 1, Flag = "v2_jump" })
+
+local MiscSections = TabMisc:CreateSectionBundle({
+	Left = {
+		{ Name = "Utility", Description = "" },
+	},
+	Right = {
+		{ Name = "Debug", Description = "" },
+	},
+})
+MiscSections.Left[1]:CreateButton({
+	Name = "Print Flags",
+	Callback = function()
+		print("Aimbot:", UI:GetFlag("v2_aimbot"), "FOV:", UI:GetFlag("v2_fov"))
+	end,
+})
+MiscSections.Left[1]:CreateToggle({ Name = "Performance Mode", Default = false, Flag = "v2_perf" })
+MiscSections.Right[1]:CreateParagraph({ Text = "Debug tools and quick checks for flag state and config behavior." })
+MiscSections.Right[1]:CreateButton({
+	Name = "Reload UI",
+	Callback = function()
+		Window:Notify({ Title = "Debug", Message = "Reload requested.", Duration = 2, Type = "info" })
+	end,
+})
+
+local SettingsSections = TabSettings:CreateSectionBundle({
+	Left = {
+		{ Name = "Config", Description = "" },
+	},
+	Right = {
+		{ Name = "Theme", Description = "" },
+	},
+})
+SettingsSections.Left[1]:CreateButton({
+	Name = "Save Config",
+	Callback = function()
+		local ok = Window:SaveConfiguration()
+		Window:Notify({
+			Title = "Config",
+			Message = ok and "Saved." or "Save failed.",
+			Duration = 2.5,
+			Type = ok and "success" or "error",
+		})
+	end,
+})
+SettingsSections.Left[1]:CreateButton({
+	Name = "Load Config",
+	Callback = function()
+		local ok = Window:LoadConfiguration()
+		Window:Notify({
+			Title = "Config",
+			Message = ok and "Loaded." or "Load failed.",
+			Duration = 2.5,
+			Type = ok and "success" or "error",
+		})
+	end,
+})
+SettingsSections.Right[1]:CreateButton({
+	Name = "Use Modern Theme",
+	Callback = function()
+		Window:ModifyTheme(Library.V2ModernTheme)
+	end,
+})
+SettingsSections.Right[1]:CreateButton({
+	Name = "Use Slate Theme",
+	Callback = function()
+		Window:ModifyTheme(Library.V2SlateTheme)
+	end,
+})
+SettingsSections.Right[1]:CreateButton({
+	Name = "Use Ember Theme",
+	Callback = function()
+		Window:ModifyTheme(Library.V2EmberTheme)
+	end,
+})
+SettingsSections.Right[1]:CreateButton({
+	Name = "Use Blocky Theme",
+	Callback = function()
+		Window:ModifyTheme(Library.V2BlockyTheme)
+	end,
+})
+SettingsSections.Right[1]:CreateButton({
+	Name = "Notify Types Test",
+	Callback = function()
+		Window:Notify({ Title = "Success", Message = "Type color on title/dot.", Duration = 2, Type = "success" })
+		Window:Notify({ Title = "Info", Message = "Notifications stay visible when UI is hidden.", Duration = 2, Type = "info" })
+	end,
+})
+local MusicSections = TabMusic:CreateSectionBundle({
+	Left = {
+		{ Name = "Playback", Description = "" },
+	},
+	Right = {
+		{ Name = "Queue", Description = "" },
+	},
+})
+MusicSections.Left[1]:CreateInput({ Name = "Track ID", Placeholder = "rbxassetid://...", Default = "", Flag = "v2_track_id" })
+MusicSections.Left[1]:CreateSlider({ Name = "Volume", Min = 0, Max = 10, Default = 5, Increment = 1, Flag = "v2_volume" })
+MusicSections.Left[1]:CreateButton({ Name = "Play", Callback = function() Window:Notify({ Title = "Music", Message = "Play pressed.", Duration = 2, Type = "info" }) end })
+MusicSections.Right[1]:CreateDropdown({
+	Name = "Saved Tracks",
+	Options = { "Menu", "Combat", "Ambient" },
+	Default = "Menu",
+	Flag = "v2_saved_track",
+})
+MusicSections.Right[1]:CreateButton({ Name = "Stop", Callback = function() Window:Notify({ Title = "Music", Message = "Stop pressed.", Duration = 2, Type = "warning" }) end })
+
+local ProfileSections = TabProfile:CreateSectionBundle({
+	Left = {
+		{ Name = "Profile", Description = "" },
+	},
+	Right = {
+		{ Name = "Stats", Description = "" },
+	},
+})
+ProfileSections.Left[1]:CreateInput({ Name = "Status", Placeholder = "Online", Default = "Grinding", Flag = "v2_status" })
+ProfileSections.Left[1]:CreateToggle({ Name = "Streamer Mode", Default = false, Flag = "v2_streamer" })
+ProfileSections.Right[1]:CreateParagraph({ Text = "Session time: 00:12:48\nKills: 7\nWins: 2" })
+ProfileSections.Right[1]:CreateButton({
+	Name = "Copy Profile",
+	Callback = function()
+		if setclipboard then
+			setclipboard("@" .. game.Players.LocalPlayer.Name)
+		end
+		Window:Notify({ Title = "Profile", Message = "Copied profile name.", Duration = 2, Type = "success" })
+	end,
+})
