@@ -4523,40 +4523,18 @@ function Library:Init(opts)
 			end
 		end
 
-		local junkieMod = nil
+		local junkieBridge = nil
 		local junkieUseGetKeyLink = false
 		if jnkOpts and loadJunkieSdk then
-			local boot = jnkOpts.BootstrapScriptKey
-				or jnkOpts.bootstrap_script_key
-				or jnkOpts.ScriptKey
-				or jnkOpts.script_key
-			local autoBoot = jnkOpts.AutoBootstrapScriptKey ~= false and jnkOpts.auto_bootstrap_script_key ~= false
-			local keylessBoot = jnkOpts.Keyless == true or jnkOpts.keyless == true
-			local effectiveBoot = (type(boot) == "string" and boot ~= "" and boot) or nil
-
-			-- Official inline UI flow sets UI_CLOSED and SCRIPT_KEY state before using the SDK
-			-- (https://docs.jnkie.com/roblox-sdk/inline-ui). Some SDK builds require SCRIPT_KEY to exist
-			-- before library.lua finishes loading; use Keyless / BootstrapScriptKey if you see "No script key provided".
+			-- Align with Junkie inline docs: initialize UI_CLOSED, SCRIPT_KEY handled by successful verify.
 			pcall(function()
 				local g = getgenv and getgenv()
 				if not g then
 					return
 				end
+				g.SCRIPT_KEY = nil
 				g.UI_CLOSED = false
-				if keylessBoot then
-					effectiveBoot = "KEYLESS"
-					g.SCRIPT_KEY = effectiveBoot
-				elseif effectiveBoot then
-					g.SCRIPT_KEY = effectiveBoot
-				elseif autoBoot and (g.SCRIPT_KEY == nil or g.SCRIPT_KEY == "") then
-					-- Compatibility fallback for SDK builds that crash early when SCRIPT_KEY is nil.
-					effectiveBoot = "KEYLESS"
-					g.SCRIPT_KEY = effectiveBoot
-				end
 				_G.UI_CLOSED = false
-				if effectiveBoot and (_G.SCRIPT_KEY == nil or _G.SCRIPT_KEY == "") then
-					_G.SCRIPT_KEY = effectiveBoot
-				end
 			end)
 
 			local libUrl = type(jnkOpts.LibraryURL) == "string" and jnkOpts.LibraryURL or "https://jnkie.com/sdk/library.lua"
@@ -4564,7 +4542,6 @@ function Library:Init(opts)
 				return loadstring(game:HttpGet(libUrl))()
 			end)
 			if okLd and type(loaded) == "table" then
-				junkieMod = loaded
 				local function jstr(v)
 					if v == nil then
 						return nil
@@ -4574,11 +4551,42 @@ function Library:Init(opts)
 				loaded.service = jstr(jnkOpts.Service or jnkOpts.service or loaded.service)
 				loaded.identifier = jstr(jnkOpts.Identifier or jnkOpts.identifier or loaded.identifier)
 				loaded.provider = jstr(jnkOpts.Provider or jnkOpts.provider or loaded.provider)
-				if effectiveBoot then
-					loaded.script_key = loaded.script_key or effectiveBoot
-					loaded.ScriptKey = loaded.ScriptKey or effectiveBoot
-				end
 				junkieUseGetKeyLink = jnkOpts.UseGetKeyLink ~= false
+				junkieBridge = {
+					Verify = function(key)
+						local result = loaded.check_key(key)
+						if result and result.valid then
+							if result.message == "KEYLESS" then
+								pcall(function()
+									local g = getgenv and getgenv()
+									if g then
+										g.SCRIPT_KEY = "KEYLESS"
+									end
+								end)
+								return true, "Keyless mode"
+							elseif result.message == "KEY_VALID" then
+								pcall(function()
+									local g = getgenv and getgenv()
+									if g then
+										g.SCRIPT_KEY = key
+									end
+								end)
+								return true, "Key valid"
+							else
+								return false, "Invalid key"
+							end
+						end
+					end,
+					Copy = function()
+						local link = loaded.get_key_link()
+						if setclipboard then
+							pcall(function()
+								setclipboard(link)
+							end)
+						end
+						return link
+					end,
+				}
 			else
 				warn("[GulleUI] CreateWindowAfterKey: Junkie SDK failed to load (check LibraryURL / network).")
 			end
@@ -4595,7 +4603,7 @@ function Library:Init(opts)
 		local getKeyUrl = type(staticGetKeyUrl) == "string" and staticGetKeyUrl ~= "" and staticGetKeyUrl or nil
 		local showClose = opts.ShowClose ~= false
 		local showGetKey = opts.ShowGetKey ~= false
-			and (getKeyUrl ~= nil or (junkieMod ~= nil and junkieUseGetKeyLink and type(junkieMod.get_key_link) == "function"))
+			and (getKeyUrl ~= nil or (junkieBridge ~= nil and junkieUseGetKeyLink and type(junkieBridge.Copy) == "function"))
 		local saveKey = opts.SaveKey == true or opts.Savekey == true
 		local saveWithTime = opts.Time == true or opts.LocalTime == true or opts.RememberKey == true
 		local saveDays = tonumber(opts.TimeDays or opts.RememberDays or opts.KeySaveDays) or 2
@@ -4937,37 +4945,27 @@ function Library:Init(opts)
 
 		local function junkieValidateAsync(key, done)
 			task.defer(function()
-				if junkieMod == nil or type(junkieMod.check_key) ~= "function" then
+				if junkieBridge == nil or type(junkieBridge.Verify) ~= "function" then
 					done(false, wrongDefault)
 					return
 				end
-				local ok, result = pcall(function()
-					return junkieMod.check_key(key)
+				local ok, valid, msg = pcall(function()
+					return junkieBridge.Verify(key)
 				end)
 				if not ok then
-					done(false, tostring(result))
+					done(false, tostring(valid))
 					return
 				end
-				if type(result) ~= "table" then
-					done(false, wrongDefault)
-					return
-				end
-				if result.valid == true or result.success == true then
+				if valid == true then
 					done(true)
-					return
+				else
+					done(false, type(msg) == "string" and msg ~= "" and msg or wrongDefault)
 				end
-				local msg = result.message
-				if result.valid == nil and (msg == "KEY_VALID" or msg == "KEYLESS") then
-					done(true)
-					return
-				end
-				local err = result.error or msg
-				done(false, type(err) == "string" and err ~= "" and err or wrongDefault)
 			end)
 		end
 
 		local keyValidateAsyncFn = type(opts.KeyValidateAsync) == "function" and opts.KeyValidateAsync or nil
-		if keyValidateAsyncFn == nil and junkieMod ~= nil then
+		if keyValidateAsyncFn == nil and junkieBridge ~= nil then
 			keyValidateAsyncFn = junkieValidateAsync
 		end
 
@@ -5019,19 +5017,6 @@ function Library:Init(opts)
 		local function proceedValid(trimmed)
 			if opened then
 				return
-			end
-			-- Docs: after check_key, SCRIPT_KEY must be the user's license key (replaces any BootstrapScriptKey / KEYLESS).
-			-- https://docs.jnkie.com/roblox-sdk/inline-ui
-			if junkieMod ~= nil and opts.SetScriptKeyGlobal ~= false then
-				pcall(function()
-					local g = getgenv and getgenv()
-					if g then
-						g.SCRIPT_KEY = trimmed
-					end
-				end)
-				pcall(function()
-					_G.SCRIPT_KEY = trimmed
-				end)
 			end
 			persistKey(trimmed)
 			opened = true
@@ -5097,18 +5082,18 @@ function Library:Init(opts)
 				end
 				if getKeyUrl then
 					openExternalUrl(getKeyUrl)
-				elseif junkieMod and type(junkieMod.get_key_link) == "function" then
-					local okL, first, second = pcall(function()
-						return junkieMod.get_key_link()
+				elseif junkieBridge and type(junkieBridge.Copy) == "function" then
+					local okL, link, err = pcall(function()
+						return junkieBridge.Copy()
 					end)
-					if okL and type(first) == "string" and first ~= "" then
-						openExternalUrl(first)
+					if okL and type(link) == "string" and link ~= "" then
+						openExternalUrl(link)
 					else
 						local errMsg = "Could not get key link."
 						if okL then
-							errMsg = tostring(second or first or errMsg)
+							errMsg = tostring(err or link or errMsg)
 						else
-							errMsg = tostring(first or errMsg)
+							errMsg = tostring(link or errMsg)
 						end
 						Services.NotificationService:Notify({
 							Title = "Get Key",
