@@ -1643,7 +1643,7 @@ function Core.CreateWindow(opts)
 	})
 	local searchBox = Utils.Create("TextBox", {
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -36, 1, 0),
+		Size = UDim2.new(1, -62, 1, 0),
 		Position = UDim2.fromOffset(30, 0),
 		Font = Enum.Font.Gotham,
 		TextSize = 13,
@@ -1653,6 +1653,20 @@ function Core.CreateWindow(opts)
 		Text = "",
 		ClearTextOnFocus = false,
 		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = searchWrap,
+	})
+	local searchClear = Utils.Create("TextButton", {
+		Name = "SearchClear",
+		BackgroundTransparency = 1,
+		Text = "×",
+		Font = Enum.Font.GothamBold,
+		TextSize = 16,
+		TextColor3 = colors.TextDim,
+		Size = UDim2.fromOffset(22, 22),
+		Position = UDim2.new(1, -26, 0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Visible = false,
+		AutoButtonColor = false,
 		Parent = searchWrap,
 	})
 
@@ -2291,6 +2305,7 @@ function Core.CreateWindow(opts)
 	Core.AddThemeRef(window, searchStroke, "Color", "Border")
 	Core.AddThemeRef(window, searchIcon, "ImageColor3", "TextDim")
 	Core.AddThemeRef(window, searchBox, "TextColor3", "Text")
+	Core.AddThemeRef(window, searchClear, "TextColor3", "TextDim")
 	if profileBarInst then
 		Core.AddThemeRef(window, profileBarInst, "BackgroundColor3", "BackgroundElevated")
 		Core.AddThemeRef(window, profileNameInst, "TextColor3", "Text")
@@ -2830,6 +2845,20 @@ function Core.CreateWindow(opts)
 			_contentRightShell = rightShell,
 			_searchText = string.lower(tostring(tabName)),
 		}
+		function tabObj:_addSearchTerm(text)
+			if type(text) ~= "string" then
+				return
+			end
+			local token = string.lower((text:gsub("^%s+", ""):gsub("%s+$", "")))
+			if token == "" then
+				return
+			end
+			local bucket = " " .. (self._searchText or "") .. " "
+			local needle = " " .. token .. " "
+			if string.find(bucket, needle, 1, true) == nil then
+				self._searchText = (self._searchText or "") .. " " .. token
+			end
+		end
 		local function syncCompressedTopOffset()
 			if window._destroyed or not pagePadding or not pagePadding.Parent then
 				return
@@ -3152,7 +3181,15 @@ end
 	end)
 
 	searchBox:GetPropertyChangedSignal("Text"):Connect(function()
-		window:_applyTabSearch(searchBox.Text)
+		local q = searchBox.Text or ""
+		searchClear.Visible = q ~= ""
+		window:_applyTabSearch(q)
+	end)
+	searchClear.MouseButton1Click:Connect(function()
+		searchBox.Text = ""
+		searchClear.Visible = false
+		window:_applyTabSearch("")
+		searchBox:CaptureFocus()
 	end)
 
 	return window
@@ -3371,6 +3408,13 @@ function Elements.CreateSection(tab, arg1, arg2)
 	end
 
 	local section = { _box = rowsHost, _list = rowsHost, _tab = tab, _wrap = wrap, _nextRowOrder = 0 }
+	local function registerSearch(text)
+		if section._tab and type(section._tab._addSearchTerm) == "function" then
+			section._tab:_addSearchTerm(text)
+		end
+	end
+	registerSearch(titleText)
+	registerSearch(descriptionText)
 	local function newRowCard(themeNow, etokNow)
 		local card = createControlRowCard(rowsHost, themeNow, etokNow, win, section._nextRowOrder)
 		section._nextRowOrder = section._nextRowOrder + 1
@@ -3385,6 +3429,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 	function section:CreateToggle(opts)
 		opts = opts or {}
+		registerSearch(opts.Name or "Toggle")
 		local theme, etok = ElemCtx(win)
 		local flag = opts.Flag
 		local def = opts.Default == true
@@ -3512,6 +3557,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 	function section:CreateButton(opts)
 		opts = opts or {}
+		registerSearch(opts.Name or "Button")
 		local theme, etok = ElemCtx(win)
 		local card = newRowCard(theme, etok)
 		local btnStroke
@@ -3572,6 +3618,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 	function section:CreateCircleToggle(opts)
 		opts = opts or {}
+		registerSearch(opts.Name or "Toggle")
 		local theme, etok = ElemCtx(win)
 		local flag = opts.Flag
 		local def = opts.Default == true
@@ -3730,6 +3777,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 	function section:CreateSlider(opts)
 		opts = opts or {}
+		registerSearch(opts.Name or "Slider")
 		local theme, etok = ElemCtx(win)
 		local flag = opts.Flag
 		local minv = opts.Min or 0
@@ -3958,6 +4006,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 	function section:CreateDropdown(opts)
 		opts = opts or {}
+		registerSearch(opts.Name or "Dropdown")
 		local theme, etok = ElemCtx(win)
 		local flag = opts.Flag
 		local options = opts.Options or {}
@@ -4393,6 +4442,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 	function section:CreateInput(opts)
 		opts = opts or {}
+		registerSearch(opts.Name or "Input")
 		local theme, etok = ElemCtx(win)
 		local flag = opts.Flag
 		local def = opts.Default or ""
@@ -4499,6 +4549,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 	function section:CreateColorPicker(opts)
 		opts = opts or {}
+		registerSearch(opts.Name or "Color")
 		local theme, etok = ElemCtx(win)
 		local flag = opts.Flag
 		local def = opts.Default or Color3.fromRGB(255, 255, 255)
@@ -4718,6 +4769,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 	function section:CreateKeybind(opts)
 		opts = opts or {}
+		registerSearch(opts.Name or "Keybind")
 		local theme, etok = ElemCtx(win)
 		local flag = opts.Flag
 		local def = opts.Default or Enum.KeyCode.Unknown
@@ -4826,6 +4878,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 	function section:CreateLabel(opts)
 		opts = opts or {}
+		registerSearch(opts.Text or opts.Name or "Label")
 		local theme, etok = ElemCtx(win)
 		local lbl = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
@@ -4900,6 +4953,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 	function section:CreateParagraph(opts)
 		opts = opts or {}
+		registerSearch(opts.Text or opts.Name or "Paragraph")
 		local theme, etok = ElemCtx(win)
 		local lbl = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
