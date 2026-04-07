@@ -265,6 +265,28 @@ local Toggle = Section:CreateToggle({
 
 ---
 
+### Create a circle toggle
+
+Toggle variant with a circular indicator. When enabled, the circle fills and shows a square glyph.
+
+```lua
+local CircleToggle = Section:CreateCircleToggle({
+	Name = "Shield",
+	Default = true,
+	Flag = "shield_mode",
+	Callback = function(on) end,
+})
+```
+
+**`NewCircleToggle`** alias: maps `CurrentState` → `Default`.
+
+Theme tokens (under `Theme.Tokens.Control`):
+- `CircleToggleSize` (default `24`)
+- `CircleToggleGlyphSize` (default `10`)
+- `CircleToggleInset` (default `3`)
+
+---
+
 ### Create a slider
 
 ```lua
@@ -428,7 +450,7 @@ Set under `Theme.Tokens` (global) or per-window `Theme = { Tokens = { … } }`.
 
 **`Notification`:** `CornerRadius`, `FrameStrokeThickness`, `FrameStrokeTransparency`, `FadeInDuration`, `FadeOutDuration`.
 
-**`Control`:** `DropdownRowOpen`, `DropdownListPadding`, `InnerStackPadding`, etc.
+**`Control`:** `DropdownRowOpen`, `DropdownListPadding`, `InnerStackPadding`, `CircleToggleSize`, `CircleToggleGlyphSize`, `CircleToggleInset`, etc.
 
 **`Section`:** `RowSpacing`, `DividerMarginY`, `RowPaddingY`, …
 
