@@ -4526,6 +4526,14 @@ function Library:Init(opts)
 		local junkieMod = nil
 		local junkieUseGetKeyLink = false
 		if jnkOpts and loadJunkieSdk then
+			local boot = jnkOpts.BootstrapScriptKey
+				or jnkOpts.bootstrap_script_key
+				or jnkOpts.ScriptKey
+				or jnkOpts.script_key
+			local autoBoot = jnkOpts.AutoBootstrapScriptKey ~= false and jnkOpts.auto_bootstrap_script_key ~= false
+			local keylessBoot = jnkOpts.Keyless == true or jnkOpts.keyless == true
+			local effectiveBoot = (type(boot) == "string" and boot ~= "" and boot) or nil
+
 			-- Official inline UI flow sets UI_CLOSED and SCRIPT_KEY state before using the SDK
 			-- (https://docs.jnkie.com/roblox-sdk/inline-ui). Some SDK builds require SCRIPT_KEY to exist
 			-- before library.lua finishes loading; use Keyless / BootstrapScriptKey if you see "No script key provided".
@@ -4535,16 +4543,20 @@ function Library:Init(opts)
 					return
 				end
 				g.UI_CLOSED = false
-				local boot = jnkOpts.BootstrapScriptKey
-					or jnkOpts.bootstrap_script_key
-					or jnkOpts.ScriptKey
-					or jnkOpts.script_key
-				if jnkOpts.Keyless == true or jnkOpts.keyless == true then
-					g.SCRIPT_KEY = "KEYLESS"
-				elseif type(boot) == "string" and boot ~= "" then
-					g.SCRIPT_KEY = boot
+				if keylessBoot then
+					effectiveBoot = "KEYLESS"
+					g.SCRIPT_KEY = effectiveBoot
+				elseif effectiveBoot then
+					g.SCRIPT_KEY = effectiveBoot
+				elseif autoBoot and (g.SCRIPT_KEY == nil or g.SCRIPT_KEY == "") then
+					-- Compatibility fallback for SDK builds that crash early when SCRIPT_KEY is nil.
+					effectiveBoot = "KEYLESS"
+					g.SCRIPT_KEY = effectiveBoot
 				end
 				_G.UI_CLOSED = false
+				if effectiveBoot and (_G.SCRIPT_KEY == nil or _G.SCRIPT_KEY == "") then
+					_G.SCRIPT_KEY = effectiveBoot
+				end
 			end)
 
 			local libUrl = type(jnkOpts.LibraryURL) == "string" and jnkOpts.LibraryURL or "https://jnkie.com/sdk/library.lua"
@@ -4562,16 +4574,9 @@ function Library:Init(opts)
 				loaded.service = jstr(jnkOpts.Service or jnkOpts.service or loaded.service)
 				loaded.identifier = jstr(jnkOpts.Identifier or jnkOpts.identifier or loaded.identifier)
 				loaded.provider = jstr(jnkOpts.Provider or jnkOpts.provider or loaded.provider)
-				local boot = jnkOpts.BootstrapScriptKey
-					or jnkOpts.bootstrap_script_key
-					or jnkOpts.ScriptKey
-					or jnkOpts.script_key
-				if jnkOpts.Keyless == true or jnkOpts.keyless == true then
-					loaded.script_key = loaded.script_key or "KEYLESS"
-					loaded.ScriptKey = loaded.ScriptKey or "KEYLESS"
-				elseif type(boot) == "string" and boot ~= "" then
-					loaded.script_key = loaded.script_key or boot
-					loaded.ScriptKey = loaded.ScriptKey or boot
+				if effectiveBoot then
+					loaded.script_key = loaded.script_key or effectiveBoot
+					loaded.ScriptKey = loaded.ScriptKey or effectiveBoot
 				end
 				junkieUseGetKeyLink = jnkOpts.UseGetKeyLink ~= false
 			else
