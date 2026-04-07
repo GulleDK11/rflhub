@@ -1648,7 +1648,7 @@ function Core.CreateWindow(opts)
 		end
 	end
 
-	local profileBarInst, profileNameInst, profileRankInst, footerSettingsBtn
+	local profileBarInst, profileNameInst, profileRankInst
 	if opts.HideSidebarProfile ~= true then
 		profileBarInst = Utils.Create("Frame", {
 			BackgroundColor3 = colors.BackgroundElevated,
@@ -1719,23 +1719,6 @@ function Core.CreateWindow(opts)
 			LayoutOrder = 1,
 			Parent = textCol,
 		})
-		footerSettingsBtn = Utils.Create("TextButton", {
-			Text = "⚙",
-			Font = Enum.Font.GothamBold,
-			TextSize = 12,
-			TextColor3 = colors.TextDim,
-			BackgroundColor3 = colors.Surface,
-			BackgroundTransparency = 0.28,
-			BorderSizePixel = 0,
-			Size = UDim2.fromOffset(20, 20),
-			Position = UDim2.new(1, -2, 0, 2),
-			AnchorPoint = Vector2.new(1, 0),
-			AutoButtonColor = false,
-			Parent = profileBarInst,
-		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = footerSettingsBtn })
-		Utils.Create("UIStroke", { Color = colors.Border, Thickness = 1, Transparency = 0.7, Parent = footerSettingsBtn })
-
 		task.defer(function()
 			local ok, content = pcall(function()
 				return Players:GetUserThumbnailAsync(
@@ -1780,251 +1763,6 @@ function Core.CreateWindow(opts)
 		Size = UDim2.fromScale(1, 1),
 		Parent = contentShell,
 	})
-	local settingsPanel = Utils.Create("Frame", {
-		Name = "ThemeSettingsPanel",
-		BackgroundColor3 = colors.BackgroundElevated,
-		BackgroundTransparency = 0.08,
-		BorderSizePixel = 0,
-		Size = UDim2.fromOffset(260, 320),
-		Position = UDim2.new(0, 8, 1, -8),
-		AnchorPoint = Vector2.new(0, 1),
-		Visible = false,
-		ZIndex = 80,
-		Parent = contentHost,
-	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Tab.ItemRadius), Parent = settingsPanel })
-	local settingsStroke = Utils.Create("UIStroke", {
-		Color = colors.Border,
-		Thickness = 1,
-		Transparency = 0.72,
-		Parent = settingsPanel,
-	})
-	Utils.Create("UIPadding", {
-		PaddingTop = UDim.new(0, 8),
-		PaddingBottom = UDim.new(0, 8),
-		PaddingLeft = UDim.new(0, 8),
-		PaddingRight = UDim.new(0, 8),
-		Parent = settingsPanel,
-	})
-	local settingsStack = Utils.Create("Frame", {
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Parent = settingsPanel,
-	})
-	Utils.Create("UIListLayout", {
-		Padding = UDim.new(0, 6),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Parent = settingsStack,
-	})
-	local settingsTitle = Utils.Create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 16),
-		Font = Enum.Font.GothamBold,
-		TextSize = 12,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextColor3 = colors.Text,
-		Text = "Theme Manager",
-		Parent = settingsStack,
-	})
-	local configNameBox = Utils.Create("TextBox", {
-		BackgroundColor3 = colors.Surface,
-		BackgroundTransparency = 0.16,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 0, 24),
-		Font = Enum.Font.Gotham,
-		TextSize = 11,
-		TextColor3 = colors.Text,
-		PlaceholderColor3 = colors.TextDim,
-		PlaceholderText = "Config name (e.g. legit, rage)",
-		Text = "",
-		ClearTextOnFocus = false,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = settingsStack,
-	})
-	Utils.Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = configNameBox })
-	local configNamePad = Utils.Create("UIPadding", {
-		PaddingLeft = UDim.new(0, 8),
-		PaddingRight = UDim.new(0, 8),
-		Parent = configNameBox,
-	})
-	local configNameStroke = Utils.Create("UIStroke", {
-		Color = colors.Border,
-		Thickness = 1,
-		Transparency = 0.78,
-		Parent = configNameBox,
-	})
-	local configSelectedLabel = Utils.Create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 16),
-		Font = Enum.Font.Gotham,
-		TextSize = 11,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextColor3 = colors.TextDim,
-		Text = "Selected: default",
-		Parent = settingsStack,
-	})
-	local cfgRow = Utils.Create("Frame", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 24),
-		Parent = settingsStack,
-	})
-	Utils.Create("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		Padding = UDim.new(0, 6),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Parent = cfgRow,
-	})
-	local cfgPrev = Utils.Create("TextButton", {
-		BackgroundColor3 = colors.Surface,
-		BackgroundTransparency = 0.18,
-		BorderSizePixel = 0,
-		Size = UDim2.new(0, 28, 1, 0),
-		Font = Enum.Font.GothamBold,
-		TextSize = 12,
-		TextColor3 = colors.Text,
-		Text = "<",
-		AutoButtonColor = false,
-		Parent = cfgRow,
-	})
-	local cfgNext = Utils.Create("TextButton", {
-		BackgroundColor3 = colors.Surface,
-		BackgroundTransparency = 0.18,
-		BorderSizePixel = 0,
-		Size = UDim2.new(0, 28, 1, 0),
-		Font = Enum.Font.GothamBold,
-		TextSize = 12,
-		TextColor3 = colors.Text,
-		Text = ">",
-		AutoButtonColor = false,
-		Parent = cfgRow,
-	})
-	local cfgRefresh = Utils.Create("TextButton", {
-		BackgroundColor3 = colors.Surface,
-		BackgroundTransparency = 0.18,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, -68, 1, 0),
-		Font = Enum.Font.Gotham,
-		TextSize = 11,
-		TextColor3 = colors.Text,
-		Text = "Refresh Config List",
-		AutoButtonColor = false,
-		Parent = cfgRow,
-	})
-	for _, c in ipairs({ cfgPrev, cfgNext, cfgRefresh }) do
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = c })
-		local st = Utils.Create("UIStroke", { Color = colors.Border, Thickness = 1, Transparency = 0.76, Parent = c })
-		Core.AddThemeRef(window, c, "BackgroundColor3", "Surface")
-		Core.AddThemeRef(window, c, "TextColor3", "Text")
-		Core.AddThemeRef(window, st, "Color", "Border")
-	end
-	local configNames = {}
-	local configIndex = 1
-	local function selectedConfig()
-		if #configNames == 0 then
-			return nil
-		end
-		configIndex = math.clamp(configIndex, 1, #configNames)
-		return configNames[configIndex]
-	end
-	local function syncSelectedLabel()
-		local n = selectedConfig() or "none"
-		configSelectedLabel.Text = "Selected: " .. n
-	end
-	local function refreshConfigNames(trySelectName)
-		configNames = Services.ConfigService:ListFromPath(configFolder)
-		if type(trySelectName) == "string" and trySelectName ~= "" then
-			for i, n in ipairs(configNames) do
-				if string.lower(n) == string.lower(trySelectName) then
-					configIndex = i
-					break
-				end
-			end
-		else
-			configIndex = math.clamp(configIndex, 1, math.max(1, #configNames))
-		end
-		syncSelectedLabel()
-	end
-	cfgRefresh.MouseButton1Click:Connect(function()
-		refreshConfigNames(configNameBox.Text)
-	end)
-	cfgPrev.MouseButton1Click:Connect(function()
-		if #configNames > 0 then
-			configIndex = configIndex - 1
-			if configIndex < 1 then
-				configIndex = #configNames
-			end
-		end
-		syncSelectedLabel()
-	end)
-	cfgNext.MouseButton1Click:Connect(function()
-		if #configNames > 0 then
-			configIndex = configIndex + 1
-			if configIndex > #configNames then
-				configIndex = 1
-			end
-		end
-		syncSelectedLabel()
-	end)
-	configNameBox.FocusLost:Connect(function(enterPressed)
-		if enterPressed then
-			refreshConfigNames(configNameBox.Text)
-		end
-	end)
-	refreshConfigNames()
-	local function mkBtn(txt, cb)
-		local b = Utils.Create("TextButton", {
-			BackgroundColor3 = colors.Surface,
-			BackgroundTransparency = 0.18,
-			BorderSizePixel = 0,
-			Size = UDim2.new(1, 0, 0, 24),
-			Font = Enum.Font.Gotham,
-			TextSize = 11,
-			TextColor3 = colors.Text,
-			Text = txt,
-			AutoButtonColor = false,
-			Parent = settingsStack,
-		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = b })
-		local stroke = Utils.Create("UIStroke", { Color = colors.Border, Thickness = 1, Transparency = 0.76, Parent = b })
-		Core.AddThemeRef(window, b, "BackgroundColor3", "Surface")
-		Core.AddThemeRef(window, b, "TextColor3", "Text")
-		Core.AddThemeRef(window, stroke, "Color", "Border")
-		b.MouseButton1Click:Connect(cb)
-		return b
-	end
-	local function mkAccentRow()
-		local row = Utils.Create("Frame", {
-			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 22),
-			Parent = settingsStack,
-		})
-		Utils.Create("UIListLayout", {
-			FillDirection = Enum.FillDirection.Horizontal,
-			Padding = UDim.new(0, 6),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			Parent = row,
-		})
-		local accents = {
-			Color3.fromRGB(65, 140, 245),
-			Color3.fromRGB(72, 199, 142),
-			Color3.fromRGB(229, 103, 85),
-			Color3.fromRGB(176, 118, 255),
-		}
-		for _, c in ipairs(accents) do
-			local sw = Utils.Create("TextButton", {
-				Text = "",
-				BackgroundColor3 = c,
-				BorderSizePixel = 0,
-				AutoButtonColor = false,
-				Size = UDim2.fromOffset(22, 22),
-				Parent = row,
-			})
-			Utils.Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = sw })
-			sw.MouseButton1Click:Connect(function()
-				window:ModifyTheme({ Colors = { Accent = c } })
-			end)
-		end
-	end
 
 	-- Must be a GuiObject (Frame), not Folder: ScrollingFrames under Folder get no layout size → blank content.
 	local pages = Utils.Create("Frame", {
@@ -2434,70 +2172,6 @@ function Core.CreateWindow(opts)
 		return Services.ConfigService:LoadFromPath(self._configFolder, self._configFileName)
 	end
 
-	function window:SaveConfigurationNamed(name)
-		local safe = Services.ConfigService:_sanitizeConfigName(name)
-		if not safe then
-			return false
-		end
-		return Services.ConfigService:SaveToPath(self._configFolder, safe)
-	end
-
-	function window:LoadConfigurationNamed(name)
-		local safe = Services.ConfigService:_sanitizeConfigName(name)
-		if not safe then
-			return false
-		end
-		return Services.ConfigService:LoadFromPath(self._configFolder, safe)
-	end
-
-	function window:ListConfigurations()
-		return Services.ConfigService:ListFromPath(self._configFolder)
-	end
-
-	mkBtn("Theme: Modern", function()
-		if Library.V2ModernTheme then
-			Services.ThemeService:ApplyPreset(Library.V2ModernTheme)
-		end
-	end)
-	mkBtn("Theme: Slate", function()
-		if Library.V2SlateTheme then
-			Services.ThemeService:ApplyPreset(Library.V2SlateTheme)
-		end
-	end)
-	mkBtn("Theme: Ember", function()
-		if Library.V2EmberTheme then
-			Services.ThemeService:ApplyPreset(Library.V2EmberTheme)
-		end
-	end)
-	mkAccentRow()
-	mkBtn("Save Named Config", function()
-		local typed = Services.ConfigService:_sanitizeConfigName(configNameBox.Text)
-		local target = typed or selectedConfig()
-		if not target then
-			return
-		end
-		if window:SaveConfigurationNamed(target) then
-			configNameBox.Text = target
-			refreshConfigNames(target)
-		end
-	end)
-	mkBtn("Load Selected Config", function()
-		local typed = Services.ConfigService:_sanitizeConfigName(configNameBox.Text)
-		local target = typed or selectedConfig()
-		if not target then
-			return
-		end
-		if window:LoadConfigurationNamed(target) then
-			configNameBox.Text = target
-			refreshConfigNames(target)
-		end
-	end)
-	if footerSettingsBtn then
-		footerSettingsBtn.MouseButton1Click:Connect(function()
-			settingsPanel.Visible = not settingsPanel.Visible
-		end)
-	end
-
 	function window:_applyTabSearch(q)
 		q = string.lower((q or ""):gsub("%s+", ""))
 		for _, t in ipairs(self._tabs) do
@@ -2543,23 +2217,11 @@ function Core.CreateWindow(opts)
 	if profileBarInst then
 		Core.AddThemeRef(window, profileBarInst, "BackgroundColor3", "BackgroundElevated")
 		Core.AddThemeRef(window, profileNameInst, "TextColor3", "Text")
-		if footerSettingsBtn then
-			Core.AddThemeRef(window, footerSettingsBtn, "BackgroundColor3", "Surface")
-			Core.AddThemeRef(window, footerSettingsBtn, "TextColor3", "TextDim")
-		end
 	end
 	Core.AddThemeRef(window, sideStroke, "Color", "Border")
 	Core.AddThemeRef(window, tabList, "ScrollBarImageColor3", "Accent")
 	Core.AddThemeRef(window, contentShell, "BackgroundColor3", "Background")
 	Core.AddThemeRef(window, contentShellStroke, "Color", "Border")
-	Core.AddThemeRef(window, settingsPanel, "BackgroundColor3", "BackgroundElevated")
-	Core.AddThemeRef(window, settingsStroke, "Color", "Border")
-	Core.AddThemeRef(window, settingsTitle, "TextColor3", "Text")
-	Core.AddThemeRef(window, configNameBox, "BackgroundColor3", "Surface")
-	Core.AddThemeRef(window, configNameBox, "TextColor3", "Text")
-	Core.AddThemeRef(window, configNameBox, "PlaceholderColor3", "TextDim")
-	Core.AddThemeRef(window, configNameStroke, "Color", "Border")
-	Core.AddThemeRef(window, configSelectedLabel, "TextColor3", "TextDim")
 	Core.AddThemeRef(window, loadingBg, "BackgroundColor3", "Background")
 	Core.AddThemeRef(window, loadTitle, "TextColor3", "Text")
 	Core.AddThemeRef(window, loadSub, "TextColor3", "TextDim")
@@ -5919,18 +5581,6 @@ function Library:Init(opts)
 		return api.Window and api.Window:SaveConfiguration() or false
 	end
 
-	function api.LoadConfigurationNamed(_, name)
-		return api.Window and api.Window:LoadConfigurationNamed(name) or false
-	end
-
-	function api.SaveConfigurationNamed(_, name)
-		return api.Window and api.Window:SaveConfigurationNamed(name) or false
-	end
-
-	function api.ListConfigurations(_)
-		return api.Window and api.Window:ListConfigurations() or {}
-	end
-
 	function api.SetFlag(_, f, v)
 		Services.StateService:SetFlag(f, v)
 	end
@@ -5989,10 +5639,10 @@ Library.V2ModernTheme = {
 			ItemSpacing = 3,
 			SidebarPadding = 8,
 			ContentGap = 8,
-			SidebarTransparency = 0.2,
-			ContentShellTransparency = 0.2,
+			SidebarTransparency = 0.14,
+			ContentShellTransparency = 0.14,
 			ColumnGap = 12,
-			ColumnCardTransparency = 0.42,
+			ColumnCardTransparency = 0.14,
 			ColumnCardStrokeTransparency = 0.95,
 			ColumnCardPadding = 8,
 		},
@@ -6005,9 +5655,9 @@ Library.V2ModernTheme = {
 			RowPaddingX = 9,
 			RowPaddingY = 4,
 			RowStrokeTransparency = 0.93,
-			RowBackgroundTransparency = 0.46,
+			RowBackgroundTransparency = 0.14,
 			CardEnabled = true,
-			CardTransparency = 0.44,
+			CardTransparency = 0.14,
 			CardStrokeTransparency = 0.95,
 			CardPadding = 7,
 		},
@@ -6063,14 +5713,14 @@ Library.V2SlateTheme = {
 			SubtitleSize = 11,
 		},
 		Tab = {
-			SidebarTransparency = 0.24,
-			ContentShellTransparency = 0.22,
-			ColumnCardTransparency = 0.46,
+			SidebarTransparency = 0.14,
+			ContentShellTransparency = 0.14,
+			ColumnCardTransparency = 0.14,
 			ColumnCardStrokeTransparency = 0.96,
 		},
 		Section = {
-			RowBackgroundTransparency = 0.52,
-			CardTransparency = 0.5,
+			RowBackgroundTransparency = 0.14,
+			CardTransparency = 0.14,
 			RowStrokeTransparency = 0.95,
 			CardStrokeTransparency = 0.97,
 		},
@@ -6112,14 +5762,14 @@ Library.V2EmberTheme = {
 			SubtitleSize = 11,
 		},
 		Tab = {
-			SidebarTransparency = 0.22,
-			ContentShellTransparency = 0.2,
-			ColumnCardTransparency = 0.44,
+			SidebarTransparency = 0.14,
+			ContentShellTransparency = 0.14,
+			ColumnCardTransparency = 0.14,
 			ColumnCardStrokeTransparency = 0.96,
 		},
 		Section = {
-			RowBackgroundTransparency = 0.5,
-			CardTransparency = 0.48,
+			RowBackgroundTransparency = 0.14,
+			CardTransparency = 0.14,
 			RowStrokeTransparency = 0.95,
 			CardStrokeTransparency = 0.97,
 		},
