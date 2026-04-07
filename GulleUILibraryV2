@@ -1116,6 +1116,13 @@ function Core.AddThemeRef(window, inst, propertyName, themeKey)
 	if not inst then
 		return
 	end
+	if not window then
+		local T = Services.ThemeService.Current or {}
+		if T[themeKey] ~= nil then
+			inst[propertyName] = T[themeKey]
+		end
+		return
+	end
 	window._themeRefs = window._themeRefs or {}
 	table.insert(window._themeRefs, { inst, propertyName, themeKey })
 	local T = Core.GetColors(window)
@@ -1924,7 +1931,7 @@ function Core.CreateWindow(opts)
 		configSelectedLabel.Text = "Selected: " .. n
 	end
 	local function refreshConfigNames(trySelectName)
-		configNames = window:ListConfigurations()
+		configNames = Services.ConfigService:ListFromPath(configFolder)
 		if type(trySelectName) == "string" and trySelectName ~= "" then
 			for i, n in ipairs(configNames) do
 				if string.lower(n) == string.lower(trySelectName) then
