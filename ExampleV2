@@ -25,6 +25,7 @@ local TabAim = Window:CreateTab({ Name = "Aim", Icon = "rbxassetid://74523675899
 local TabRage = Window:CreateTab({ Name = "Rage", Icon = "rbxassetid://74523675899900" })
 local TabVisuals = Window:CreateTab({ Name = "Visuals", Icon = "rbxassetid://74523675899900" })
 local TabPlayer = Window:CreateTab({ Name = "Player", Icon = "rbxassetid://74523675899900" })
+Window:CreateTabSpacer("______________")
 Window:CreateTabSpacer("Misc")
 local TabMisc = Window:CreateTab({ Name = "Miscellaneous", Icon = "rbxassetid://74523675899900" })
 local TabSettings = Window:CreateTab({ Name = "Settings", Icon = "rbxassetid://74523675899900" })
