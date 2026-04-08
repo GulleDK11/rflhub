@@ -303,12 +303,12 @@ local _defaultTokens = {
 		SidebarTransparency = 0,
 		ContentShellTransparency = 0,
 		ColumnCardTransparency = 0.04,
-		ColumnCardStrokeTransparency = 0.88,
+		ColumnCardStrokeTransparency = 0.8,
 		ColumnCardPadding = 8,
 	},
 	Section = {
 		HeaderTextSize = 12,
-		DescriptionTextSize = 11,
+		DescriptionTextSize = 12,
 		TitleSpacing = 4,
 		BoxRadius = 6,
 		InnerPadding = 0,
@@ -316,13 +316,13 @@ local _defaultTokens = {
 		RowSpacing = 8,
 		RowPaddingX = 8,
 		RowPaddingY = 5,
-		RowStrokeTransparency = 0.93,
+		RowStrokeTransparency = 0.86,
 		-- Vertical space above/below the divider line (in addition to RowSpacing)
 		DividerMarginY = 10,
 		RowBackgroundTransparency = 0,
 		CardEnabled = true,
 		CardTransparency = 0.08,
-		CardStrokeTransparency = 0.9,
+		CardStrokeTransparency = 0.84,
 		CardPadding = 8,
 	},
 	Control = {
@@ -332,17 +332,17 @@ local _defaultTokens = {
 		CircleToggleGlyphSize = 10,
 		CircleToggleInset = 3,
 		RowIconDefault = "",
-		RowIconSize = 14,
+		RowIconSize = 15,
 		RowIconGap = 8,
-		LabelTextSize = 13,
-		SecondaryTextSize = 12,
+		LabelTextSize = 14,
+		SecondaryTextSize = 13,
 		ButtonHeight = 30,
 		ToggleRowHeight = 32,
 		SliderBlockHeight = 32,
 		SliderTrackThickness = 4,
 		InputRowHeight = 44,
 		InputHeight = 26,
-		KeybindRowHeight = 26,
+		KeybindRowHeight = 30,
 		DropdownRowOpen = 30,
 		SliderValueChipWidthScale = 0.32,
 		SliderValueChipStrokeTransparency = 0.62,
@@ -388,6 +388,7 @@ local _defaultTokens = {
 		-- Neutral outer edge (never type color — colored stroke causes orange/red “halos” in corners).
 		FrameStrokeThickness = 1,
 		FrameStrokeTransparency = 0.62,
+		MaxVisible = 5,
 		-- CanvasGroup can make text look soft on some clients; disabled by default for crisp toasts.
 		UseCanvasGroupFade = false,
 	},
@@ -594,6 +595,7 @@ Services.NotificationService = {
 	_container = nil,
 	_stack = nil,
 	_toastOrder = 0,
+	_activeToasts = {},
 }
 
 function Services.NotificationService:_ensureContainer(parent)
@@ -737,6 +739,7 @@ function Services.NotificationService:_spawnToast(item)
 		ClipsDescendants = true,
 		Parent = self._stack or self._container,
 	})
+	self._activeToasts = self._activeToasts or {}
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, cornerR), Parent = card })
 	local toastFade = nil
 	if nt.UseCanvasGroupFade == true then
@@ -847,6 +850,18 @@ function Services.NotificationService:_spawnToast(item)
 		LayoutOrder = 1,
 		Parent = titleRow,
 	})
+	local closeBtn = Utils.Create("TextButton", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(16, 16),
+		Position = UDim2.new(1, -16, 0, 0),
+		Text = "x",
+		Font = Enum.Font.GothamBold,
+		TextSize = 12,
+		TextColor3 = theme.TextDim,
+		AutoButtonColor = false,
+		Parent = titleRow,
+	})
 	local body = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
 		Font = Enum.Font.Gotham,
@@ -860,23 +875,32 @@ function Services.NotificationService:_spawnToast(item)
 		LayoutOrder = 2,
 		Parent = inner,
 	})
-	task.defer(refreshCardHeight)
-	local fadeIn = nt.FadeInDuration or 0.4
-	if toastFade then
-		Utils.Tween(
-			toastFade,
-			TweenInfo.new(fadeIn, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ GroupTransparency = 0 }
-		)
-	end
-	task.delay(item.Duration or 3.5, function()
-		if not card.Parent then
+	local dismissed = false
+	local timerConn = nil
+	local remaining = math.max(0.1, tonumber(item.Duration) or 3.5)
+	local hovered = false
+	local function removeCard()
+		if dismissed then
 			return
 		end
-		local function removeCard()
-			if card.Parent then
-				card:Destroy()
+		dismissed = true
+		if timerConn then
+			timerConn:Disconnect()
+			timerConn = nil
+		end
+		for i, t in ipairs(self._activeToasts or {}) do
+			if t and t.card == card then
+				table.remove(self._activeToasts, i)
+				break
 			end
+		end
+		if card.Parent then
+			card:Destroy()
+		end
+	end
+	local function dismissWithFade()
+		if dismissed or not card.Parent then
+			return
 		end
 		if toastFade then
 			local fadeOut = nt.FadeOutDuration or 0.35
@@ -891,6 +915,41 @@ function Services.NotificationService:_spawnToast(item)
 			end)
 		else
 			removeCard()
+		end
+	end
+	closeBtn.MouseButton1Click:Connect(dismissWithFade)
+	card.MouseEnter:Connect(function()
+		hovered = true
+	end)
+	card.MouseLeave:Connect(function()
+		hovered = false
+	end)
+	table.insert(self._activeToasts, { card = card, dismiss = dismissWithFade })
+	local maxVisible = math.max(1, math.floor(tonumber(nt.MaxVisible) or 5))
+	while #self._activeToasts > maxVisible do
+		local oldest = table.remove(self._activeToasts, 1)
+		if oldest and oldest.dismiss then
+			oldest.dismiss()
+		end
+	end
+	task.defer(refreshCardHeight)
+	local fadeIn = nt.FadeInDuration or 0.4
+	if toastFade then
+		Utils.Tween(
+			toastFade,
+			TweenInfo.new(fadeIn, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ GroupTransparency = 0 }
+		)
+	end
+	timerConn = RunService.Heartbeat:Connect(function(dt)
+		if dismissed then
+			return
+		end
+		if not hovered then
+			remaining = remaining - dt
+			if remaining <= 0 then
+				dismissWithFade()
+			end
 		end
 	end)
 end
@@ -2010,6 +2069,7 @@ function Core.CreateWindow(opts)
 		LayoutOrder = loadLayoutOrder + 2,
 		Parent = loadStack,
 	})
+	Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = loadBarBg })
 	local loadBarFill = Utils.Create("Frame", {
 		BackgroundColor3 = colors.Accent,
 		Size = UDim2.new(0, 0, 1, 0),
@@ -2017,6 +2077,7 @@ function Core.CreateWindow(opts)
 		ZIndex = 53,
 		Parent = loadBarBg,
 	})
+	Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = loadBarFill })
 
 	local minW = tok.Window.MinWidth or 380
 	local minH = tok.Window.MinHeight or 280
@@ -2059,8 +2120,8 @@ function Core.CreateWindow(opts)
 		_tabLayout = tabLayout,
 		_pages = pages,
 		_dropdownMount = dropdownMount,
-		_dropdownRenderConn = nil,
-		_dropdownClose = nil,
+		_overlayEntries = {},
+		_overlaySeq = 0,
 		_tabs = {},
 		_activeTab = nil,
 		_dragConns = {},
@@ -2230,16 +2291,38 @@ function Core.CreateWindow(opts)
 		Services.NotificationService:Notify(data)
 	end
 
+	function window:_overlayRegister(closeFn, renderConn)
+		self._overlaySeq = (self._overlaySeq or 0) + 1
+		local id = self._overlaySeq
+		self._overlayEntries[id] = {
+			close = closeFn,
+			render = renderConn,
+		}
+		return id
+	end
+
+	function window:_overlayUnregister(id)
+		if not id then
+			return
+		end
+		self._overlayEntries[id] = nil
+	end
+
+	function window:_overlayCloseAll()
+		local entries = self._overlayEntries or {}
+		self._overlayEntries = {}
+		for _, entry in pairs(entries) do
+			if entry.render then
+				entry.render:Disconnect()
+			end
+			if entry.close then
+				pcall(entry.close)
+			end
+		end
+	end
+
 	function window:_closeGulleDropdown()
-		if self._dropdownClose then
-			local fn = self._dropdownClose
-			self._dropdownClose = nil
-			pcall(fn)
-		end
-		if self._dropdownRenderConn then
-			self._dropdownRenderConn:Disconnect()
-			self._dropdownRenderConn = nil
-		end
+		self:_overlayCloseAll()
 	end
 
 	function window:SetTitle(text)
@@ -3222,6 +3305,7 @@ end
 
 -- #region Elements
 local _keybindSeq = 0
+local _controlBindSeq = 0
 
 local function elementApi(root, apiTable)
 	apiTable.Remove = function()
@@ -3237,6 +3321,266 @@ local function ElemCtx(windowRef)
 		return Core.GetColors(windowRef), Core.GetTokens(windowRef)
 	end
 	return Services.ThemeService.Current, Services.ThemeService.Tokens
+end
+
+local function attachInlineControlKeybind(win, row, theme, etok, opts)
+	opts = opts or {}
+	row.ZIndex = math.max(row.ZIndex or 1, 20)
+	local actionName = tostring(opts.actionName or "Control")
+	local keyFlag = type(opts.flagBase) == "string" and (opts.flagBase .. "_keybind") or nil
+	local key = Enum.KeyCode.Unknown
+	if keyFlag then
+		local stored = Services.StateService:GetFlag(keyFlag)
+		if type(stored) == "string" then
+			key = Enum.KeyCode[stored] or Enum.KeyCode.Unknown
+		elseif stored == nil then
+			Services.StateService:SetFlag(keyFlag, "Unknown")
+		end
+	end
+	local bindId = "gulle_ctrlkb_" .. tostring(_controlBindSeq)
+	_controlBindSeq = _controlBindSeq + 1
+	local waitingForKey = false
+	local captureNonce = 0
+	local captureConn = nil
+	local popupTrackConn = nil
+	local popupOutsideConn = nil
+	local overlayEntryId = nil
+	local popupOpen = false
+	local btnH = math.max(16, math.floor(tonumber(etok.Control.KeybindRowHeight) or 20) - 4)
+	local settingsBtn = Utils.Create("TextButton", {
+		Name = "ControlSettings",
+		BackgroundColor3 = theme.SurfaceMuted,
+		Size = UDim2.fromOffset(18, 18),
+		Position = opts.settingsPosition or UDim2.new(1, -20, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		Font = Enum.Font.GothamBold,
+		TextSize = 12,
+		TextColor3 = theme.TextDim,
+		Text = "⚙",
+		AutoButtonColor = false,
+		ZIndex = 24,
+		Parent = row,
+	})
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(4, etok.Control.DefaultRadius - 1)), Parent = settingsBtn })
+	local settingsStroke = Utils.Create("UIStroke", {
+		Color = theme.Border,
+		Thickness = 1,
+		Transparency = 0.45,
+		Parent = settingsBtn,
+	})
+	local bindBtn = Utils.Create("TextButton", {
+		Name = "ControlBindButton",
+		BackgroundColor3 = theme.Surface,
+		Size = UDim2.fromOffset(86, btnH),
+		Position = UDim2.new(1, 4, 0.5, 0),
+		AnchorPoint = Vector2.new(0, 0.5),
+		Font = Enum.Font.GothamMedium,
+		TextSize = math.max(10, math.floor((etok.Control.SecondaryTextSize or 12) - 1)),
+		TextColor3 = theme.Text,
+		Text = key ~= Enum.KeyCode.Unknown and ("[" .. key.Name .. "]") or "[None]",
+		Visible = false,
+		AutoButtonColor = false,
+		ZIndex = 120,
+		Parent = row,
+	})
+	Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(4, etok.Control.DefaultRadius - 1)), Parent = bindBtn })
+	local bindStroke = Utils.Create("UIStroke", {
+		Color = theme.Border,
+		Thickness = 1,
+		Transparency = 0.45,
+		Parent = bindBtn,
+	})
+	if win then
+		Core.AddThemeRef(win, settingsBtn, "BackgroundColor3", "SurfaceMuted")
+		Core.AddThemeRef(win, settingsStroke, "Color", "Border")
+		Core.AddThemeRef(win, bindBtn, "BackgroundColor3", "Surface")
+		Core.AddThemeRef(win, bindStroke, "Color", "Border")
+	end
+	local function updatePopupPos()
+		if not popupOpen or not bindBtn.Parent then
+			return
+		end
+		local mount = win and win._dropdownMount
+		if mount and bindBtn.Parent == mount then
+			local sp = settingsBtn.AbsolutePosition
+			local ss = settingsBtn.AbsoluteSize
+			local mp = mount.AbsolutePosition
+			bindBtn.Position = UDim2.fromOffset(math.floor(sp.X - mp.X + ss.X + 4), math.floor(sp.Y - mp.Y))
+			bindBtn.AnchorPoint = Vector2.new(0, 0)
+		end
+	end
+	local function hidePopup()
+		popupOpen = false
+		if overlayEntryId and win and win._overlayUnregister then
+			win:_overlayUnregister(overlayEntryId)
+			overlayEntryId = nil
+		end
+		if captureConn then
+			captureConn:Disconnect()
+			captureConn = nil
+		end
+		waitingForKey = false
+		bindBtn.Text = key ~= Enum.KeyCode.Unknown and ("[" .. key.Name .. "]") or "[None]"
+		bindBtn.Visible = false
+		if popupTrackConn then
+			popupTrackConn:Disconnect()
+			popupTrackConn = nil
+		end
+		if popupOutsideConn then
+			popupOutsideConn:Disconnect()
+			popupOutsideConn = nil
+		end
+		if bindBtn.Parent ~= row then
+			bindBtn.Parent = row
+			bindBtn.AnchorPoint = Vector2.new(0, 0.5)
+			bindBtn.Position = UDim2.new(1, 4, 0.5, 0)
+		end
+	end
+	local function showPopup()
+		if win and win._overlayCloseAll then
+			win:_overlayCloseAll()
+		end
+		popupOpen = true
+		local mount = win and win._dropdownMount
+		if mount then
+			bindBtn.Parent = mount
+			bindBtn.ZIndex = 120
+			updatePopupPos()
+			if popupTrackConn then
+				popupTrackConn:Disconnect()
+			end
+			popupTrackConn = RunService.RenderStepped:Connect(updatePopupPos)
+		else
+			bindBtn.Parent = row
+			bindBtn.AnchorPoint = Vector2.new(0, 0.5)
+			bindBtn.Position = UDim2.new(1, 4, 0.5, 0)
+		end
+		bindBtn.Visible = true
+		if popupOutsideConn then
+			popupOutsideConn:Disconnect()
+		end
+		local function inBounds(guiObj, p)
+			if not guiObj or not guiObj.Parent then
+				return false
+			end
+			local gp = guiObj.AbsolutePosition
+			local gs = guiObj.AbsoluteSize
+			return p.X >= gp.X and p.Y >= gp.Y and p.X <= (gp.X + gs.X) and p.Y <= (gp.Y + gs.Y)
+		end
+		popupOutsideConn = UserInputService.InputBegan:Connect(function(input, gp)
+			if gp or not popupOpen then
+				return
+			end
+			local ut = input.UserInputType
+			if ut ~= Enum.UserInputType.MouseButton1 and ut ~= Enum.UserInputType.Touch then
+				return
+			end
+			local p = Vector2.new(input.Position.X, input.Position.Y)
+			if inBounds(settingsBtn, p) or inBounds(bindBtn, p) then
+				return
+			end
+			hidePopup()
+		end)
+		if win and win._overlayRegister then
+			overlayEntryId = win:_overlayRegister(hidePopup, nil)
+		end
+	end
+	local function applyBinding()
+		Services.KeybindService:Unbind(bindId)
+		if key ~= Enum.KeyCode.Unknown and type(opts.onFire) == "function" then
+			Services.KeybindService:Bind(bindId, key, function()
+				opts.onFire()
+				if win and win.Notify then
+					win:Notify({
+						Title = actionName,
+						Message = "Triggered via [" .. key.Name .. "]",
+						Duration = 1.8,
+						Type = "info",
+					})
+				end
+			end)
+		end
+	end
+	applyBinding()
+	if win then
+		table.insert(win._dragConns, function()
+			Services.KeybindService:Unbind(bindId)
+			hidePopup()
+			if captureConn then
+				captureConn:Disconnect()
+			end
+		end)
+	end
+	settingsBtn.MouseButton1Click:Connect(function()
+		if popupOpen then
+			hidePopup()
+		else
+			showPopup()
+		end
+	end)
+	bindBtn.MouseButton1Click:Connect(function()
+		waitingForKey = true
+		captureNonce = captureNonce + 1
+		local thisNonce = captureNonce
+		bindBtn.Text = "[Press key]"
+		if captureConn then
+			captureConn:Disconnect()
+			captureConn = nil
+		end
+		Services.KeybindService:Unbind(bindId)
+		task.delay(8, function()
+			if waitingForKey and thisNonce == captureNonce then
+				hidePopup()
+				applyBinding()
+			end
+		end)
+		captureConn = UserInputService.InputBegan:Connect(function(input, gp)
+			if gp or input.UserInputType ~= Enum.UserInputType.Keyboard then
+				return
+			end
+			local kc = input.KeyCode
+			if kc == Enum.KeyCode.Escape or kc == Enum.KeyCode.Backspace or kc == Enum.KeyCode.Delete then
+				key = Enum.KeyCode.Unknown
+			else
+				key = kc
+			end
+			bindBtn.Text = key ~= Enum.KeyCode.Unknown and ("[" .. key.Name .. "]") or "[None]"
+			waitingForKey = false
+			if keyFlag then
+				Services.StateService:SetFlag(keyFlag, key.Name)
+			end
+			if captureConn then
+				captureConn:Disconnect()
+				captureConn = nil
+			end
+			captureNonce = captureNonce + 1
+			applyBinding()
+			hidePopup()
+		end)
+	end)
+	return {
+		GetKey = function()
+			return key
+		end,
+		SetKey = function(newKey)
+			if typeof(newKey) == "EnumItem" and newKey.EnumType == Enum.KeyCode then
+				key = newKey
+				bindBtn.Text = key ~= Enum.KeyCode.Unknown and ("[" .. key.Name .. "]") or "[None]"
+				if keyFlag then
+					Services.StateService:SetFlag(keyFlag, key.Name)
+				end
+				if captureConn then
+					captureConn:Disconnect()
+					captureConn = nil
+				end
+				waitingForKey = false
+				applyBinding()
+			end
+		end,
+		IsWaiting = function()
+			return waitingForKey
+		end,
+	}
 end
 
 local function addRowIcon(row, iconId, theme, etok)
@@ -3476,6 +3820,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			ClipsDescendants = false,
 			Parent = card,
 		})
+		local rightPad = 24
 		local iconOff = addRowIcon(row, opts.Icon, theme, etok)
 		local name = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
@@ -3485,7 +3830,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextYAlignment = Enum.TextYAlignment.Center,
 			TextWrapped = true,
-			Size = UDim2.new(1, -(swW + 8 + iconOff), 0, rowH),
+			Size = UDim2.new(1, -(swW + 8 + iconOff + rightPad), 0, rowH),
 			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Toggle",
 			Parent = row,
@@ -3494,7 +3839,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			if not row.Parent or not name.Parent or not switch or not switch.Parent then
 				return
 			end
-			local avail = math.max(40, row.AbsoluteSize.X - (swW + 8 + iconOff))
+			local avail = math.max(40, row.AbsoluteSize.X - (swW + 8 + iconOff + rightPad))
 			local bounds = TextService:GetTextSize(
 				tostring(name.Text or ""),
 				etok.Control.LabelTextSize,
@@ -3503,13 +3848,13 @@ function Elements.CreateSection(tab, arg1, arg2)
 			)
 			local needed = math.max(rowH, math.ceil(bounds.Y + 4))
 			row.Size = UDim2.new(1, 0, 0, needed)
-			name.Size = UDim2.new(1, -(swW + 8 + iconOff), 0, needed)
-			switch.Position = UDim2.new(1, -swW, 0.5, -math.floor(swH / 2))
+			name.Size = UDim2.new(1, -(swW + 8 + iconOff + rightPad), 0, needed)
+			switch.Position = UDim2.new(1, -(swW + rightPad), 0.5, -math.floor(swH / 2))
 		end
 		local switch = Utils.Create("TextButton", {
 			BackgroundTransparency = 1,
 			Size = UDim2.fromOffset(swW, swH),
-			Position = UDim2.new(1, -swW, 0.5, -math.floor(swH / 2)),
+			Position = UDim2.new(1, -(swW + rightPad), 0.5, -math.floor(swH / 2)),
 			Text = "",
 			AutoButtonColor = false,
 			Parent = row,
@@ -3560,6 +3905,14 @@ function Elements.CreateSection(tab, arg1, arg2)
 		switch.MouseButton1Click:Connect(function()
 			setState(not value, true)
 		end)
+		local inlineBind = attachInlineControlKeybind(win, row, theme, etok, {
+			flagBase = flag,
+			actionName = tostring(opts.Name or "Toggle"),
+			onFire = function()
+				setState(not value, true)
+			end,
+			settingsPosition = UDim2.new(1, -20, 0.5, 0),
+		})
 
 		if flag then
 			Services.StateService:OnFlagChanged(flag, function(v)
@@ -3576,6 +3929,12 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Get = function()
 				return value
 			end,
+			SetKeybind = function(_, kc)
+				inlineBind.SetKey(kc)
+			end,
+			GetKeybind = function()
+				return inlineBind.GetKey()
+			end,
 		})
 	end
 
@@ -3591,7 +3950,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			TextSize = etok.Control.LabelTextSize,
 			TextColor3 = theme.Text,
 			Text = opts.Name or "Button",
-			Size = UDim2.new(1, 0, 0, etok.Control.ButtonHeight),
+			Size = UDim2.new(1, -24, 0, etok.Control.ButtonHeight),
 			AutoButtonColor = false,
 			Parent = card,
 		})
@@ -3621,6 +3980,16 @@ function Elements.CreateSection(tab, arg1, arg2)
 				task.spawn(opts.Callback)
 			end
 		end)
+		local inlineBind = attachInlineControlKeybind(win, card, theme, etok, {
+			flagBase = opts.Flag,
+			actionName = tostring(opts.Name or "Button"),
+			onFire = function()
+				if opts.Callback then
+					task.spawn(opts.Callback)
+				end
+			end,
+			settingsPosition = UDim2.new(1, -20, 0.5, 0),
+		})
 		btn.MouseEnter:Connect(function()
 			local th = select(1, ElemCtx(win))
 			Utils.Tween(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = th.Accent })
@@ -3636,6 +4005,12 @@ function Elements.CreateSection(tab, arg1, arg2)
 			end,
 			Get = function()
 				return btn.Text
+			end,
+			SetKeybind = function(_, kc)
+				inlineBind.SetKey(kc)
+			end,
+			GetKeybind = function()
+				return inlineBind.GetKey()
 			end,
 		})
 	end
@@ -3659,9 +4034,10 @@ function Elements.CreateSection(tab, arg1, arg2)
 		local row = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, rowH),
-			ClipsDescendants = true,
+			ClipsDescendants = false,
 			Parent = card,
 		})
+		local rightPad = 24
 		local iconOff = addRowIcon(row, opts.Icon, theme, etok)
 		local circleLabel = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
@@ -3671,7 +4047,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextYAlignment = Enum.TextYAlignment.Center,
 			TextWrapped = true,
-			Size = UDim2.new(1, -(csz + 8 + iconOff), 0, rowH),
+			Size = UDim2.new(1, -(csz + 8 + iconOff + rightPad), 0, rowH),
 			Position = UDim2.fromOffset(iconOff, 0),
 			Text = opts.Name or "Toggle",
 			Parent = row,
@@ -3680,7 +4056,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		local click = Utils.Create("TextButton", {
 			BackgroundTransparency = 1,
 			Size = UDim2.fromOffset(csz, csz),
-			Position = UDim2.new(1, -1, 0.5, 0),
+			Position = UDim2.new(1, -(1 + rightPad), 0.5, 0),
 			AnchorPoint = Vector2.new(1, 0.5),
 			Text = "",
 			AutoButtonColor = false,
@@ -3690,7 +4066,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			if not row.Parent or not circleLabel or not circleLabel.Parent or not click.Parent then
 				return
 			end
-			local avail = math.max(40, row.AbsoluteSize.X - (csz + 8 + iconOff))
+			local avail = math.max(40, row.AbsoluteSize.X - (csz + 8 + iconOff + rightPad))
 			local bounds = TextService:GetTextSize(
 				tostring(circleLabel.Text or ""),
 				etok.Control.LabelTextSize,
@@ -3699,8 +4075,8 @@ function Elements.CreateSection(tab, arg1, arg2)
 			)
 			local needed = math.max(rowH, math.ceil(bounds.Y + 4))
 			row.Size = UDim2.new(1, 0, 0, needed)
-			circleLabel.Size = UDim2.new(1, -(csz + 8 + iconOff), 0, needed)
-			click.Position = UDim2.new(1, -1, 0.5, 0)
+			circleLabel.Size = UDim2.new(1, -(csz + 8 + iconOff + rightPad), 0, needed)
+			click.Position = UDim2.new(1, -(1 + rightPad), 0.5, 0)
 		end
 		refreshCircleLabelLayout()
 		table.insert(win._dragConns, row:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshCircleLabelLayout))
@@ -3780,6 +4156,14 @@ function Elements.CreateSection(tab, arg1, arg2)
 		click.MouseButton1Click:Connect(function()
 			setState(not value, true)
 		end)
+		local inlineBind = attachInlineControlKeybind(win, row, theme, etok, {
+			flagBase = flag,
+			actionName = tostring(opts.Name or "Circle Toggle"),
+			onFire = function()
+				setState(not value, true)
+			end,
+			settingsPosition = UDim2.new(1, -20, 0.5, 0),
+		})
 
 		if flag then
 			Services.StateService:OnFlagChanged(flag, function(v)
@@ -3795,6 +4179,12 @@ function Elements.CreateSection(tab, arg1, arg2)
 			end,
 			Get = function()
 				return value
+			end,
+			SetKeybind = function(_, kc)
+				inlineBind.SetKey(kc)
+			end,
+			GetKeybind = function()
+				return inlineBind.GetKey()
 			end,
 		})
 	end
@@ -4240,6 +4630,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 
 		local open = false
+		local overlayEntryId = nil
 		local function setTriggerOpenVisual(isOpen)
 			chevron.TextColor3 = isOpen and theme.Accent or theme.TextDim
 			triggerStroke.Color = isOpen and theme.Accent or theme.Border
@@ -4260,12 +4651,9 @@ function Elements.CreateSection(tab, arg1, arg2)
 		local function closeDropdownUI()
 			open = false
 			setTriggerOpenVisual(false)
-			if win._dropdownRenderConn then
-				win._dropdownRenderConn:Disconnect()
-				win._dropdownRenderConn = nil
-			end
-			if win._dropdownClose == closeDropdownUI then
-				win._dropdownClose = nil
+			if overlayEntryId then
+				win:_overlayUnregister(overlayEntryId)
+				overlayEntryId = nil
 			end
 			listFrame.Visible = false
 			listFrame.BackgroundTransparency = 1
@@ -4415,17 +4803,17 @@ function Elements.CreateSection(tab, arg1, arg2)
 				return
 			end
 			if dropdownMount then
-				win:_closeGulleDropdown()
+				win:_overlayCloseAll()
 				open = true
 				setTriggerOpenVisual(true)
-				win._dropdownClose = closeDropdownUI
 				listFrame.Parent = dropdownMount
 				listFrame.LayoutOrder = 0
 				listFrame.ZIndex = 50
 				listFrame.Visible = true
 				listFrame.BackgroundTransparency = 0
 				syncDropdownListGeometry()
-				win._dropdownRenderConn = RunService.Heartbeat:Connect(syncDropdownListGeometry)
+				local renderConn = RunService.Heartbeat:Connect(syncDropdownListGeometry)
+				overlayEntryId = win:_overlayRegister(closeDropdownUI, renderConn)
 			else
 				open = true
 				setTriggerOpenVisual(true)
@@ -4845,6 +5233,8 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 		local bindId = "gulle_kb_" .. tostring(_keybindSeq)
 		_keybindSeq = _keybindSeq + 1
+		local waiting = false
+		local captureNonce = 0
 
 		local function applyBinding()
 			Services.KeybindService:Unbind(bindId)
@@ -4858,27 +5248,44 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 		local conn
 		bindBtn.MouseButton1Click:Connect(function()
-			bindBtn.Text = "…"
+			waiting = true
+			captureNonce = captureNonce + 1
+			local thisNonce = captureNonce
+			bindBtn.Text = "[Press key]"
 			if conn then
 				conn:Disconnect()
 			end
 			Services.KeybindService:Unbind(bindId)
+			task.delay(8, function()
+				if waiting and thisNonce == captureNonce then
+					waiting = false
+					bindBtn.Text = key.Name ~= "Unknown" and key.Name or "…"
+					applyBinding()
+				end
+			end)
 			conn = UserInputService.InputBegan:Connect(function(input, gp)
 				if gp then
 					return
 				end
 				if input.UserInputType == Enum.UserInputType.Keyboard then
-					key = input.KeyCode
+					if
+						input.KeyCode == Enum.KeyCode.Escape
+						or input.KeyCode == Enum.KeyCode.Backspace
+						or input.KeyCode == Enum.KeyCode.Delete
+					then
+						key = Enum.KeyCode.Unknown
+					else
+						key = input.KeyCode
+					end
+					waiting = false
 					bindBtn.Text = key.Name ~= "Unknown" and key.Name or "…"
 					conn:Disconnect()
 					conn = nil
+					captureNonce = captureNonce + 1
 					if flag then
 						Services.StateService:SetFlag(flag, key.Name)
 					end
 					applyBinding()
-					if opts.Callback then
-						task.spawn(opts.Callback, key)
-					end
 				end
 			end)
 		end)
