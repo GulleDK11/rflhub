@@ -76,6 +76,29 @@ function Utils.DeepMerge(target, source)
 	return target
 end
 
+local _interFamily = "rbxasset://fonts/families/Inter.json"
+local function _isTextClass(class)
+	return class == "TextLabel" or class == "TextButton" or class == "TextBox"
+end
+local function _interWeightFromFont(fontEnum)
+	if fontEnum == Enum.Font.GothamBold or fontEnum == Enum.Font.SourceSansBold then
+		return Enum.FontWeight.ExtraBold
+	elseif fontEnum == Enum.Font.GothamSemibold or fontEnum == Enum.Font.GothamMedium then
+		return Enum.FontWeight.Bold
+	elseif fontEnum == Enum.Font.Code then
+		return Enum.FontWeight.Medium
+	end
+	return Enum.FontWeight.Bold
+end
+local function _fallbackFontFromWeight(weight)
+	if weight == Enum.FontWeight.Bold or weight == Enum.FontWeight.ExtraBold or weight == Enum.FontWeight.Heavy then
+		return Enum.Font.GothamBold
+	elseif weight == Enum.FontWeight.SemiBold then
+		return Enum.Font.GothamSemibold
+	end
+	return Enum.Font.GothamBold
+end
+
 function Utils.Create(class, props, children)
 	local inst = Instance.new(class)
 	for k, v in pairs(props or {}) do
@@ -85,6 +108,21 @@ function Utils.Create(class, props, children)
 			else
 				inst[k] = v
 			end
+		end
+	end
+	if _isTextClass(class) and not (props and props._UseLegacyFont == true) then
+		local weight = _interWeightFromFont(props and props.Font)
+		inst.Font = _fallbackFontFromWeight(weight)
+		local ok = pcall(function()
+			inst.FontFace = Font.new(_interFamily, weight, Enum.FontStyle.Normal)
+		end)
+		if not ok then
+			ok = pcall(function()
+				inst.FontFace = Font.new(_interFamily)
+			end)
+		end
+		if not ok then
+			inst.Font = _fallbackFontFromWeight(weight)
 		end
 	end
 	for _, ch in ipairs(children or props and props.Children or {}) do
@@ -1872,7 +1910,7 @@ function Core.CreateWindow(opts)
 			Image = profileIconAsset,
 			ImageColor3 = colors.Accent,
 			ScaleType = Enum.ScaleType.Fit,
-			Size = UDim2.fromOffset(11, 11),
+			Size = UDim2.fromOffset(13, 13),
 			Position = UDim2.fromOffset(0, 0),
 			AnchorPoint = Vector2.new(0, 0),
 			ZIndex = 2,
@@ -4189,6 +4227,389 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 	end
 
+	local function createToggleColorControl(opts, useCircle)
+		opts = opts or {}
+		registerSearch(opts.Name or "Toggle")
+		registerSearch((opts.Name or "Toggle") .. " Color")
+		local theme, etok = ElemCtx(win)
+		local toggleFlag = opts.Flag
+		local colorFlag = opts.ColorFlag or (type(toggleFlag) == "string" and (toggleFlag .. "_color") or nil)
+		local toggleValue = opts.Default == true
+		if toggleFlag then
+			local existing = Services.StateService:GetFlag(toggleFlag)
+			if existing == nil then
+				Services.StateService:SetFlag(toggleFlag, toggleValue)
+			else
+				toggleValue = existing == true
+			end
+		end
+		local colorDefault = opts.ColorDefault or opts.DefaultColor or Color3.fromRGB(255, 255, 255)
+		local colorVals = { math.floor(colorDefault.R * 255), math.floor(colorDefault.G * 255), math.floor(colorDefault.B * 255) }
+		if colorFlag then
+			local existing = Services.StateService:GetFlag(colorFlag)
+			if type(existing) == "table" and existing[1] and existing[2] and existing[3] then
+				colorVals = { existing[1], existing[2], existing[3] }
+			else
+				Services.StateService:SetFlag(colorFlag, colorVals)
+			end
+		end
+
+		local card = newRowCard(theme, etok)
+		local wrap = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Parent = card,
+		})
+		Utils.Create("UIListLayout", {
+			Padding = UDim.new(0, etok.Control.InnerStackPadding or 2),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = wrap,
+		})
+		local rowH = math.max(24, math.floor(tonumber(etok.Control.ToggleRowHeight) or 26))
+		local row = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, rowH),
+			LayoutOrder = 0,
+			Parent = wrap,
+		})
+		local iconOff = addRowIcon(row, opts.Icon, theme, etok)
+
+		local swW, swH, csz = 0, 0, 0
+		if useCircle then
+			csz = math.max(18, math.floor(tonumber(etok.Control.CircleToggleSize) or 24))
+		else
+			swH = math.max(20, rowH - 2)
+			swW = math.floor(swH * 1.9 + 0.5)
+		end
+		local previewSize = 20
+		local gap = 6
+		local rightW = (useCircle and csz or swW) + previewSize + gap + 4
+		Utils.Create("TextLabel", {
+			BackgroundTransparency = 1,
+			Font = Enum.Font.Gotham,
+			TextSize = etok.Control.LabelTextSize,
+			TextColor3 = theme.Text,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Center,
+			TextWrapped = true,
+			Size = UDim2.new(1, -(rightW + iconOff), 1, 0),
+			Position = UDim2.fromOffset(iconOff, 0),
+			Text = opts.Name or "Toggle",
+			Parent = row,
+		})
+
+		local function getColor3()
+			return Color3.fromRGB(colorVals[1], colorVals[2], colorVals[3])
+		end
+
+		local previewBtn = Utils.Create("TextButton", {
+			BackgroundTransparency = 1,
+			Text = "",
+			AutoButtonColor = false,
+			Size = UDim2.fromOffset(previewSize, previewSize),
+			Position = UDim2.new(1, -((useCircle and csz or swW) + previewSize + gap), 0.5, -math.floor(previewSize / 2)),
+			Parent = row,
+		})
+		local preview = Utils.Create("Frame", {
+			BackgroundColor3 = getColor3(),
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 1),
+			Parent = previewBtn,
+		})
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(3, etok.Control.DefaultRadius - 2)), Parent = preview })
+		Utils.Create("UIStroke", { Color = theme.Border, Transparency = 0.5, Parent = preview })
+
+		local setToggle
+		if useCircle then
+			local cInset = math.max(2, math.floor(tonumber(etok.Control.CircleToggleInset) or 3))
+			local glyphSize = math.max(6, math.floor(tonumber(etok.Control.CircleToggleGlyphSize) or 10))
+			local click = Utils.Create("TextButton", {
+				BackgroundTransparency = 1,
+				Size = UDim2.fromOffset(csz, csz),
+				Position = UDim2.new(1, -csz, 0.5, 0),
+				AnchorPoint = Vector2.new(0, 0.5),
+				Text = "",
+				AutoButtonColor = false,
+				Parent = row,
+			})
+			local ring = Utils.Create("Frame", {
+				BackgroundColor3 = toggleValue and theme.Accent or theme.Surface,
+				Size = UDim2.fromScale(1, 1),
+				BorderSizePixel = 0,
+				Parent = click,
+			})
+			Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = ring })
+			local ringStroke = Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.2, Parent = ring })
+			local glyphWrap = Utils.Create("Frame", {
+				BackgroundColor3 = theme.Accent,
+				BorderSizePixel = 0,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = toggleValue and UDim2.fromScale(1, 1) or UDim2.fromScale(0.2, 0.2),
+				BackgroundTransparency = toggleValue and 0 or 1,
+				Parent = ring,
+			})
+			Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = glyphWrap })
+			local square = Utils.Create("Frame", {
+				BackgroundColor3 = Color3.new(1, 1, 1),
+				BorderSizePixel = 0,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromOffset(glyphSize, glyphSize),
+				BackgroundTransparency = toggleValue and 0 or 1,
+				Parent = glyphWrap,
+			})
+			Utils.Create("UICorner", { CornerRadius = UDim.new(0, 2), Parent = square })
+			Utils.Create("UIPadding", {
+				PaddingLeft = UDim.new(0, cInset),
+				PaddingRight = UDim.new(0, cInset),
+				PaddingTop = UDim.new(0, cInset),
+				PaddingBottom = UDim.new(0, cInset),
+				Parent = glyphWrap,
+			})
+			setToggle = function(v, animate)
+				toggleValue = v == true
+				if toggleFlag then
+					Services.StateService:SetFlag(toggleFlag, toggleValue)
+				end
+				local th = select(1, ElemCtx(win))
+				if animate then
+					Utils.Tween(ring, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+						BackgroundColor3 = toggleValue and th.Accent or th.Surface,
+					})
+					Utils.Tween(glyphWrap, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+						BackgroundTransparency = toggleValue and 0 or 1,
+						Size = toggleValue and UDim2.fromScale(1, 1) or UDim2.fromScale(0.2, 0.2),
+					})
+					Utils.Tween(square, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+						BackgroundTransparency = toggleValue and 0 or 1,
+					})
+					Utils.Tween(ringStroke, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+						Color = toggleValue and th.Accent or th.Border,
+					})
+				else
+					ring.BackgroundColor3 = toggleValue and th.Accent or th.Surface
+					glyphWrap.BackgroundTransparency = toggleValue and 0 or 1
+					glyphWrap.Size = toggleValue and UDim2.fromScale(1, 1) or UDim2.fromScale(0.2, 0.2)
+					square.BackgroundTransparency = toggleValue and 0 or 1
+					ringStroke.Color = toggleValue and th.Accent or th.Border
+				end
+				if opts.Callback then
+					task.spawn(opts.Callback, toggleValue)
+				end
+			end
+			click.MouseButton1Click:Connect(function()
+				setToggle(not toggleValue, true)
+			end)
+		else
+			local knobSize = math.max(14, swH - 6)
+			local knobY = -math.floor(knobSize / 2)
+			local knobOnX = -((swH - knobSize) / 2 + knobSize)
+			local knobOffX = math.floor((swH - knobSize) / 2 + 0.5)
+			local switch = Utils.Create("TextButton", {
+				BackgroundTransparency = 1,
+				Size = UDim2.fromOffset(swW, swH),
+				Position = UDim2.new(1, -swW, 0.5, -math.floor(swH / 2)),
+				Text = "",
+				AutoButtonColor = false,
+				Parent = row,
+			})
+			local track = Utils.Create("Frame", {
+				BackgroundColor3 = toggleValue and theme.Accent or theme.Surface,
+				Size = UDim2.fromScale(1, 1),
+				BorderSizePixel = 0,
+				Parent = switch,
+			})
+			local tr = etok.Control.TogglePill and UDim.new(1, 0) or UDim.new(0, etok.Control.DefaultRadius)
+			Utils.Create("UICorner", { CornerRadius = tr, Parent = track })
+			local knob = Utils.Create("Frame", {
+				BackgroundColor3 = Color3.new(1, 1, 1),
+				Size = UDim2.fromOffset(knobSize, knobSize),
+				Position = toggleValue and UDim2.new(1, knobOnX, 0.5, knobY) or UDim2.new(0, knobOffX, 0.5, knobY),
+				BorderSizePixel = 0,
+				Parent = track,
+			})
+			Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
+			setToggle = function(v, animate)
+				toggleValue = v == true
+				if toggleFlag then
+					Services.StateService:SetFlag(toggleFlag, toggleValue)
+				end
+				local th = select(1, ElemCtx(win))
+				if animate then
+					Utils.Tween(track, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+						BackgroundColor3 = toggleValue and th.Accent or th.Surface,
+					})
+					Utils.Tween(knob, TweenInfo.new(0.24, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+						Position = toggleValue and UDim2.new(1, knobOnX, 0.5, knobY) or UDim2.new(0, knobOffX, 0.5, knobY),
+					})
+				else
+					track.BackgroundColor3 = toggleValue and th.Accent or th.Surface
+					knob.Position = toggleValue and UDim2.new(1, knobOnX, 0.5, knobY) or UDim2.new(0, knobOffX, 0.5, knobY)
+				end
+				if opts.Callback then
+					task.spawn(opts.Callback, toggleValue)
+				end
+			end
+			switch.MouseButton1Click:Connect(function()
+				setToggle(not toggleValue, true)
+			end)
+		end
+
+		local panel = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Visible = false,
+			LayoutOrder = 1,
+			Parent = wrap,
+		})
+		Utils.Create("UIListLayout", {
+			Padding = UDim.new(0, etok.Control.InnerStackPadding or 2),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = panel,
+		})
+		local chRowH = etok.Control.ColorChannelRowHeight or 22
+		local thk = etok.Control.SliderTrackThickness
+		local dr = etok.Control.DefaultRadius
+		local fills = {}
+		local pickerOpen = false
+		local function pushColor()
+			preview.BackgroundColor3 = getColor3()
+			if colorFlag then
+				Services.StateService:SetFlag(colorFlag, { colorVals[1], colorVals[2], colorVals[3] })
+			end
+			if opts.ColorCallback then
+				task.spawn(opts.ColorCallback, getColor3())
+			end
+		end
+		local function setPickerOpen(open)
+			pickerOpen = open == true
+			panel.Visible = pickerOpen
+			Utils.Tween(preview, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				BackgroundTransparency = pickerOpen and 0 or 0.03,
+			})
+		end
+		for i, label in ipairs({ "R", "G", "B" }) do
+			local sw = Utils.Create("Frame", {
+				BackgroundTransparency = 1,
+				Size = UDim2.new(1, 0, 0, chRowH),
+				LayoutOrder = i - 1,
+				Parent = panel,
+			})
+			Utils.Create("TextLabel", {
+				BackgroundTransparency = 1,
+				Size = UDim2.new(0, 24, 1, 0),
+				Font = Enum.Font.GothamBold,
+				TextSize = etok.Control.SecondaryTextSize,
+				TextColor3 = theme.TextDim,
+				Text = label,
+				Parent = sw,
+			})
+			local track = Utils.Create("Frame", {
+				BackgroundColor3 = theme.Surface,
+				Position = UDim2.fromOffset(28, math.max(0, math.floor((chRowH - thk) / 2))),
+				Size = UDim2.new(1, -28, 0, thk),
+				BorderSizePixel = 0,
+				Parent = sw,
+			})
+			Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = track })
+			local fill = Utils.Create("Frame", {
+				BackgroundColor3 = theme.Accent,
+				Size = UDim2.new(colorVals[i] / 255, 0, 1, 0),
+				BorderSizePixel = 0,
+				Parent = track,
+			})
+			fills[i] = fill
+			Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = fill })
+			local drag = false
+			track.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					drag = true
+					local rel = Utils.Clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+					colorVals[i] = math.floor(rel * 255)
+					fill.Size = UDim2.new(rel, 0, 1, 0)
+					pushColor()
+				end
+			end)
+			UserInputService.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					drag = false
+				end
+			end)
+			UserInputService.InputChanged:Connect(function(input)
+				if
+					drag
+					and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch)
+				then
+					local rel = Utils.Clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+					colorVals[i] = math.floor(rel * 255)
+					fill.Size = UDim2.new(rel, 0, 1, 0)
+					pushColor()
+				end
+			end)
+		end
+		previewBtn.MouseButton1Click:Connect(function()
+			setPickerOpen(not pickerOpen)
+		end)
+		setPickerOpen(opts.OpenColorPicker == true)
+
+		if toggleFlag then
+			Services.StateService:OnFlagChanged(toggleFlag, function(v)
+				if type(v) == "boolean" and v ~= toggleValue then
+					setToggle(v, true)
+				end
+			end)
+		end
+		if colorFlag then
+			Services.StateService:OnFlagChanged(colorFlag, function(v)
+				if type(v) == "table" and v[1] and v[2] and v[3] then
+					colorVals[1], colorVals[2], colorVals[3] = v[1], v[2], v[3]
+					for j = 1, 3 do
+						if fills[j] then
+							fills[j].Size = UDim2.new(colorVals[j] / 255, 0, 1, 0)
+						end
+					end
+					preview.BackgroundColor3 = getColor3()
+				end
+			end)
+		end
+
+		return {
+			Set = function(_, v)
+				setToggle(v, true)
+			end,
+			Get = function()
+				return toggleValue
+			end,
+			SetColor = function(_, c)
+				if typeof(c) == "Color3" then
+					colorVals[1], colorVals[2], colorVals[3] = math.floor(c.R * 255), math.floor(c.G * 255), math.floor(c.B * 255)
+				elseif type(c) == "table" and c[1] and c[2] and c[3] then
+					colorVals[1], colorVals[2], colorVals[3] = c[1], c[2], c[3]
+				end
+				for j = 1, 3 do
+					if fills[j] then
+						fills[j].Size = UDim2.new(colorVals[j] / 255, 0, 1, 0)
+					end
+				end
+				pushColor()
+			end,
+			GetColor = function()
+				return getColor3()
+			end,
+		}
+	end
+
+	function section:CreateToggleColorPicker(opts)
+		return createToggleColorControl(opts, false)
+	end
+
+	function section:CreateCircleToggleColorPicker(opts)
+		return createToggleColorControl(opts, true)
+	end
+
 	function section:CreateSlider(opts)
 		opts = opts or {}
 		registerSearch(opts.Name or "Slider")
@@ -5007,8 +5428,6 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 		local iconOff = addRowIcon(row, opts.Icon, theme, etok)
 		local dr = etok.Control.DefaultRadius
-		local thk = etok.Control.SliderTrackThickness
-		local chRowH = etok.Control.ColorChannelRowHeight or 22
 		Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
@@ -5039,9 +5458,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(3, dr - 2)), Parent = preview })
 		Utils.Create("UIStroke", { Color = theme.Border, Transparency = 0.5, Parent = preview })
 
-		local sliders = { "R", "G", "B" }
 		local vals = { math.floor(col.R * 255), math.floor(col.G * 255), math.floor(col.B * 255) }
-		local fills = {}
 		local panel = Utils.Create("Frame", {
 			BackgroundTransparency = 1,
 			Size = UDim2.new(1, 0, 0, 0),
@@ -5055,6 +5472,9 @@ function Elements.CreateSection(tab, arg1, arg2)
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = panel,
 		})
+		local chRowH = etok.Control.ColorChannelRowHeight or 22
+		local thk = etok.Control.SliderTrackThickness
+		local fills = {}
 		local pickerOpen = false
 		local function setPickerOpen(open)
 			pickerOpen = open == true
@@ -5064,18 +5484,17 @@ function Elements.CreateSection(tab, arg1, arg2)
 			})
 		end
 
-		local function push()
+		local function push(emit)
 			local c = Color3.fromRGB(vals[1], vals[2], vals[3])
 			preview.BackgroundColor3 = c
 			if flag then
 				Services.StateService:SetFlag(flag, { vals[1], vals[2], vals[3] })
 			end
-			if opts.Callback then
+			if emit and opts.Callback then
 				task.spawn(opts.Callback, c)
 			end
 		end
-
-		for i, label in ipairs(sliders) do
+		for i, label in ipairs({ "R", "G", "B" }) do
 			local sw = Utils.Create("Frame", {
 				BackgroundTransparency = 1,
 				Size = UDim2.new(1, 0, 0, chRowH),
@@ -5114,7 +5533,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 					local rel = Utils.Clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
 					vals[i] = math.floor(rel * 255)
 					fill.Size = UDim2.new(rel, 0, 1, 0)
-					push()
+					push(true)
 				end
 			end)
 			UserInputService.InputEnded:Connect(function(input)
@@ -5130,7 +5549,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 					local rel = Utils.Clamp((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
 					vals[i] = math.floor(rel * 255)
 					fill.Size = UDim2.new(rel, 0, 1, 0)
-					push()
+					push(true)
 				end
 			end)
 		end
@@ -5144,17 +5563,19 @@ function Elements.CreateSection(tab, arg1, arg2)
 			setPickerOpen(not pickerOpen)
 		end)
 		setPickerOpen(opts.Open == true)
+		push(false)
 
 		if flag then
 			Services.StateService:OnFlagChanged(flag, function(v)
 				if type(v) == "table" and v[1] and v[2] and v[3] then
 					vals[1], vals[2], vals[3] = v[1], v[2], v[3]
-					for j = 1, 3 do
-						if fills[j] then
-							fills[j].Size = UDim2.new(vals[j] / 255, 0, 1, 0)
+					local c = Color3.fromRGB(vals[1], vals[2], vals[3])
+					for i = 1, 3 do
+						if fills[i] then
+							fills[i].Size = UDim2.new(vals[i] / 255, 0, 1, 0)
 						end
 					end
-					preview.BackgroundColor3 = Color3.fromRGB(vals[1], vals[2], vals[3])
+					preview.BackgroundColor3 = c
 				end
 			end)
 		end
@@ -5169,12 +5590,12 @@ function Elements.CreateSection(tab, arg1, arg2)
 				elseif type(c) == "table" and c[1] then
 					vals[1], vals[2], vals[3] = c[1], c[2], c[3]
 				end
-				for j = 1, 3 do
-					if fills[j] then
-						fills[j].Size = UDim2.new(vals[j] / 255, 0, 1, 0)
+				for i = 1, 3 do
+					if fills[i] then
+						fills[i].Size = UDim2.new(vals[i] / 255, 0, 1, 0)
 					end
 				end
-				push()
+				push(true)
 			end,
 		})
 	end
@@ -5432,6 +5853,14 @@ function Elements.CreateSection(tab, arg1, arg2)
 			o.Default = opts.CurrentState
 		end
 		return self:CreateCircleToggle(o)
+	end
+
+	function section:NewToggleColorPicker(opts)
+		return self:CreateToggleColorPicker(opts)
+	end
+
+	function section:NewCircleToggleColorPicker(opts)
+		return self:CreateCircleToggleColorPicker(opts)
 	end
 
 	function section:NewTextBox(opts)
