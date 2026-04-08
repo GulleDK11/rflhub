@@ -79,10 +79,50 @@ Notes:
 - Supports `SaveKey`, `AutoUseSavedKey`, and `DeferWindowOpen`
 - Key UI inherits `Window.Theme` accent/colors in V2
 
+Advanced `auto` flow:
+
+```lua
+UI:CreateWindowAfterKey({
+	KeySystem = "auto",
+	SaveKey = true,
+	AutoUseSavedKey = true,
+	DeferWindowOpen = false,
+	Key = "demo",
+	Window = { Name = "My Hub", Theme = Library.V2ModernTheme },
+	Build = function(Window)
+		-- Build tabs/sections here.
+	end,
+})
+```
+
+## Studio Quick Start
+
+```lua
+-- ReplicatedStorage.ModuleScript: GulleUiLibraryV2 (paste library source)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Library = require(ReplicatedStorage:WaitForChild("GulleUiLibraryV2"))
+local UI = Library:Init()
+
+UI:CreateWindowAfterKey({
+	KeySystem = "builtin",
+	Key = "studio",
+	Window = {
+		Name = "Studio Test",
+		Theme = Library.V2ModernTheme,
+		UseCoreGui = false, -- Studio-safe
+	},
+	Build = function(Window)
+		-- Build tabs/sections here.
+	end,
+})
+```
+
 ## Common Controls
 
 ```lua
 local Tab = Window:CreateTab({ Name = "Aim", Icon = "rbxassetid://74523675899900" })
+Window:CreateTabSpacer("______________") -- line-style spacer
+Window:CreateTabSpacer("Misc") -- labeled spacer
 local Sections = Tab:CreateSectionBundle({
 	Left = { { Name = "Main" } },
 	Right = { { Name = "Settings" } },
@@ -96,6 +136,58 @@ Sections.Right[1]:CreateColorPicker({ Name = "FOV Color", Default = Color3.fromR
 ```
 
 Slider value chip supports typing numbers directly (click value, type, press Enter/focus out).
+
+Full control surface available:
+- `CreateToggle`, `CreateCircleToggle`, `CreateButton`
+- `CreateSlider`, `CreateDropdown`, `CreateInput`, `CreateColorPicker`, `CreateKeybind`
+- `CreateLabel`, `CreateDivider`, `CreateParagraph`
+- `CreateTabSpacer` (line-style and labeled)
+
+Spacer styles:
+
+```lua
+Window:CreateTabSpacer("______________") -- visual line spacer
+Window:CreateTabSpacer("Misc") -- labeled group spacer
+```
+
+Callback wiring example:
+
+```lua
+local Main = Tab:CreateSectionBundle({ Left = { { Name = "Main" } }, Right = { { Name = "Config" } } })
+Main.Left[1]:CreateToggle({
+	Name = "Enabled",
+	Default = false,
+	Flag = "feature_enabled",
+	Callback = function(v)
+		print("Enabled:", v)
+	end,
+})
+Main.Left[1]:CreateSlider({
+	Name = "Speed",
+	Min = 0,
+	Max = 100,
+	Default = 25,
+	Increment = 1,
+	Flag = "feature_speed",
+	Callback = function(v)
+		print("Speed:", v)
+	end,
+})
+Main.Right[1]:CreateButton({
+	Name = "Dump Flags",
+	Callback = function()
+		print("Enabled:", UI:GetFlag("feature_enabled"), "Speed:", UI:GetFlag("feature_speed"))
+	end,
+})
+```
+
+Theme + persistence note:
+- `Window:ModifyTheme(...)` changes runtime visuals immediately.
+- Config save/load persists flag values; treat theme selection as a runtime choice unless you store your own theme flag.
+
+Mobile open-button note:
+- Executor defaults often use `MobileOpenButton = true`, `MobileOpenButtonTouchOnly = true`.
+- Studio testing often uses `MobileOpenButton = false`, `MobileOpenButtonTouchOnly = false` for desktop iteration.
 
 ## Notifications
 
@@ -112,4 +204,16 @@ Window:Notify({ Title = "Warning", Message = "Check settings.", Duration = 2.5, 
 
 - Executor example: `ExampleV2.lua`
 - Studio LocalScript example: `ExampleV2_Studio.lua`
+
+## Feature Matrix
+
+| Feature | `ExampleV2.lua` | `ExampleV2_Studio.lua` |
+|---|---|---|
+| Key system gate | Yes | Yes |
+| Theme switching | Yes | Yes |
+| Config save/load | Yes | Yes |
+| Notification type demo | Yes | Yes |
+| Tab spacers | Yes | Yes |
+| Full control showcase | Yes | Yes |
+| Studio-safe setup (`UseCoreGui = false`) | No | Yes |
 
