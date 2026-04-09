@@ -35,6 +35,14 @@ local function resolveGuiParent(opts)
 	end
 	return getGuiParent()
 end
+
+local function getViewportSize()
+	local cam = workspace.CurrentCamera
+	if cam and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
+		return cam.ViewportSize
+	end
+	return Vector2.new(1280, 720)
+end
 -- #endregion
 
 -- #region Utils
@@ -1241,10 +1249,51 @@ function Core.CreateWindow(opts)
 		Scale = 1,
 		Parent = main,
 	})
+	local mainResponsiveScale = Utils.Create("UIScale", {
+		Name = "_GulleResponsiveScale",
+		Scale = 1,
+		Parent = main,
+	})
 	local wScaleStart = tok.Animation.WindowOpenScaleStart
 	if type(wScaleStart) == "number" and wScaleStart > 0 and wScaleStart < 0.999 then
 		mainUIScale.Scale = wScaleStart
 	end
+	local function applyMainResponsiveScale()
+		if opts.DisableResponsiveScale == true or opts.DisableAutoScale == true then
+			mainResponsiveScale.Scale = 1
+			return
+		end
+		local vp = getViewportSize()
+		local margin = math.max(8, math.floor(tonumber(opts.ResponsiveMargin) or 16))
+		local baseW = math.max(1, main.AbsoluteSize.X > 0 and main.AbsoluteSize.X or (tok.Window.Width or 720))
+		local baseH = math.max(1, main.AbsoluteSize.Y > 0 and main.AbsoluteSize.Y or (tok.Window.Height or 520))
+		local maxW = math.max(1, vp.X - margin * 2)
+		local maxH = math.max(1, vp.Y - margin * 2)
+		local fitScale = math.min(maxW / baseW, maxH / baseH, 1)
+		local minScale = tonumber(opts.ResponsiveMinScale)
+			or tonumber(opts.MobileMinScale)
+			or (UserInputService.TouchEnabled and 0.62 or 0.78)
+		mainResponsiveScale.Scale = Utils.Clamp(fitScale, minScale, 1)
+	end
+	applyMainResponsiveScale()
+	local responsiveSizeConn = main:GetPropertyChangedSignal("AbsoluteSize"):Connect(applyMainResponsiveScale)
+	local responsiveViewportConn = nil
+	local responsiveCameraConn = nil
+	local function bindResponsiveCamera()
+		if responsiveViewportConn then
+			responsiveViewportConn:Disconnect()
+			responsiveViewportConn = nil
+		end
+		local cam = workspace.CurrentCamera
+		if cam then
+			responsiveViewportConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(applyMainResponsiveScale)
+		end
+	end
+	bindResponsiveCamera()
+	responsiveCameraConn = workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+		bindResponsiveCamera()
+		applyMainResponsiveScale()
+	end)
 	local mainStroke = Utils.Create("UIStroke", {
 		Color = colors.Border,
 		Thickness = 1,
@@ -1894,6 +1943,13 @@ function Core.CreateWindow(opts)
 		},
 		_mobileFabGui = nil,
 	}
+	table.insert(window._dragConns, responsiveSizeConn)
+	if responsiveViewportConn then
+		table.insert(window._dragConns, responsiveViewportConn)
+	end
+	if responsiveCameraConn then
+		table.insert(window._dragConns, responsiveCameraConn)
+	end
 
 	do
 		-- Touch-first: skip on desktop unless MobileOpenButtonTouchOnly == false (e.g. Studio testing).
@@ -3618,9 +3674,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			for _, opt in ipairs(options) do
 				local optStr = tostring(opt)
 				local optCmp = string.lower(optStr)
-				if query ~= "" and string.find(optCmp, query, 1, true) == nil then
-					continue
-				end
+				if query == "" or string.find(optCmp, query, 1, true) ~= nil then
 				shownCount = shownCount + 1
 				local isSel = optStr == tostring(current)
 				local idleBg = isSel and mixRgb(theme.Surface, theme.Accent, 0.14) or theme.Surface
@@ -3707,6 +3761,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 						task.spawn(opts.Callback, current)
 					end
 				end)
+				end
 			end
 			local contentH = optionLayout.AbsoluteContentSize.Y
 			local capH = rowH * maxRows + math.max(0, maxRows - 1) * listPad
@@ -4655,6 +4710,42 @@ function Library:Init(opts)
 			BorderSizePixel = 0,
 			Parent = overlay,
 		})
+		local keyCardScale = Utils.Create("UIScale", {
+			Name = "_GulleKeyResponsiveScale",
+			Scale = 1,
+			Parent = card,
+		})
+		local keyViewportConn = nil
+		local keyCameraConn = nil
+		local function applyKeyResponsiveScale()
+			if opts.DisableResponsiveScale == true or opts.DisableAutoScale == true then
+				keyCardScale.Scale = 1
+				return
+			end
+			local vp = getViewportSize()
+			local margin = math.max(8, math.floor(tonumber(opts.KeyResponsiveMargin) or 14))
+			local maxW = math.max(1, vp.X - margin * 2)
+			local maxH = math.max(1, vp.Y - margin * 2)
+			local fitScale = math.min(maxW / 380, maxH / 320, 1)
+			local minScale = tonumber(opts.KeyResponsiveMinScale) or (UserInputService.TouchEnabled and 0.68 or 0.82)
+			keyCardScale.Scale = Utils.Clamp(fitScale, minScale, 1)
+		end
+		local function bindKeyCamera()
+			if keyViewportConn then
+				keyViewportConn:Disconnect()
+				keyViewportConn = nil
+			end
+			local cam = workspace.CurrentCamera
+			if cam then
+				keyViewportConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(applyKeyResponsiveScale)
+			end
+		end
+		bindKeyCamera()
+		keyCameraConn = workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+			bindKeyCamera()
+			applyKeyResponsiveScale()
+		end)
+		applyKeyResponsiveScale()
 		local cardStrokeTargetT = 0.5
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tok.Window.CornerRadius), Parent = card })
 		local cardStroke = Utils.Create("UIStroke", {
@@ -4998,6 +5089,14 @@ function Library:Init(opts)
 		end
 
 		local function destroyKeyScreen()
+			if keyViewportConn then
+				keyViewportConn:Disconnect()
+				keyViewportConn = nil
+			end
+			if keyCameraConn then
+				keyCameraConn:Disconnect()
+				keyCameraConn = nil
+			end
 			if screen.Parent then
 				screen.Enabled = false
 				screen:Destroy()
