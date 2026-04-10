@@ -1504,10 +1504,64 @@ function Core.CreateWindow(opts)
 		Scale = 1,
 		Parent = main,
 	})
+	local mainResponsiveScale = Utils.Create("UIScale", {
+		Name = "_GulleResponsiveScale",
+		Scale = 1,
+		Parent = main,
+	})
 	local wScaleStart = tok.Animation.WindowOpenScaleStart
 	if type(wScaleStart) == "number" and wScaleStart > 0 and wScaleStart < 0.999 then
 		mainUIScale.Scale = wScaleStart
 	end
+
+	local function getViewportSize()
+		local cam = workspace.CurrentCamera
+		if cam and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
+			return cam.ViewportSize
+		end
+		return Vector2.new(1280, 720)
+	end
+	local function applyMainResponsiveScale()
+		if opts.DisableResponsiveScale == true or opts.DisableAutoScale == true then
+			mainResponsiveScale.Scale = 1
+			return
+		end
+		local vp = getViewportSize()
+		local margin = math.max(8, math.floor(tonumber(opts.ResponsiveMargin) or 16))
+		local baseW = math.max(1, main.AbsoluteSize.X > 0 and main.AbsoluteSize.X or (tok.Window.Width or 720))
+		local baseH = math.max(1, main.AbsoluteSize.Y > 0 and main.AbsoluteSize.Y or (tok.Window.Height or 520))
+		local maxW = math.max(1, vp.X - margin * 2)
+		local maxH = math.max(1, vp.Y - margin * 2)
+		local fitScale = math.min(maxW / baseW, maxH / baseH, 1)
+		local minScale = tonumber(opts.ResponsiveMinScale)
+			or tonumber(opts.MobileMinScale)
+			or (UserInputService.TouchEnabled and 0.62 or 0.78)
+
+		-- Gør UI 2x mindre på mobil (samme som v1)
+		if UserInputService.TouchEnabled or UserInputService.KeyboardEnabled == false then
+			fitScale = fitScale * 0.5
+		end
+		mainResponsiveScale.Scale = Utils.Clamp(fitScale, minScale, 1)
+	end
+	applyMainResponsiveScale()
+	local responsiveSizeConn = main:GetPropertyChangedSignal("AbsoluteSize"):Connect(applyMainResponsiveScale)
+	local responsiveViewportConn = nil
+	local responsiveCameraConn = nil
+	local function bindResponsiveCamera()
+		if responsiveViewportConn then
+			responsiveViewportConn:Disconnect()
+			responsiveViewportConn = nil
+		end
+		local cam = workspace.CurrentCamera
+		if cam then
+			responsiveViewportConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(applyMainResponsiveScale)
+		end
+	end
+	bindResponsiveCamera()
+	responsiveCameraConn = workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+		bindResponsiveCamera()
+		applyMainResponsiveScale()
+	end)
 	local mainStroke = Utils.Create("UIStroke", {
 		Color = colors.Border,
 		Thickness = 1,
