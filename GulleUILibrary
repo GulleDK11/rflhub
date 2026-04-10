@@ -1273,6 +1273,11 @@ function Core.CreateWindow(opts)
 		local minScale = tonumber(opts.ResponsiveMinScale)
 			or tonumber(opts.MobileMinScale)
 			or (UserInputService.TouchEnabled and 0.62 or 0.78)
+
+		-- Make UI 2x smaller on mobile (phone/tablet)
+		if UserInputService.TouchEnabled or UserInputService.KeyboardEnabled == false then
+			fitScale = fitScale * 0.5
+		end
 		mainResponsiveScale.Scale = Utils.Clamp(fitScale, minScale, 1)
 	end
 	applyMainResponsiveScale()
