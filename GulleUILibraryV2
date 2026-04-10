@@ -427,8 +427,6 @@ local _defaultTokens = {
 		FrameStrokeThickness = 1,
 		FrameStrokeTransparency = 0.62,
 		MaxVisible = 5,
-		-- CanvasGroup can make text look soft on some clients; disabled by default for crisp toasts.
-		UseCanvasGroupFade = false,
 	},
 }
 
@@ -790,21 +788,13 @@ function Services.NotificationService:_spawnToast(item)
 	})
 	self._activeToasts = self._activeToasts or {}
 	Utils.Create("UICorner", { CornerRadius = UDim.new(0, cornerR), Parent = card })
-	local toastFade = nil
-	if nt.UseCanvasGroupFade == true then
-		toastFade = Utils.TryCreateCanvasGroup({
-			Name = "ToastFade",
-			GroupTransparency = 1,
-			Size = UDim2.fromScale(1, 1),
-			Position = UDim2.fromScale(0, 0),
-			Parent = card,
-		})
-	end
+	-- Fade = parallel transparency tweens only (no CanvasGroup: animating GroupTransparency shimmers text;
+	-- no position/scale tweens.)
 	local function attachToastChrome(parentFrame)
 		local chrome = Utils.Create("Frame", {
 			Name = "ToastChrome",
 			BackgroundColor3 = (typeof(theme.BackgroundElevated) == "Color3" and theme.BackgroundElevated) or surfaceFallback(),
-			BackgroundTransparency = 0.08,
+			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			Size = UDim2.fromScale(1, 1),
 			Position = UDim2.fromScale(0, 0),
@@ -812,55 +802,46 @@ function Services.NotificationService:_spawnToast(item)
 			Parent = parentFrame,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, cornerR), Parent = chrome })
+		local stroke = nil
 		if frameStrokeThick > 0.05 then
-			local stroke = Instance.new("UIStroke")
+			stroke = Instance.new("UIStroke")
 			stroke.Name = "ToastFrameStroke"
 			stroke.Color = borderNeutral
 			stroke.Thickness = frameStrokeThick
-			stroke.Transparency = frameStrokeT
+			stroke.Transparency = 1
 			stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 			pcall(function()
 				stroke.LineJoinMode = Enum.LineJoinMode.Round
 			end)
 			stroke.Parent = chrome
 		end
-		return chrome
+		return chrome, stroke
 	end
 
-	if toastFade then
-		attachToastChrome(toastFade)
-	else
-		card.BackgroundTransparency = 1
-		card.BorderSizePixel = 0
-		attachToastChrome(card)
-	end
-	local contentRoot = toastFade or card
-	local mover = Utils.Create("Frame", {
+	local chromeFrame, chromeStroke = attachToastChrome(card)
+	local contentLayer = Utils.Create("Frame", {
+		Name = "ToastContent",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 1, 0),
-		Position = UDim2.new(0, 24, 0, 0),
+		Size = UDim2.fromScale(1, 1),
+		Position = UDim2.fromScale(0, 0),
 		ZIndex = 4,
 		ClipsDescendants = true,
-		Parent = contentRoot,
-	})
-	local moverScale = Utils.Create("UIScale", {
-		Scale = 0.96,
-		Parent = mover,
+		Parent = card,
 	})
 	local pad = Utils.Create("UIPadding", {
 		PaddingTop = UDim.new(0, padY),
 		PaddingBottom = UDim.new(0, padY),
 		PaddingLeft = UDim.new(0, padX),
 		PaddingRight = UDim.new(0, padX),
-		Parent = mover,
+		Parent = contentLayer,
 	})
 	local inner = Utils.Create("Frame", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
-		Parent = mover,
+		Parent = contentLayer,
 	})
 	local innerList = Utils.Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Vertical,
@@ -882,6 +863,7 @@ function Services.NotificationService:_spawnToast(item)
 	})
 	local toneDot = Utils.Create("Frame", {
 		BackgroundColor3 = titleC,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Size = UDim2.fromOffset(6, 6),
 		Position = UDim2.new(0, 0, 0.5, 0),
@@ -891,6 +873,7 @@ function Services.NotificationService:_spawnToast(item)
 	Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = toneDot })
 	local title = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
+		TextTransparency = 1,
 		Font = Enum.Font.GothamBold,
 		TextSize = nt.TitleSize,
 		TextColor3 = titleC,
@@ -905,6 +888,7 @@ function Services.NotificationService:_spawnToast(item)
 	})
 	local closeBtn = Utils.Create("TextButton", {
 		BackgroundTransparency = 1,
+		TextTransparency = 1,
 		BorderSizePixel = 0,
 		Size = UDim2.fromOffset(16, 16),
 		Position = UDim2.new(1, -16, 0, 0),
@@ -917,6 +901,7 @@ function Services.NotificationService:_spawnToast(item)
 	})
 	local body = Utils.Create("TextLabel", {
 		BackgroundTransparency = 1,
+		TextTransparency = 1,
 		Font = Enum.Font.Gotham,
 		TextSize = nt.BodySize,
 		TextColor3 = bodyC,
@@ -928,6 +913,39 @@ function Services.NotificationService:_spawnToast(item)
 		LayoutOrder = 2,
 		Parent = inner,
 	})
+	local function runToastFadeTweens(fadeIn)
+		local dur = fadeIn and (tonumber(nt.FadeInDuration) or 0.4) or (tonumber(nt.FadeOutDuration) or 0.35)
+		local ti = TweenInfo.new(
+			dur,
+			Enum.EasingStyle.Quad,
+			fadeIn and Enum.EasingDirection.Out or Enum.EasingDirection.In
+		)
+		local function go(inst, props)
+			if inst then
+				TweenService:Create(inst, ti, props):Play()
+			end
+		end
+		if fadeIn then
+			go(chromeFrame, { BackgroundTransparency = 0.08 })
+			if chromeStroke then
+				go(chromeStroke, { Transparency = frameStrokeT })
+			end
+			go(title, { TextTransparency = 0 })
+			go(body, { TextTransparency = 0 })
+			go(toneDot, { BackgroundTransparency = 0 })
+			go(closeBtn, { TextTransparency = 0 })
+		else
+			go(chromeFrame, { BackgroundTransparency = 1 })
+			if chromeStroke then
+				go(chromeStroke, { Transparency = 1 })
+			end
+			go(title, { TextTransparency = 1 })
+			go(body, { TextTransparency = 1 })
+			go(toneDot, { BackgroundTransparency = 1 })
+			go(closeBtn, { TextTransparency = 1 })
+		end
+		return dur
+	end
 	local dismissed = false
 	local dismissing = false
 	local timerConn = nil
@@ -957,27 +975,8 @@ function Services.NotificationService:_spawnToast(item)
 			return
 		end
 		dismissing = true
-		local fadeOut = nt.FadeOutDuration or 0.35
-		Utils.Tween(
-			mover,
-			TweenInfo.new(fadeOut, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
-			{ Position = UDim2.new(0, 24, 0, 0) }
-		)
-		Utils.Tween(
-			moverScale,
-			TweenInfo.new(fadeOut, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-			{ Scale = 0.96 }
-		)
-		if toastFade then
-			Utils.Tween(
-				toastFade,
-				TweenInfo.new(fadeOut, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-				{ GroupTransparency = 1 }
-			)
-		end
-		task.delay(fadeOut + 0.03, function()
-			removeCard()
-		end)
+		local dur = runToastFadeTweens(false)
+		task.delay(dur + 0.02, removeCard)
 	end
 	closeBtn.MouseButton1Click:Connect(dismissWithFade)
 	card.MouseEnter:Connect(function()
@@ -995,24 +994,7 @@ function Services.NotificationService:_spawnToast(item)
 		end
 	end
 	task.defer(refreshCardHeight)
-	local fadeIn = nt.FadeInDuration or 0.4
-	Utils.Tween(
-		mover,
-		TweenInfo.new(fadeIn + 0.06, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-		{ Position = UDim2.new(0, 0, 0, 0) }
-	)
-	Utils.Tween(
-		moverScale,
-		TweenInfo.new(fadeIn + 0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Scale = 1 }
-	)
-	if toastFade then
-		Utils.Tween(
-			toastFade,
-			TweenInfo.new(fadeIn, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ GroupTransparency = 0 }
-		)
-	end
+	runToastFadeTweens(true)
 	timerConn = RunService.Heartbeat:Connect(function(dt)
 		if dismissed then
 			return
@@ -7071,7 +7053,6 @@ Library.V2ModernTheme = {
 		Notification = {
 			CornerRadius = 8,
 			FrameStrokeTransparency = 0.7,
-			UseCanvasGroupFade = false,
 		},
 	},
 	Colors = {
@@ -7265,7 +7246,6 @@ Library.V2BlockyTheme = {
 		Notification = {
 			CornerRadius = 0,
 			FrameStrokeTransparency = 0.45,
-			UseCanvasGroupFade = false,
 		},
 	},
 	Colors = {
