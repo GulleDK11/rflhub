@@ -690,19 +690,23 @@ function Services.NotificationService:_ensureContainer(parent)
 	end
 	if not self._stack or not self._stack.Parent then
 		local tw = (Services.ThemeService.Tokens.Notification or {}).Width or 320
+		local cam = workspace.CurrentCamera
+		local vp = (cam and cam.ViewportSize.X > 0 and cam.ViewportSize) or Vector2.new(1280, 720)
+		local isMobile = UserInputService.TouchEnabled or UserInputService.KeyboardEnabled == false
+		local stackW = math.min(tw + 24, math.max(220, vp.X - (isMobile and 12 or 40)))
 		self._stack = Utils.Create("Frame", {
 			Name = "ToastStack",
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			AnchorPoint = Vector2.new(1, 1),
-			Position = UDim2.new(1, -20, 1, -20),
-			Size = UDim2.new(0, tw + 24, 1, -40),
+			AnchorPoint = isMobile and Vector2.new(0.5, 1) or Vector2.new(1, 1),
+			Position = isMobile and UDim2.new(0.5, 0, 1, -10) or UDim2.new(1, -20, 1, -20),
+			Size = UDim2.new(0, stackW, 1, isMobile and -20 or -40),
 			Parent = self._container,
 		})
 		Utils.Create("UIListLayout", {
 			FillDirection = Enum.FillDirection.Vertical,
 			Padding = UDim.new(0, 10),
-			HorizontalAlignment = Enum.HorizontalAlignment.Right,
+			HorizontalAlignment = isMobile and Enum.HorizontalAlignment.Center or Enum.HorizontalAlignment.Right,
 			VerticalAlignment = Enum.VerticalAlignment.Bottom,
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = self._stack,
@@ -753,6 +757,7 @@ function Services.NotificationService:_spawnToast(item)
 		end
 	end
 	local titleC, bodyC = notifyTextColors()
+	local accentTheme = (typeof(theme.Accent) == "Color3" and theme.Accent) or titleC
 	local function surfaceFallback()
 		return (typeof(theme.Surface) == "Color3" and theme.Surface) or Color3.fromRGB(30, 30, 34)
 	end
@@ -762,8 +767,15 @@ function Services.NotificationService:_spawnToast(item)
 	local frameStrokeT = math.clamp(tonumber(nt.FrameStrokeTransparency) or 0.62, 0, 0.95)
 	local borderNeutral = (typeof(theme.Border) == "Color3" and theme.Border) or Color3.fromRGB(48, 46, 44)
 	self._toastOrder = self._toastOrder + 1
+	local cam = workspace.CurrentCamera
+	local vp = (cam and cam.ViewportSize.X > 0 and cam.ViewportSize) or Vector2.new(1280, 720)
+	local isMobile = UserInputService.TouchEnabled or UserInputService.KeyboardEnabled == false
+	local stackW = math.min(nt.Width + 24, math.max(220, vp.X - (isMobile and 12 or 40)))
+	local cardWidth = math.max(180, math.floor(stackW - 24))
 	if self._stack then
-		self._stack.Size = UDim2.new(0, nt.Width + 24, 1, -40)
+		self._stack.AnchorPoint = isMobile and Vector2.new(0.5, 1) or Vector2.new(1, 1)
+		self._stack.Position = isMobile and UDim2.new(0.5, 0, 1, -10) or UDim2.new(1, -20, 1, -20)
+		self._stack.Size = UDim2.new(0, stackW, 1, isMobile and -20 or -40)
 	end
 	local padY = nt.PaddingY or 10
 	local padX = nt.PaddingX or 12
@@ -771,7 +783,7 @@ function Services.NotificationService:_spawnToast(item)
 		Name = "ToastCard",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Size = UDim2.new(0, nt.Width, 0, 48),
+		Size = UDim2.new(0, cardWidth, 0, 48),
 		AutomaticSize = Enum.AutomaticSize.None,
 		LayoutOrder = self._toastOrder,
 		ClipsDescendants = true,
@@ -813,6 +825,21 @@ function Services.NotificationService:_spawnToast(item)
 			end)
 			stroke.Parent = chrome
 		end
+		local accentBar = Utils.Create("Frame", {
+			Name = "ToastAccent",
+			BackgroundColor3 = accentTheme,
+			BorderSizePixel = 0,
+			Size = UDim2.new(1, 0, 0, 2),
+			Position = UDim2.new(0, 0, 0, 0),
+			ZIndex = 2,
+			Parent = chrome,
+		})
+		Utils.Create("UICorner", { CornerRadius = UDim.new(0, cornerR), Parent = accentBar })
+		Utils.Create("UIGradient", {
+			Color = ColorSequence.new(titleC, accentTheme),
+			Rotation = 0,
+			Parent = accentBar,
+		})
 		return chrome
 	end
 
@@ -828,10 +855,14 @@ function Services.NotificationService:_spawnToast(item)
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Size = UDim2.new(1, 0, 1, 0),
-		Position = UDim2.new(0, 0, 0, 0),
+		Position = UDim2.new(0, 24, 0, 0),
 		ZIndex = 4,
 		ClipsDescendants = true,
 		Parent = contentRoot,
+	})
+	local moverScale = Utils.Create("UIScale", {
+		Scale = 0.96,
+		Parent = mover,
 	})
 	local pad = Utils.Create("UIPadding", {
 		PaddingTop = UDim.new(0, padY),
@@ -856,7 +887,7 @@ function Services.NotificationService:_spawnToast(item)
 	local function refreshCardHeight()
 		local colH = innerList.AbsoluteContentSize.Y
 		local h = padY * 2 + colH
-		card.Size = UDim2.new(0, nt.Width, 0, math.max(32, math.ceil(h)))
+		card.Size = UDim2.new(0, cardWidth, 0, math.max(32, math.ceil(h)))
 	end
 	innerList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(refreshCardHeight)
 	local titleRow = Utils.Create("Frame", {
@@ -940,20 +971,25 @@ function Services.NotificationService:_spawnToast(item)
 		if dismissed or not card.Parent then
 			return
 		end
+		local fadeOut = nt.FadeOutDuration or 0.35
+		Utils.Tween(
+			mover,
+			TweenInfo.new(fadeOut, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+			{ Position = UDim2.new(0, 24, 0, 0) }
+		)
+		Utils.Tween(
+			moverScale,
+			TweenInfo.new(fadeOut, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+			{ Scale = 0.96 }
+		)
 		if toastFade then
-			local fadeOut = nt.FadeOutDuration or 0.35
-			local tw = Utils.Tween(
+			Utils.Tween(
 				toastFade,
 				TweenInfo.new(fadeOut, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
 				{ GroupTransparency = 1 }
 			)
-			task.spawn(function()
-				tw.Completed:Wait()
-				removeCard()
-			end)
-		else
-			removeCard()
 		end
+		task.delay(fadeOut + 0.03, removeCard)
 	end
 	closeBtn.MouseButton1Click:Connect(dismissWithFade)
 	card.MouseEnter:Connect(function()
@@ -972,6 +1008,16 @@ function Services.NotificationService:_spawnToast(item)
 	end
 	task.defer(refreshCardHeight)
 	local fadeIn = nt.FadeInDuration or 0.4
+	Utils.Tween(
+		mover,
+		TweenInfo.new(fadeIn + 0.06, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+		{ Position = UDim2.new(0, 0, 0, 0) }
+	)
+	Utils.Tween(
+		moverScale,
+		TweenInfo.new(fadeIn + 0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Scale = 1 }
+	)
 	if toastFade then
 		Utils.Tween(
 			toastFade,
@@ -1535,11 +1581,23 @@ function Core.CreateWindow(opts)
 		local fitScale = math.min(maxW / baseW, maxH / baseH, 1)
 		local minScale = tonumber(opts.ResponsiveMinScale)
 			or tonumber(opts.MobileMinScale)
-			or (UserInputService.TouchEnabled and 0.62 or 0.78)
+			or (UserInputService.TouchEnabled and 0.5 or 0.78)
 
-		-- Gør UI 2x mindre på mobil (samme som v1)
-		if UserInputService.TouchEnabled or UserInputService.KeyboardEnabled == false then
-			fitScale = fitScale * 0.5
+		local isMobile = UserInputService.TouchEnabled or UserInputService.KeyboardEnabled == false
+		if isMobile then
+			local vw = vp.X
+			-- Logical mobile widths are usually 360-420; tune cap around that band.
+			local defaultMobileCap
+			if vw <= 430 then
+				local t = Utils.Clamp((vw - 360) / 70, 0, 1)
+				defaultMobileCap = 0.5 + (0.62 - 0.5) * t -- 360->0.50, 390->~0.55, 414->~0.59, 430->0.62
+			elseif vw <= 600 then
+				defaultMobileCap = 0.7 -- large phones / fold cover screens
+			else
+				defaultMobileCap = 0.92 -- tablets
+			end
+			local phoneScaleCap = tonumber(opts.MobileMaxScale) or defaultMobileCap
+			fitScale = math.min(fitScale, phoneScaleCap, 1)
 		end
 		mainResponsiveScale.Scale = Utils.Clamp(fitScale, minScale, 1)
 	end
@@ -2173,6 +2231,24 @@ function Core.CreateWindow(opts)
 
 	local minW = tok.Window.MinWidth or 380
 	local minH = tok.Window.MinHeight or 280
+	local function clampMainOffsets(offsetX, offsetY)
+		local cam = workspace.CurrentCamera
+		local vp = (cam and cam.ViewportSize.X > 0 and cam.ViewportSize) or Vector2.new(1280, 720)
+		local edge = (UserInputService.TouchEnabled or UserInputService.KeyboardEnabled == false) and 6 or 10
+		local halfW = math.max(1, main.AbsoluteSize.X * 0.5)
+		local halfH = math.max(1, main.AbsoluteSize.Y * 0.5)
+		local minX = -vp.X * 0.5 + halfW + edge
+		local maxX = vp.X * 0.5 - halfW - edge
+		local minY = -vp.Y * 0.5 + halfH + edge
+		local maxY = vp.Y * 0.5 - halfH - edge
+		if minX > maxX then
+			minX, maxX = maxX, minX
+		end
+		if minY > maxY then
+			minY, maxY = maxY, minY
+		end
+		return Utils.Clamp(offsetX, minX, maxX), Utils.Clamp(offsetY, minY, maxY)
+	end
 	local gripPx = tok.Window.ResizeGripSize or 18
 	local resizeGrip = Utils.Create("TextButton", {
 		Name = "ResizeGrip",
@@ -2593,7 +2669,8 @@ function Core.CreateWindow(opts)
 	table.insert(window._dragConns, UserInputService.InputChanged:Connect(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			local delta = input.Position - dragStart
-			main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+			local x, y = clampMainOffsets(startPos.X.Offset + delta.X, startPos.Y.Offset + delta.Y)
+			main.Position = UDim2.new(startPos.X.Scale, x, startPos.Y.Scale, y)
 		end
 	end))
 	table.insert(window._dragConns, UserInputService.InputEnded:Connect(function(input)
@@ -2621,6 +2698,8 @@ function Core.CreateWindow(opts)
 		local newW = math.max(minW, math.floor(rsSize.X + delta.X + 0.5))
 		local newH = math.max(minH, math.floor(rsSize.Y + delta.Y + 0.5))
 		main.Size = UDim2.fromOffset(newW, newH)
+		local px, py = clampMainOffsets(main.Position.X.Offset, main.Position.Y.Offset)
+		main.Position = UDim2.new(main.Position.X.Scale, px, main.Position.Y.Scale, py)
 	end))
 	table.insert(window._dragConns, UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
