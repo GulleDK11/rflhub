@@ -757,7 +757,6 @@ function Services.NotificationService:_spawnToast(item)
 		end
 	end
 	local titleC, bodyC = notifyTextColors()
-	local accentTheme = (typeof(theme.Accent) == "Color3" and theme.Accent) or titleC
 	local function surfaceFallback()
 		return (typeof(theme.Surface) == "Color3" and theme.Surface) or Color3.fromRGB(30, 30, 34)
 	end
@@ -825,21 +824,6 @@ function Services.NotificationService:_spawnToast(item)
 			end)
 			stroke.Parent = chrome
 		end
-		local accentBar = Utils.Create("Frame", {
-			Name = "ToastAccent",
-			BackgroundColor3 = accentTheme,
-			BorderSizePixel = 0,
-			Size = UDim2.new(1, 0, 0, 2),
-			Position = UDim2.new(0, 0, 0, 0),
-			ZIndex = 2,
-			Parent = chrome,
-		})
-		Utils.Create("UICorner", { CornerRadius = UDim.new(0, cornerR), Parent = accentBar })
-		Utils.Create("UIGradient", {
-			Color = ColorSequence.new(titleC, accentTheme),
-			Rotation = 0,
-			Parent = accentBar,
-		})
 		return chrome
 	end
 
@@ -945,6 +929,7 @@ function Services.NotificationService:_spawnToast(item)
 		Parent = inner,
 	})
 	local dismissed = false
+	local dismissing = false
 	local timerConn = nil
 	local remaining = math.max(0.1, tonumber(item.Duration) or 3.5)
 	local hovered = false
@@ -968,9 +953,10 @@ function Services.NotificationService:_spawnToast(item)
 		end
 	end
 	local function dismissWithFade()
-		if dismissed or not card.Parent then
+		if dismissed or dismissing or not card.Parent then
 			return
 		end
+		dismissing = true
 		local fadeOut = nt.FadeOutDuration or 0.35
 		Utils.Tween(
 			mover,
@@ -989,7 +975,9 @@ function Services.NotificationService:_spawnToast(item)
 				{ GroupTransparency = 1 }
 			)
 		end
-		task.delay(fadeOut + 0.03, removeCard)
+		task.delay(fadeOut + 0.03, function()
+			removeCard()
+		end)
 	end
 	closeBtn.MouseButton1Click:Connect(dismissWithFade)
 	card.MouseEnter:Connect(function()
