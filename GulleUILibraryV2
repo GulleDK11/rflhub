@@ -2835,6 +2835,48 @@ function Core.CreateWindow(opts)
 		return self:CreateTab(opts)
 	end
 
+	local _tabIconAliases = {
+		lightning = "rbxassetid://7733992729",
+		settings = "rbxassetid://7734056608",
+		gear = "rbxassetid://7734056608",
+		home = "rbxassetid://7733960981",
+		player = "rbxassetid://7734053495",
+		user = "rbxassetid://7734053495",
+		visuals = "rbxassetid://7733964719",
+		eye = "rbxassetid://7733964719",
+		shield = "rbxassetid://7733911828",
+		sword = "rbxassetid://7734022107",
+		bag = "rbxassetid://7733920644",
+		shop = "rbxassetid://7733920644",
+		search = "rbxassetid://7734059095",
+		star = "rbxassetid://7734042071",
+	}
+
+	local function resolveTabIcon(iconValue)
+		if type(iconValue) == "number" then
+			return "rbxassetid://" .. tostring(math.floor(iconValue))
+		end
+		if type(iconValue) ~= "string" then
+			return nil
+		end
+		local raw = iconValue:gsub("^%s+", ""):gsub("%s+$", "")
+		if raw == "" then
+			return nil
+		end
+		if raw:match("^%d+$") then
+			return "rbxassetid://" .. raw
+		end
+		local lowered = string.lower(raw)
+		if lowered:sub(1, 5) == "icon." then
+			local alias = lowered:sub(6)
+			return _tabIconAliases[alias]
+		end
+		if _tabIconAliases[lowered] then
+			return _tabIconAliases[lowered]
+		end
+		return raw
+	end
+
 	function window:CreateTab(nameOrOpts, iconArg)
 		local tabName, iconId
 		if type(nameOrOpts) == "table" then
@@ -2845,6 +2887,7 @@ function Core.CreateWindow(opts)
 			iconId = iconArg
 		end
 		tabName = tabName or "Tab"
+		iconId = resolveTabIcon(iconId)
 
 		local wc = Core.GetColors(window)
 		local tTab = tok.Tab or {}
