@@ -1544,14 +1544,15 @@ function Core.CreateWindow(opts)
 		end
 		local vp = getViewportSize()
 		local margin = math.max(8, math.floor(tonumber(opts.ResponsiveMargin) or 16))
-		local baseW = math.max(1, main.AbsoluteSize.X > 0 and main.AbsoluteSize.X or (tok.Window.Width or 720))
-		local baseH = math.max(1, main.AbsoluteSize.Y > 0 and main.AbsoluteSize.Y or (tok.Window.Height or 520))
+		-- Use logical design size instead of current AbsoluteSize (which already includes scaling).
+		local baseW = math.max(1, math.floor(tonumber(opts.ResponsiveBaseWidth) or tonumber(tok.Window.Width) or 720))
+		local baseH = math.max(1, math.floor(tonumber(opts.ResponsiveBaseHeight) or tonumber(tok.Window.Height) or 520))
 		local maxW = math.max(1, vp.X - margin * 2)
 		local maxH = math.max(1, vp.Y - margin * 2)
 		local fitScale = math.min(maxW / baseW, maxH / baseH, 1)
 		local minScale = tonumber(opts.ResponsiveMinScale)
 			or tonumber(opts.MobileMinScale)
-			or (UserInputService.TouchEnabled and 0.5 or 0.78)
+			or (UserInputService.TouchEnabled and 0.42 or 0.78)
 
 		local isMobile = UserInputService.TouchEnabled or UserInputService.KeyboardEnabled == false
 		if isMobile then
@@ -1560,9 +1561,9 @@ function Core.CreateWindow(opts)
 			local defaultMobileCap
 			if vw <= 430 then
 				local t = Utils.Clamp((vw - 360) / 70, 0, 1)
-				defaultMobileCap = 0.5 + (0.62 - 0.5) * t -- 360->0.50, 390->~0.55, 414->~0.59, 430->0.62
+				defaultMobileCap = 0.46 + (0.58 - 0.46) * t -- 360->0.46, 390->~0.51, 414->~0.55, 430->0.58
 			elseif vw <= 600 then
-				defaultMobileCap = 0.7 -- large phones / fold cover screens
+				defaultMobileCap = 0.68 -- large phones / fold cover screens
 			else
 				defaultMobileCap = 0.92 -- tablets
 			end
@@ -5910,6 +5911,8 @@ function Elements.CreateSection(tab, arg1, arg2)
 		opts = opts or {}
 		registerSearch(opts.Text or opts.Name or "Paragraph")
 		local theme, etok = ElemCtx(win)
+		local order = section._nextRowOrder
+		section._nextRowOrder = section._nextRowOrder + 1
 		local lbl = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
@@ -5919,6 +5922,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			TextWrapped = true,
 			AutomaticSize = Enum.AutomaticSize.Y,
 			Size = UDim2.new(1, 0, 0, 0),
+			LayoutOrder = order,
 			Text = opts.Text or opts.Content or "",
 			Parent = rowsHost,
 		})
