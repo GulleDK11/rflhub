@@ -5836,6 +5836,14 @@ function Elements.CreateSection(tab, arg1, arg2)
 		opts = opts or {}
 		registerSearch(opts.Text or opts.Name or "Label")
 		local theme, etok = ElemCtx(win)
+		local rowOrder = opts.LayoutOrder
+		if type(rowOrder) ~= "number" then
+			rowOrder = opts.Order
+		end
+		if type(rowOrder) ~= "number" then
+			rowOrder = section._nextRowOrder
+			section._nextRowOrder = section._nextRowOrder + 1
+		end
 		local lbl = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamMedium,
@@ -5845,6 +5853,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			TextWrapped = true,
 			AutomaticSize = Enum.AutomaticSize.Y,
 			Size = UDim2.new(1, 0, 0, 0),
+			LayoutOrder = rowOrder,
 			Text = opts.Text or opts.Name or "Label",
 			Parent = rowsHost,
 		})
@@ -5864,6 +5873,14 @@ function Elements.CreateSection(tab, arg1, arg2)
 	function section:CreateDivider(opts)
 		opts = opts or {}
 		local theme, etok = ElemCtx(win)
+		local rowOrder = opts.LayoutOrder
+		if type(rowOrder) ~= "number" then
+			rowOrder = opts.Order
+		end
+		if type(rowOrder) ~= "number" then
+			rowOrder = section._nextRowOrder
+			section._nextRowOrder = section._nextRowOrder + 1
+		end
 		local mx = opts.MarginX or 0
 		local thick = opts.Thickness or 1
 		local trans = opts.Transparency
@@ -5884,6 +5901,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			BorderSizePixel = 0,
 			Size = UDim2.new(1, 0, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = rowOrder,
 			Parent = rowsHost,
 		})
 		if marginY > 0 then
@@ -5913,6 +5931,9 @@ function Elements.CreateSection(tab, arg1, arg2)
 		registerSearch(opts.Name or opts.Title)
 		local theme, etok = ElemCtx(win)
 		local rowOrder = opts.LayoutOrder
+		if type(rowOrder) ~= "number" then
+			rowOrder = opts.Order
+		end
 		if type(rowOrder) ~= "number" then
 			rowOrder = section._nextRowOrder
 			section._nextRowOrder = section._nextRowOrder + 1
