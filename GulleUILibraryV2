@@ -4043,6 +4043,14 @@ function Elements.CreateSection(tab, arg1, arg2)
 				task.spawn(opts.Callback, v)
 			end
 		end
+		local function applyToggleTheme()
+			local th = select(1, ElemCtx(win))
+			name.TextColor3 = th.Text
+			track.BackgroundColor3 = value and th.Accent or th.Surface
+		end
+		if win then
+			table.insert(win._tabThemeHooks, applyToggleTheme)
+		end
 
 		switch.MouseButton1Click:Connect(function()
 			setState(not value, true)
@@ -4140,6 +4148,13 @@ function Elements.CreateSection(tab, arg1, arg2)
 			local th = select(1, ElemCtx(win))
 			Utils.Tween(btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { BackgroundColor3 = th.Surface })
 		end)
+		if win then
+			table.insert(win._tabThemeHooks, function()
+				local th = select(1, ElemCtx(win))
+				btn.BackgroundColor3 = th.Surface
+				btn.TextColor3 = th.Text
+			end)
+		end
 
 		return elementApi(card, {
 			Set = function(_, text)
@@ -4294,6 +4309,16 @@ function Elements.CreateSection(tab, arg1, arg2)
 				task.spawn(opts.Callback, v)
 			end
 		end
+		local function applyCircleToggleTheme()
+			local th = select(1, ElemCtx(win))
+			circleLabel.TextColor3 = th.Text
+			glyphWrap.BackgroundColor3 = th.Accent
+			ring.BackgroundColor3 = value and th.Accent or th.Surface
+			ringStroke.Color = value and th.Accent or th.Border
+		end
+		if win then
+			table.insert(win._tabThemeHooks, applyCircleToggleTheme)
+		end
 
 		click.MouseButton1Click:Connect(function()
 			setState(not value, true)
@@ -4389,7 +4414,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		local previewSize = 20
 		local gap = 6
 		local rightW = (useCircle and csz or swW) + previewSize + gap + 4
-		Utils.Create("TextLabel", {
+		local toggleLabel = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = etok.Control.LabelTextSize,
@@ -4422,9 +4447,13 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Parent = previewBtn,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(3, etok.Control.DefaultRadius - 2)), Parent = preview })
-		Utils.Create("UIStroke", { Color = theme.Border, Transparency = 0.5, Parent = preview })
+		local previewStroke = Utils.Create("UIStroke", { Color = theme.Border, Transparency = 0.5, Parent = preview })
 
 		local setToggle
+		local toggleTrack = nil
+		local toggleRing = nil
+		local toggleRingStroke = nil
+		local toggleGlyphWrap = nil
 		if useCircle then
 			local cInset = math.max(2, math.floor(tonumber(etok.Control.CircleToggleInset) or 3))
 			local glyphSize = math.max(6, math.floor(tonumber(etok.Control.CircleToggleGlyphSize) or 10))
@@ -4455,6 +4484,9 @@ function Elements.CreateSection(tab, arg1, arg2)
 				Parent = ring,
 			})
 			Utils.Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = glyphWrap })
+			toggleRing = ring
+			toggleRingStroke = ringStroke
+			toggleGlyphWrap = glyphWrap
 			local square = Utils.Create("Frame", {
 				BackgroundColor3 = Color3.new(1, 1, 1),
 				BorderSizePixel = 0,
@@ -4527,6 +4559,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			})
 			local tr = etok.Control.TogglePill and UDim.new(1, 0) or UDim.new(0, etok.Control.DefaultRadius)
 			Utils.Create("UICorner", { CornerRadius = tr, Parent = track })
+			toggleTrack = track
 			local knob = Utils.Create("Frame", {
 				BackgroundColor3 = Color3.new(1, 1, 1),
 				Size = UDim2.fromOffset(knobSize, knobSize),
@@ -4578,6 +4611,8 @@ function Elements.CreateSection(tab, arg1, arg2)
 		local thk = etok.Control.SliderTrackThickness
 		local dr = etok.Control.DefaultRadius
 		local fills = {}
+		local channelLabels = {}
+		local channelTracks = {}
 		local pickerOpen = false
 		local function pushColor()
 			preview.BackgroundColor3 = getColor3()
@@ -4602,7 +4637,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 				LayoutOrder = i - 1,
 				Parent = panel,
 			})
-			Utils.Create("TextLabel", {
+			channelLabels[i] = Utils.Create("TextLabel", {
 				BackgroundTransparency = 1,
 				Size = UDim2.new(0, 24, 1, 0),
 				Font = Enum.Font.GothamBold,
@@ -4626,6 +4661,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 				Parent = track,
 			})
 			fills[i] = fill
+			channelTracks[i] = track
 			Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = fill })
 			local drag = false
 			track.InputBegan:Connect(function(input)
@@ -4676,6 +4712,36 @@ function Elements.CreateSection(tab, arg1, arg2)
 						end
 					end
 					preview.BackgroundColor3 = getColor3()
+				end
+			end)
+		end
+		if win then
+			table.insert(win._tabThemeHooks, function()
+				local th = select(1, ElemCtx(win))
+				toggleLabel.TextColor3 = th.Text
+				previewStroke.Color = th.Border
+				if toggleTrack then
+					toggleTrack.BackgroundColor3 = toggleValue and th.Accent or th.Surface
+				end
+				if toggleRing then
+					toggleRing.BackgroundColor3 = toggleValue and th.Accent or th.Surface
+				end
+				if toggleRingStroke then
+					toggleRingStroke.Color = toggleValue and th.Accent or th.Border
+				end
+				if toggleGlyphWrap then
+					toggleGlyphWrap.BackgroundColor3 = th.Accent
+				end
+				for i = 1, 3 do
+					if channelLabels[i] then
+						channelLabels[i].TextColor3 = th.TextDim
+					end
+					if channelTracks[i] then
+						channelTracks[i].BackgroundColor3 = th.Surface
+					end
+					if fills[i] then
+						fills[i].BackgroundColor3 = th.Accent
+					end
 				end
 			end)
 		end
@@ -4747,7 +4813,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Parent = wrap,
 		})
 		local iconOff = addRowIcon(top, opts.Icon, theme, etok)
-		Utils.Create("TextLabel", {
+		local sliderLabel = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = etok.Control.LabelTextSize,
@@ -4769,7 +4835,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Parent = top,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(4, etok.Control.DefaultRadius - 1)), Parent = valueChip })
-		Utils.Create("UIStroke", {
+		local valueChipStroke = Utils.Create("UIStroke", {
 			Color = theme.Border,
 			Thickness = 1,
 			Transparency = tonumber(etok.Control.SliderValueChipStrokeTransparency) or 0.62,
@@ -4787,9 +4853,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Text = "",
 			Parent = valueChip,
 		})
-		if win then
-			Core.AddThemeRef(win, valueChip, "BackgroundColor3", "Surface")
-		end
+		local track, fill
 
 		local tr = etok.Control.DefaultRadius
 		local thk = etok.Control.SliderTrackThickness
@@ -4836,7 +4900,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			LayoutOrder = 1,
 			Parent = wrap,
 		})
-		local track = Utils.Create("Frame", {
+		track = Utils.Create("Frame", {
 			BackgroundColor3 = theme.Surface,
 			AnchorPoint = Vector2.new(0, 0.5),
 			Position = UDim2.new(0, 0, 0.5, 0),
@@ -4845,7 +4909,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Parent = trackRow,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tr), Parent = track })
-		local fill = Utils.Create("Frame", {
+		fill = Utils.Create("Frame", {
 			BackgroundColor3 = theme.Accent,
 			Size = UDim2.new(sliderRatio(value), 0, 1, 0),
 			BorderSizePixel = 0,
@@ -4853,6 +4917,18 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, tr), Parent = fill })
 		valLabel.Text = formatDisplay(value)
+		if win then
+			local function applySliderTheme()
+				local th = select(1, ElemCtx(win))
+				sliderLabel.TextColor3 = th.Text
+				valueChip.BackgroundColor3 = th.SurfaceMuted
+				valueChipStroke.Color = th.Border
+				valLabel.TextColor3 = th.Text
+				track.BackgroundColor3 = th.Surface
+				fill.BackgroundColor3 = th.Accent
+			end
+			table.insert(win._tabThemeHooks, applySliderTheme)
+		end
 
 		local dragging = false
 		local editingValue = false
@@ -4978,7 +5054,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Parent = wrap,
 		})
 		local iconOff = addRowIcon(labelRow, opts.Icon, theme, etok)
-		Utils.Create("TextLabel", {
+		local dropdownLabel = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = etok.Control.LabelTextSize,
@@ -5074,7 +5150,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 		local dropdownMount = win and win._dropdownMount
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = listFrame })
-		Utils.Create("UIStroke", {
+		local listFrameStroke = Utils.Create("UIStroke", {
 			Color = theme.Border,
 			Thickness = 1,
 			Transparency = 0.35,
@@ -5099,8 +5175,10 @@ function Elements.CreateSection(tab, arg1, arg2)
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = listFrame,
 		})
+		local searchWrap = nil
+		local searchWrapStroke = nil
 		if searchEnabled then
-			local searchWrap = Utils.Create("Frame", {
+			searchWrap = Utils.Create("Frame", {
 				BackgroundColor3 = theme.Surface,
 				BorderSizePixel = 0,
 				Size = UDim2.new(1, 0, 0, searchH),
@@ -5108,7 +5186,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 				Parent = listFrame,
 			})
 			Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = searchWrap })
-			Utils.Create("UIStroke", {
+			searchWrapStroke = Utils.Create("UIStroke", {
 				Color = theme.Border,
 				Thickness = 1,
 				Transparency = 0.62,
@@ -5357,6 +5435,33 @@ function Elements.CreateSection(tab, arg1, arg2)
 				end
 			end)
 		end
+		local function applyDropdownTheme()
+			theme = select(1, ElemCtx(win))
+			triggerBg = (typeof(theme.BackgroundElevated) == "Color3" and theme.BackgroundElevated) or theme.Surface
+			popupBg = (typeof(theme.BackgroundElevated) == "Color3" and theme.BackgroundElevated) or theme.Surface
+			dropdownLabel.TextColor3 = theme.Text
+			valueLbl.TextColor3 = theme.Text
+			chevron.TextColor3 = open and theme.Accent or theme.TextDim
+			openBtn.BackgroundColor3 = open and mixRgb(triggerBg, theme.Accent, 0.08) or triggerBg
+			triggerStroke.Color = open and theme.Accent or theme.Border
+			listFrame.BackgroundColor3 = popupBg
+			listFrameStroke.Color = theme.Border
+			optionScroller.ScrollBarImageColor3 = theme.Accent
+			if searchWrap then
+				searchWrap.BackgroundColor3 = theme.Surface
+			end
+			if searchWrapStroke then
+				searchWrapStroke.Color = theme.Border
+			end
+			if searchBox then
+				searchBox.TextColor3 = theme.Text
+				searchBox.PlaceholderColor3 = theme.TextDim
+			end
+			rebuild()
+		end
+		if win then
+			table.insert(win._tabThemeHooks, applyDropdownTheme)
+		end
 
 		return elementApi(card, {
 			Refresh = function(_, newOpts)
@@ -5406,7 +5511,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Parent = wrap,
 		})
 		local iconOff = addRowIcon(labelRow, opts.Icon, theme, etok)
-		Utils.Create("TextLabel", {
+		local inputLabel = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = etok.Control.LabelTextSize,
@@ -5433,7 +5538,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Parent = wrap,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, etok.Control.DefaultRadius), Parent = box })
-		Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.55, Parent = box })
+		local boxStroke = Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.55, Parent = box })
 		Utils.Create("UIPadding", {
 			PaddingLeft = UDim.new(0, 10),
 			PaddingRight = UDim.new(0, 10),
@@ -5468,6 +5573,16 @@ function Elements.CreateSection(tab, arg1, arg2)
 				if tostring(v) ~= box.Text then
 					box.Text = tostring(v)
 				end
+			end)
+		end
+		if win then
+			table.insert(win._tabThemeHooks, function()
+				local th = select(1, ElemCtx(win))
+				inputLabel.TextColor3 = th.Text
+				box.BackgroundColor3 = th.BackgroundElevated
+				box.TextColor3 = th.Text
+				box.PlaceholderColor3 = th.TextDim
+				boxStroke.Color = th.Border
 			end)
 		end
 
@@ -5532,7 +5647,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 		})
 		local iconOff = addRowIcon(row, opts.Icon, theme, etok)
 		local dr = etok.Control.DefaultRadius
-		Utils.Create("TextLabel", {
+		local pickerLabel = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = etok.Control.LabelTextSize,
@@ -5560,7 +5675,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Parent = previewBtn,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, math.max(3, dr - 2)), Parent = preview })
-		Utils.Create("UIStroke", { Color = theme.Border, Transparency = 0.5, Parent = preview })
+		local previewStroke = Utils.Create("UIStroke", { Color = theme.Border, Transparency = 0.5, Parent = preview })
 
 		local vals = { math.floor(col.R * 255), math.floor(col.G * 255), math.floor(col.B * 255) }
 		local panel = Utils.Create("Frame", {
@@ -5579,6 +5694,8 @@ function Elements.CreateSection(tab, arg1, arg2)
 		local chRowH = etok.Control.ColorChannelRowHeight or 22
 		local thk = etok.Control.SliderTrackThickness
 		local fills = {}
+		local channelLabels = {}
+		local channelTracks = {}
 		local pickerOpen = false
 		local function setPickerOpen(open)
 			pickerOpen = open == true
@@ -5605,7 +5722,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 				LayoutOrder = i - 1,
 				Parent = panel,
 			})
-			Utils.Create("TextLabel", {
+			channelLabels[i] = Utils.Create("TextLabel", {
 				BackgroundTransparency = 1,
 				Size = UDim2.new(0, 24, 1, 0),
 				Font = Enum.Font.GothamBold,
@@ -5629,6 +5746,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 				Parent = track,
 			})
 			fills[i] = fill
+			channelTracks[i] = track
 			Utils.Create("UICorner", { CornerRadius = UDim.new(0, dr), Parent = fill })
 			local drag = false
 			track.InputBegan:Connect(function(input)
@@ -5683,6 +5801,24 @@ function Elements.CreateSection(tab, arg1, arg2)
 				end
 			end)
 		end
+		if win then
+			table.insert(win._tabThemeHooks, function()
+				local th = select(1, ElemCtx(win))
+				pickerLabel.TextColor3 = th.Text
+				previewStroke.Color = th.Border
+				for i = 1, 3 do
+					if channelLabels[i] then
+						channelLabels[i].TextColor3 = th.TextDim
+					end
+					if channelTracks[i] then
+						channelTracks[i].BackgroundColor3 = th.Surface
+					end
+					if fills[i] then
+						fills[i].BackgroundColor3 = th.Accent
+					end
+				end
+			end)
+		end
 
 		return elementApi(card, {
 			Get = getColor,
@@ -5728,7 +5864,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Parent = card,
 		})
 		local iconOff = addRowIcon(row, opts.Icon, theme, etok)
-		Utils.Create("TextLabel", {
+		local keyLabel = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
 			TextSize = etok.Control.LabelTextSize,
@@ -5754,7 +5890,7 @@ function Elements.CreateSection(tab, arg1, arg2)
 			Parent = row,
 		})
 		Utils.Create("UICorner", { CornerRadius = UDim.new(0, etok.Control.DefaultRadius), Parent = bindBtn })
-		Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.55, Parent = bindBtn })
+		local bindStroke = Utils.Create("UIStroke", { Color = theme.Border, Thickness = 1, Transparency = 0.55, Parent = bindBtn })
 
 		local bindId = "gulle_kb_" .. tostring(_keybindSeq)
 		_keybindSeq = _keybindSeq + 1
@@ -5814,6 +5950,15 @@ function Elements.CreateSection(tab, arg1, arg2)
 				end
 			end)
 		end)
+		if win then
+			table.insert(win._tabThemeHooks, function()
+				local th = select(1, ElemCtx(win))
+				keyLabel.TextColor3 = th.Text
+				bindBtn.BackgroundColor3 = th.Surface
+				bindBtn.TextColor3 = th.Text
+				bindStroke.Color = th.Border
+			end)
+		end
 
 		return elementApi(card, {
 			Set = function(_, kc)
