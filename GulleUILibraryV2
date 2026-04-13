@@ -5909,10 +5909,52 @@ function Elements.CreateSection(tab, arg1, arg2)
 
 	function section:CreateParagraph(opts)
 		opts = opts or {}
-		registerSearch(opts.Text or opts.Name or "Paragraph")
+		registerSearch(opts.Text or opts.Content or "Paragraph")
+		registerSearch(opts.Name or opts.Title)
 		local theme, etok = ElemCtx(win)
-		local order = section._nextRowOrder
-		section._nextRowOrder = section._nextRowOrder + 1
+		local rowOrder = opts.LayoutOrder
+		if type(rowOrder) ~= "number" then
+			rowOrder = section._nextRowOrder
+			section._nextRowOrder = section._nextRowOrder + 1
+		end
+
+		local wrap = Utils.Create("Frame", {
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Size = UDim2.new(1, 0, 0, 0),
+			LayoutOrder = rowOrder,
+			Parent = rowsHost,
+		})
+		local stackGap = math.max(0, math.floor(tonumber(opts.Spacing) or 2))
+		Utils.Create("UIListLayout", {
+			Padding = UDim.new(0, stackGap),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Parent = wrap,
+		})
+
+		local titleText = opts.Title or opts.Name or ""
+		local bodyText = opts.Text or opts.Content or ""
+		local titleOrder = type(opts.TitleLayoutOrder) == "number" and opts.TitleLayoutOrder or 0
+		local textOrder = type(opts.TextLayoutOrder) == "number" and opts.TextLayoutOrder or 1
+
+		local titleLbl = nil
+		if titleText ~= "" then
+			titleLbl = Utils.Create("TextLabel", {
+				BackgroundTransparency = 1,
+				Font = Enum.Font.GothamMedium,
+				TextSize = etok.Control.LabelTextSize,
+				TextColor3 = theme.Text,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextWrapped = true,
+				AutomaticSize = Enum.AutomaticSize.Y,
+				Size = UDim2.new(1, 0, 0, 0),
+				LayoutOrder = titleOrder,
+				Text = titleText,
+				Parent = wrap,
+			})
+		end
+
 		local lbl = Utils.Create("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.Gotham,
@@ -5922,19 +5964,47 @@ function Elements.CreateSection(tab, arg1, arg2)
 			TextWrapped = true,
 			AutomaticSize = Enum.AutomaticSize.Y,
 			Size = UDim2.new(1, 0, 0, 0),
-			LayoutOrder = order,
-			Text = opts.Text or opts.Content or "",
-			Parent = rowsHost,
+			LayoutOrder = textOrder,
+			Text = bodyText,
+			Parent = wrap,
 		})
 		if win then
 			Core.AddThemeRef(win, lbl, "TextColor3", "TextDim")
+			if titleLbl then
+				Core.AddThemeRef(win, titleLbl, "TextColor3", "Text")
+			end
 		end
-		return elementApi(lbl, {
+		return elementApi(wrap, {
 			Set = function(_, text)
 				lbl.Text = tostring(text)
 			end,
 			Get = function()
 				return lbl.Text
+			end,
+			SetTitle = function(_, text)
+				local nextTitle = tostring(text or "")
+				if titleLbl then
+					titleLbl.Text = nextTitle
+					titleLbl.Visible = nextTitle ~= ""
+				else
+					titleLbl = Utils.Create("TextLabel", {
+						BackgroundTransparency = 1,
+						Font = Enum.Font.GothamMedium,
+						TextSize = etok.Control.LabelTextSize,
+						TextColor3 = theme.Text,
+						TextXAlignment = Enum.TextXAlignment.Left,
+						TextWrapped = true,
+						AutomaticSize = Enum.AutomaticSize.Y,
+						Size = UDim2.new(1, 0, 0, 0),
+						LayoutOrder = titleOrder,
+						Text = nextTitle,
+						Visible = nextTitle ~= "",
+						Parent = wrap,
+					})
+					if win then
+						Core.AddThemeRef(win, titleLbl, "TextColor3", "Text")
+					end
+				end
 			end,
 		})
 	end
