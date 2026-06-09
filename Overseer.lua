@@ -1011,38 +1011,39 @@ end
 
 local utility = {}
 
-function utility.dragify(object, dragoutline)
- local start, objectposition, dragging, currentpos
+function utility.dragify(handle, dragoutline, moveTarget)
+	local start, objectposition, dragging, currentpos
+	moveTarget = moveTarget or handle
 
- local function isDragInput(input)
- return input.UserInputType == Enum.UserInputType.MouseButton1
- or input.UserInputType == Enum.UserInputType.Touch
- end
+	local function isDragInput(input)
+		return input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch
+	end
 
- object.InputBegan:Connect(function(input)
- if isDragInput(input) then
- dragging = true
- start = input.Position
- dragoutline.Visible = true
- objectposition = object.Position
- end
- end)
+	handle.InputBegan:Connect(function(input)
+		if isDragInput(input) then
+			dragging = true
+			start = input.Position
+			dragoutline.Visible = true
+			objectposition = moveTarget.Position
+		end
+	end)
 
- utility.connect(services.InputService.InputChanged, function(input)
- if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
- currentpos = UDim2.new(objectposition.X.Scale, objectposition.X.Offset + (input.Position - start).X, objectposition.Y.Scale, objectposition.Y.Offset + (input.Position - start).Y)
- dragoutline.Position = currentpos
- end
- end)
+	utility.connect(services.InputService.InputChanged, function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			currentpos = UDim2.new(objectposition.X.Scale, objectposition.X.Offset + (input.Position - start).X, objectposition.Y.Scale, objectposition.Y.Offset + (input.Position - start).Y)
+			dragoutline.Position = currentpos
+		end
+	end)
 
- utility.connect(services.InputService.InputEnded, function(input)
- if isDragInput(input) and dragging then
- dragging = false
- dragoutline.Visible = false
- object.Position = currentpos
- end
- end)
-end 
+	utility.connect(services.InputService.InputEnded, function(input)
+		if isDragInput(input) and dragging then
+			dragging = false
+			dragoutline.Visible = false
+			moveTarget.Position = currentpos
+		end
+	end)
+end
 
 function utility.textlength(str, font, fontsize)
  local text = Drawing.new("Text")
@@ -1050,10 +1051,36 @@ function utility.textlength(str, font, fontsize)
  text.Font = font 
  text.Size = fontsize
 
- local textbounds = text.TextBounds
- text:Remove()
+	local textbounds = text.TextBounds
+	text:Remove()
 
- return textbounds
+	return textbounds
+end
+
+function utility.wraptext(str, font, fontsize, maxwidth)
+	local lines = {}
+	local current = ""
+
+	for word in tostring(str):gmatch("%S+") do
+		local candidate = current == "" and word or (current .. " " .. word)
+
+		if current == "" or utility.textlength(candidate, font, fontsize).X <= maxwidth then
+			current = candidate
+		else
+			table.insert(lines, current)
+			current = word
+		end
+	end
+
+	if current ~= "" then
+		table.insert(lines, current)
+	end
+
+	if #lines == 0 then
+		lines = { tostring(str) }
+	end
+
+	return lines
 end
 
 function utility.getcenter(sizeX, sizeY)
@@ -2860,10 +2887,9 @@ function library:Load(options)
  local TAB_BAR_H = 18
  self._titleBarH = TITLE_BAR_H
 
- local sizeX, sizeY = baseSizeX, baseSizeY
- local totalH = TITLE_BAR_H + sizeY
+	local sizeX, sizeY = baseSizeX, baseSizeY
 
- local cursor = utility.create("Triangle", {
+	local cursor = utility.create("Triangle", {
  Thickness = 6,
  Color = Color3.fromRGB(255, 255, 255),
  ZIndex = 1000
@@ -2884,48 +2910,48 @@ function library:Load(options)
  end
  end)
 
- local holder = utility.create("Square", {
- Transparency = 0,
- ZIndex = 100,
- Size = UDim2.new(0, sizeX, 0, totalH),
- Position = utility.getcenter(sizeX, totalH)
- })
+	local holder = utility.create("Square", {
+		Transparency = 0,
+		ZIndex = 100,
+		Size = UDim2.new(0, sizeX, 0, TITLE_BAR_H),
+		Position = utility.getcenter(sizeX, sizeY)
+	})
 
- self.holder = holder
+	self.holder = holder
 
- local titleBounds = utility.textlength(name, Drawing.Fonts.Plex, 13)
- local tabStartX = math.floor(titleBounds.X) + 14
+	local titleBounds = utility.textlength(name, Drawing.Fonts.Plex, 13)
+	local tabStartX = math.floor(titleBounds.X) + 14
 
- utility.create("Text", {
- Text = name,
- Font = Drawing.Fonts.Plex,
- Size = 13,
- Position = UDim2.new(0, 6, 0, 4),
- Theme = "Text",
- ZIndex = 4,
- Outline = true,
- Parent = holder,
- })
+	utility.create("Text", {
+		Text = name,
+		Font = Drawing.Fonts.Plex,
+		Size = 13,
+		Position = UDim2.new(0, 6, 0, 4),
+		Theme = "Text",
+		ZIndex = 4,
+		Outline = true,
+		Parent = holder,
+	})
 
- local tabtoggleholder = utility.create("Square", {
- Size = UDim2.new(1, -(tabStartX + 8), 0, TAB_BAR_H),
- Position = UDim2.new(0, tabStartX, 0, 3),
- Theme = "Tab Background",
- Thickness = 0,
- ZIndex = 5,
- Filled = true,
- Parent = holder
- })
+	local tabtoggleholder = utility.create("Square", {
+		Size = UDim2.new(1, -(tabStartX + 6), 0, TAB_BAR_H),
+		Position = UDim2.new(0, tabStartX, 0, 3),
+		Theme = "Tab Background",
+		Thickness = 0,
+		ZIndex = 5,
+		Filled = true,
+		ClipsDescendants = true,
+		Parent = holder
+	})
 
- local main = utility.create("Square", {
- Size = UDim2.new(1, 0, 0, sizeY),
- Position = UDim2.new(0, 0, 0, TITLE_BAR_H),
- Filled = true,
- Thickness = 0,
- Parent = holder,
- ZIndex = 3,
- Theme = "Window Background"
- })
+	local main = utility.create("Square", {
+		Size = UDim2.new(1, 0, 0, sizeY),
+		Filled = true,
+		Thickness = 0,
+		Parent = holder,
+		ZIndex = 3,
+		Theme = "Window Background"
+	})
 
  main.MouseEnter:Connect(function()
  services.ContextActionService:BindActionAtPriority("disablemousescroll", function() 
@@ -2941,26 +2967,33 @@ function library:Load(options)
 
  utility.outline(outline, "Window Border")
  
- local dragoutline = utility.create("Square", {
- Size = UDim2.new(0, sizeX, 0, totalH),
- Position = utility.getcenter(sizeX, totalH),
- Filled = false,
- Thickness = 1,
- Theme = "Accent",
- ZIndex = 1,
- Visible = false,
- })
+	local dragoutline = utility.create("Square", {
+		Size = UDim2.new(0, sizeX, 0, sizeY),
+		Position = utility.getcenter(sizeX, sizeY),
+		Filled = false,
+		Thickness = 1,
+		Theme = "Accent",
+		ZIndex = 1,
+		Visible = false,
+	})
 
- utility.create("Square", {
- Size = UDim2.new(0, sizeX, 0, totalH),
- Filled = false,
- Thickness = 2,
- Parent = dragoutline,
- ZIndex = 0,
- Theme = "Window Border",
- })
+	utility.create("Square", {
+		Size = UDim2.new(0, sizeX, 0, sizeY),
+		Filled = false,
+		Thickness = 2,
+		Parent = dragoutline,
+		ZIndex = 0,
+		Theme = "Window Border",
+	})
 
- utility.dragify(holder, dragoutline)
+	local dragHandle = utility.create("Square", {
+		Transparency = 0,
+		Size = UDim2.new(0, tabStartX, 0, TITLE_BAR_H),
+		ZIndex = 4,
+		Parent = holder,
+	})
+
+	utility.dragify(dragHandle, dragoutline, holder)
 
  local reopenW = math.min(120, #name * 7 + 24)
  local reopenBtn = utility.create("Square", {
@@ -2985,65 +3018,92 @@ function library:Load(options)
  })
  self.reopenbtn = reopenBtn
 
- reopenBtn.MouseButton1Click:Connect(function()
- if not self.open then
- self:Close()
- end
- end)
+	reopenBtn.MouseButton1Click:Connect(function()
+		if not self.open then
+			self:Close()
+		end
+	end)
 
- local function applyScale()
- local vp = Scale.GetViewport()
- local s = Scale.ComputeUIScale(vp, Scale.IsMobile())
- sizeX = math.floor(baseSizeX * s)
- sizeY = math.floor(baseSizeY * s)
- totalH = TITLE_BAR_H + sizeY
- holder.Size = UDim2.new(0, sizeX, 0, totalH)
- holder.Position = utility.getcenter(sizeX, totalH)
- main.Size = UDim2.new(1, 0, 0, sizeY)
- dragoutline.Size = UDim2.new(0, sizeX, 0, totalH)
- if self.reopenbtn and rawget(self.reopenbtn, "exists") == true and not self.open and self._isTouch then
- self.reopenbtn.Position = UDim2.new(0, vp.X - self.reopenbtn.Size.X - 14, 0, vp.Y - self.reopenbtn.Size.Y - 14)
- end
- end
+	local tabholder = utility.create("Square", {
+		Size = UDim2.new(1, -16, 1, -40),
+		Position = UDim2.new(0, 8, 0, 32),
+		Filled = true,
+		Thickness = 0,
+		Parent = main,
+		ZIndex = 5,
+		Theme = "Tab Background"
+	})
 
- applyScale()
- local cam = workspace.CurrentCamera
- if cam then
- utility.connect(cam:GetPropertyChangedSignal("ViewportSize"), applyScale)
- end
+	utility.outline(tabholder, "Tab Border")
 
- utility.connect(services.InputService.InputBegan, function(input, processed)
- if processed then return end
- if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == self.keybind then
- self:Close()
- end
- end)
+	local windowtypes = utility.table({tabtoggles = {}, tabtoggleoutlines = {}, tabs = {}, tabtoggletitles = {}, count = 0}, true)
 
- local tabholder = utility.create("Square", {
- Size = UDim2.new(1, -16, 1, -16),
- Position = UDim2.new(0, 8, 0, 8),
- Filled = true,
- Thickness = 0,
- Parent = main,
- ZIndex = 5,
- Theme = "Tab Background"
- })
+	local function relayoutTabToggles()
+		local pad = 2
+		local count = #windowtypes.tabtoggles
+		if count == 0 then
+			return
+		end
 
- utility.outline(tabholder, "Tab Border")
+		local maxW = tabtoggleholder.AbsoluteSize.X
+		if not maxW or maxW <= 0 then
+			maxW = sizeX - tabStartX - 6
+		end
 
- local windowtypes = utility.table({tabtoggles = {}, tabtoggleoutlines = {}, tabs = {}, tabtoggletitles = {}, count = 0}, true)
+		local widths = {}
+		local total = 0
 
- local function relayoutTabToggles()
- local x = 0
- local pad = 2
- for i, toggle in next, windowtypes.tabtoggles do
- local label = windowtypes.tabtoggletitles[i]
- local w = math.max(52, utility.textlength(label.Text, Drawing.Fonts.Plex, 13).X + 16)
- toggle.Size = UDim2.new(0, w, 1, 0)
- toggle.Position = UDim2.new(0, x, 0, 0)
- x = x + w + pad
- end
- end
+		for i, label in ipairs(windowtypes.tabtoggletitles) do
+			local w = math.max(48, utility.textlength(label.Text, Drawing.Fonts.Plex, 13).X + 14)
+			widths[i] = w
+			total += w + (i > 1 and pad or 0)
+		end
+
+		if total > maxW then
+			local scale = maxW / total
+			for i = 1, count do
+				widths[i] = math.max(36, math.floor(widths[i] * scale))
+			end
+		end
+
+		local x = 0
+		for i, toggle in ipairs(windowtypes.tabtoggles) do
+			local w = widths[i]
+			toggle.Size = UDim2.new(0, w, 1, 0)
+			toggle.Position = UDim2.new(0, x, 0, 0)
+			x += w + pad
+		end
+	end
+
+	local function applyScale()
+		local vp = Scale.GetViewport()
+		local s = Scale.ComputeUIScale(vp, Scale.IsMobile())
+		sizeX = math.floor(baseSizeX * s)
+		sizeY = math.floor(baseSizeY * s)
+		holder.Size = UDim2.new(0, sizeX, 0, TITLE_BAR_H)
+		holder.Position = utility.getcenter(sizeX, sizeY)
+		main.Size = UDim2.new(1, 0, 0, sizeY)
+		tabtoggleholder.Size = UDim2.new(1, -(tabStartX + 6), 0, TAB_BAR_H)
+		dragoutline.Size = UDim2.new(0, sizeX, 0, sizeY)
+		dragoutline.Position = utility.getcenter(sizeX, sizeY)
+		relayoutTabToggles()
+		if self.reopenbtn and rawget(self.reopenbtn, "exists") == true and not self.open and self._isTouch then
+			self.reopenbtn.Position = UDim2.new(0, vp.X - self.reopenbtn.Size.X - 14, 0, vp.Y - self.reopenbtn.Size.Y - 14)
+		end
+	end
+
+	applyScale()
+	local cam = workspace.CurrentCamera
+	if cam then
+		utility.connect(cam:GetPropertyChangedSignal("ViewportSize"), applyScale)
+	end
+
+	utility.connect(services.InputService.InputBegan, function(input, processed)
+		if processed then return end
+		if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == self.keybind then
+			self:Close()
+		end
+	end)
 
  function windowtypes:Tab(name)
  local tabtoggle = utility.create("Square", {
@@ -3193,34 +3253,62 @@ function library:Load(options)
 
  local sectiontypes = utility.table({}, true)
 
- function sectiontypes:Label(name)
- local label = utility.create("Square", {
- Transparency = 0,
- Size = UDim2.new(1, 0, 0, 13),
- Parent = sectioncontent
- })
+		function sectiontypes:Label(name)
+			local LINE_H = 14
 
- local text = utility.create("Text", {
- Text = name,
- Font = Drawing.Fonts.Plex,
- Size = 13,
- Position = UDim2.new(0, 0, 0, 0),
- Theme = "Text",
- ZIndex = 7,
- Outline = true,
- Parent = label,
- })
+			local label = utility.create("Square", {
+				Transparency = 0,
+				Size = UDim2.new(1, 0, 0, 13),
+				Parent = sectioncontent
+			})
 
- section.Size = UDim2.new(1, 0, 0, sectioncontent.AbsoluteContentSize + 28)
+			local lineobjs = {}
 
- local labeltypes = utility.table({}, true)
+			local function rewrap(str)
+				local maxwidth = sectioncontent.AbsoluteSize.X
+				if not maxwidth or maxwidth <= 0 then
+					maxwidth = math.huge
+				end
 
- function labeltypes:Set(str)
- text.Text = str
- end
+				local lines = utility.wraptext(str, Drawing.Fonts.Plex, 13, maxwidth)
 
- return labeltypes
- end
+				for i, line in ipairs(lines) do
+					if lineobjs[i] then
+						lineobjs[i].Text = line
+						lineobjs[i].Visible = true
+					else
+						lineobjs[i] = utility.create("Text", {
+							Text = line,
+							Font = Drawing.Fonts.Plex,
+							Size = 13,
+							Position = UDim2.new(0, 0, 0, (i - 1) * LINE_H),
+							Theme = "Text",
+							ZIndex = 7,
+							Outline = true,
+							Parent = label,
+						})
+					end
+				end
+
+				for i = #lines + 1, #lineobjs do
+					lineobjs[i].Text = ""
+					lineobjs[i].Visible = false
+				end
+
+				label.Size = UDim2.new(1, 0, 0, math.max(13, #lines * LINE_H - 1))
+				section.Size = UDim2.new(1, 0, 0, sectioncontent.AbsoluteContentSize + 28)
+			end
+
+			rewrap(name)
+
+			local labeltypes = utility.table({}, true)
+
+			function labeltypes:Set(str)
+				rewrap(str)
+			end
+
+			return labeltypes
+		end
 
  function sectiontypes:Separator(name)
  local separator = utility.create("Square", {
