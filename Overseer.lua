@@ -1505,8 +1505,12 @@ function library:SaveCustomTheme(name)
 end
 
 function library:Unload()
- services.ContextActionService:UnbindAction("disablekeyboard")
- services.ContextActionService:UnbindAction("disablemousescroll")
+	services.ContextActionService:UnbindAction("disablekeyboard")
+	services.ContextActionService:UnbindAction("disablemousescroll")
+	if self._toggleAction then
+		services.ContextActionService:UnbindAction(self._toggleAction)
+		self._toggleAction = nil
+	end
 
  if self.open then
  library:Close()
@@ -2912,7 +2916,7 @@ function library:Load(options)
 
 	local holder = utility.create("Square", {
 		Transparency = 0,
-		ZIndex = 100,
+		ZIndex = 1,
 		Size = UDim2.new(0, sizeX, 0, TITLE_BAR_H),
 		Position = utility.getcenter(sizeX, sizeY)
 	})
@@ -2938,7 +2942,7 @@ function library:Load(options)
 		Position = UDim2.new(0, tabStartX, 0, 3),
 		Theme = "Tab Background",
 		Thickness = 0,
-		ZIndex = 5,
+		ZIndex = 8,
 		Filled = true,
 		ClipsDescendants = true,
 		Parent = holder
@@ -2989,7 +2993,7 @@ function library:Load(options)
 	local dragHandle = utility.create("Square", {
 		Transparency = 0,
 		Size = UDim2.new(0, tabStartX, 0, TITLE_BAR_H),
-		ZIndex = 4,
+		ZIndex = 10,
 		Parent = holder,
 	})
 
@@ -3084,6 +3088,7 @@ function library:Load(options)
 		holder.Position = utility.getcenter(sizeX, sizeY)
 		main.Size = UDim2.new(1, 0, 0, sizeY)
 		tabtoggleholder.Size = UDim2.new(1, -(tabStartX + 6), 0, TAB_BAR_H)
+		dragHandle.Size = UDim2.new(0, tabStartX, 0, TITLE_BAR_H)
 		dragoutline.Size = UDim2.new(0, sizeX, 0, sizeY)
 		dragoutline.Position = utility.getcenter(sizeX, sizeY)
 		relayoutTabToggles()
@@ -3098,10 +3103,29 @@ function library:Load(options)
 		utility.connect(cam:GetPropertyChangedSignal("ViewportSize"), applyScale)
 	end
 
-	utility.connect(services.InputService.InputBegan, function(input, processed)
-		if processed then return end
+	local lastToggle = 0
+	local function toggleUI()
+		local now = tick()
+		if now - lastToggle < 0.2 then
+			return
+		end
+		lastToggle = now
+		self:Close()
+	end
+
+	local toggleAction = "overseer_toggle_" .. tostring(self.keybind.Value)
+	services.ContextActionService:BindActionAtPriority(toggleAction, function(_, state, input)
+		if state == Enum.UserInputState.Begin and input.KeyCode == self.keybind then
+			toggleUI()
+			return Enum.ContextActionResult.Sink
+		end
+		return Enum.ContextActionResult.Pass
+	end, false, 4000, self.keybind)
+	self._toggleAction = toggleAction
+
+	utility.connect(services.InputService.InputBegan, function(input)
 		if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == self.keybind then
-			self:Close()
+			toggleUI()
 		end
 	end)
 
@@ -3110,7 +3134,7 @@ function library:Load(options)
  Filled = true,
  Thickness = 0,
  Parent = tabtoggleholder,
- ZIndex = 6,
+ ZIndex = 9,
  Theme = #self.tabtoggles == 0 and "Tab Toggle Background" or "Tab Background"
  })
 
@@ -3125,7 +3149,7 @@ function library:Load(options)
 		Size = 13,
 		Position = UDim2.new(0.5, 0, 0, 3),
 		Theme = #self.tabtoggles == 1 and "Text" or "Disabled Text",
-		ZIndex = 7,
+		ZIndex = 10,
 		Center = true,
 		Outline = true,
 		Parent = tabtoggle,
