@@ -1507,10 +1507,6 @@ end
 function library:Unload()
 	services.ContextActionService:UnbindAction("disablekeyboard")
 	services.ContextActionService:UnbindAction("disablemousescroll")
-	if self._toggleAction then
-		services.ContextActionService:UnbindAction(self._toggleAction)
-		self._toggleAction = nil
-	end
 
  if self.open then
  library:Close()
@@ -3103,30 +3099,15 @@ function library:Load(options)
 		utility.connect(cam:GetPropertyChangedSignal("ViewportSize"), applyScale)
 	end
 
-	local lastToggle = 0
-	local function toggleUI()
-		local now = tick()
-		if now - lastToggle < 0.2 then
+	-- Match GulleUiLibraryV2: plain InputBegan, ignore gameProcessed so the key always toggles.
+	utility.connect(services.InputService.InputBegan, function(input)
+		if input.UserInputType ~= Enum.UserInputType.Keyboard then
 			return
 		end
-		lastToggle = now
+		if input.KeyCode ~= self.keybind then
+			return
+		end
 		self:Close()
-	end
-
-	local toggleAction = "overseer_toggle_" .. tostring(self.keybind.Value)
-	services.ContextActionService:BindActionAtPriority(toggleAction, function(_, state, input)
-		if state == Enum.UserInputState.Begin and input.KeyCode == self.keybind then
-			toggleUI()
-			return Enum.ContextActionResult.Sink
-		end
-		return Enum.ContextActionResult.Pass
-	end, false, 4000, self.keybind)
-	self._toggleAction = toggleAction
-
-	utility.connect(services.InputService.InputBegan, function(input)
-		if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == self.keybind then
-			toggleUI()
-		end
 	end)
 
  function windowtypes:Tab(name)
