@@ -3056,24 +3056,24 @@ function library:Load(options)
 
  local outline = utility.outline(tabtoggle, "Tab Border")
 
- table.insert(self.tabtoggleoutlines, outline)
- table.insert(self.tabtoggles, tabtoggle)
+	table.insert(self.tabtoggleoutlines, outline)
+	table.insert(self.tabtoggles, tabtoggle)
 
- relayoutTabToggles()
+	local title = utility.create("Text", {
+		Text = name,
+		Font = Drawing.Fonts.Plex,
+		Size = 13,
+		Position = UDim2.new(0.5, 0, 0, 3),
+		Theme = #self.tabtoggles == 1 and "Text" or "Disabled Text",
+		ZIndex = 7,
+		Center = true,
+		Outline = true,
+		Parent = tabtoggle,
+	})
 
- local title = utility.create("Text", {
- Text = name,
- Font = Drawing.Fonts.Plex,
- Size = 13,
- Position = UDim2.new(0.5, 0, 0, 3),
- Theme = #self.tabtoggles == 1 and "Text" or "Disabled Text",
- ZIndex = 7,
- Center = true,
- Outline = true,
- Parent = tabtoggle,
- })
+	table.insert(self.tabtoggletitles, title)
 
- table.insert(self.tabtoggletitles, title)
+	relayoutTabToggles()
 
  local tab = utility.create("Square", {
  Transparency = 0,
