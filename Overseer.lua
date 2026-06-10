@@ -650,7 +650,8 @@ local drawing = {} do
 
  childrenvisupdates[self] = changechildrenvis
 
- if k == "Visible" then
+	if k == "Visible" then
+ v = v == true
  objvisibles[obj] = v
 
  if customproperties.Parent and (not mtobjs[customproperties.Parent].Visible or (custompropertygets[mtobjs[customproperties.Parent]]("ClipsDescendants") and not istouching(obj.Position, obj.Size, mtobjs[customproperties.Parent].Position, mtobjs[customproperties.Parent].Size))) then
@@ -659,6 +660,9 @@ local drawing = {} do
  else
  changechildrenvis(self, v)
  end
+
+ obj.Visible = v
+ return
  end
 
  if k == "ClipsDescendants" then
@@ -1020,18 +1024,32 @@ function utility.dragify(handle, dragoutline, moveTarget)
 			or input.UserInputType == Enum.UserInputType.Touch
 	end
 
+	local function pointerPos(input)
+		if input.UserInputType == Enum.UserInputType.Touch then
+			return Vector2.new(input.Position.X, input.Position.Y)
+		end
+		return services.InputService:GetMouseLocation()
+	end
+
 	handle.InputBegan:Connect(function(input)
 		if isDragInput(input) then
 			dragging = true
-			start = input.Position
+			start = pointerPos(input)
 			dragoutline.Visible = true
 			objectposition = moveTarget.Position
+			currentpos = objectposition
 		end
 	end)
 
 	utility.connect(services.InputService.InputChanged, function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			currentpos = UDim2.new(objectposition.X.Scale, objectposition.X.Offset + (input.Position - start).X, objectposition.Y.Scale, objectposition.Y.Offset + (input.Position - start).Y)
+			local pos = pointerPos(input)
+			currentpos = UDim2.new(
+				objectposition.X.Scale,
+				objectposition.X.Offset + (pos.X - start.X),
+				objectposition.Y.Scale,
+				objectposition.Y.Offset + (pos.Y - start.Y)
+			)
 			dragoutline.Position = currentpos
 		end
 	end)
@@ -1040,7 +1058,9 @@ function utility.dragify(handle, dragoutline, moveTarget)
 		if isDragInput(input) and dragging then
 			dragging = false
 			dragoutline.Visible = false
-			moveTarget.Position = currentpos
+			if currentpos then
+				moveTarget.Position = currentpos
+			end
 		end
 	end)
 end
@@ -1398,7 +1418,7 @@ function library:Close()
  end
 
  if self.reopenbtn and rawget(self.reopenbtn, "exists") == true then
- self.reopenbtn.Visible = not self.open and self._isTouch
+ self.reopenbtn.Visible = (not self.open) and (self._isTouch == true)
  if not self.open and self._isTouch then
  local vp = Scale.GetViewport()
  self.reopenbtn.Position = UDim2.new(0, vp.X - self.reopenbtn.Size.X - 14, 0, vp.Y - self.reopenbtn.Size.Y - 14)
@@ -2986,14 +3006,7 @@ function library:Load(options)
 		Theme = "Window Border",
 	})
 
-	local dragHandle = utility.create("Square", {
-		Transparency = 0,
-		Size = UDim2.new(0, tabStartX, 0, TITLE_BAR_H),
-		ZIndex = 10,
-		Parent = holder,
-	})
-
-	utility.dragify(dragHandle, dragoutline, holder)
+	utility.dragify(holder, dragoutline)
 
  local reopenW = math.min(120, #name * 7 + 24)
  local reopenBtn = utility.create("Square", {
@@ -3084,7 +3097,6 @@ function library:Load(options)
 		holder.Position = utility.getcenter(sizeX, sizeY)
 		main.Size = UDim2.new(1, 0, 0, sizeY)
 		tabtoggleholder.Size = UDim2.new(1, -(tabStartX + 6), 0, TAB_BAR_H)
-		dragHandle.Size = UDim2.new(0, tabStartX, 0, TITLE_BAR_H)
 		dragoutline.Size = UDim2.new(0, sizeX, 0, sizeY)
 		dragoutline.Position = utility.getcenter(sizeX, sizeY)
 		relayoutTabToggles()
