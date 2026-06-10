@@ -1542,6 +1542,11 @@ function library:Close()
  utility.placeMobileReopenBtn(self.reopenbtn)
  end
  end
+
+ if not self.open and self._scrollSinkBound then
+ self._scrollSinkBound = false
+ services.ContextActionService:UnbindAction("disablemousescroll")
+ end
 end
 
 function library:ChangeThemeOption(option, color)
@@ -3119,16 +3124,6 @@ function library:Load(options)
  Theme = "Window Background"
  })
 
- main.MouseEnter:Connect(function()
- services.ContextActionService:BindActionAtPriority("disablemousescroll", function() 
- return Enum.ContextActionResult.Sink 
- end, false, 3000, Enum.UserInputType.MouseWheel)
- end)
-
- main.MouseLeave:Connect(function()
- services.ContextActionService:UnbindAction("disablemousescroll")
- end)
-
  local outline = utility.outline(main, "Accent")
 
  utility.outline(outline, "Window Border")
@@ -3254,6 +3249,8 @@ function library:Load(options)
  titleBarH, tabBarH, tabContentTop = Scale.GetChrome(isMobile, s)
  tabBarY = math.max(0, math.floor((titleBarH - tabBarH) / 2))
  self._titleBarH = titleBarH
+ self._winW = sizeX
+ self._winH = sizeY
 
  holder.Size = UDim2.new(0, sizeX, 0, titleBarH)
  if resetPosition then
@@ -3278,6 +3275,39 @@ function library:Load(options)
  utility.placeMobileReopenBtn(self.reopenbtn)
  end
  end
+
+ self._scrollSinkBound = false
+
+ local function updateScrollSink()
+ if not self.open or not self.holder or rawget(self.holder, "exists") ~= true then
+ if self._scrollSinkBound then
+ self._scrollSinkBound = false
+ services.ContextActionService:UnbindAction("disablemousescroll")
+ end
+ return
+ end
+
+ local mp = services.InputService:GetMouseLocation()
+ local pos = self.holder.AbsolutePosition
+ local w, h = self._winW, self._winH
+ local over = false
+
+ if typeof(pos) == "Vector2" and w and h then
+ over = mp.X >= pos.X and mp.Y >= pos.Y and mp.X <= pos.X + w and mp.Y <= pos.Y + h
+ end
+
+ if over and not self._scrollSinkBound then
+ self._scrollSinkBound = true
+ services.ContextActionService:BindActionAtPriority("disablemousescroll", function()
+ return Enum.ContextActionResult.Sink
+ end, false, 3000, Enum.UserInputType.MouseWheel)
+ elseif not over and self._scrollSinkBound then
+ self._scrollSinkBound = false
+ services.ContextActionService:UnbindAction("disablemousescroll")
+ end
+ end
+
+ utility.connect(services.RunService.RenderStepped, updateScrollSink)
 
  applyScale(true)
  local cam = workspace.CurrentCamera
