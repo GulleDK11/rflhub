@@ -485,7 +485,7 @@ local drawing = {} do
 	end)
 
 	local touchScrollY, touchScrolling = nil, false
-	local touchScrollThreshold = Scale.IsMobile() and 18 or 24
+	local touchScrollThreshold = services.InputService.TouchEnabled and 18 or 24
 
 	self.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Touch then
