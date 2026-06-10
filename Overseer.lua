@@ -1522,7 +1522,11 @@ end
 function library:Close()
  self.open = not self.open
 
- services.InputService.MouseIconEnabled = not self.open and self.mousestate or false
+ -- PC: always keep the system cursor visible (custom cursor is disabled).
+ -- VoidUi hid the mouse while open; that breaks here when UI is toggled off.
+ if not self._isTouch then
+ services.InputService.MouseIconEnabled = true
+ end
 
  if self.holder then
  self.holder.Visible = self.open
@@ -1666,6 +1670,10 @@ function library:Unload()
 
  for _, connection in next, self.connections do
  connection:Disconnect()
+ end
+
+ if not self._isTouch then
+ services.InputService.MouseIconEnabled = self.mousestate ~= false
  end
 
  table.clear(self.connections)
