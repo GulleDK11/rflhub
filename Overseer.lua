@@ -1548,6 +1548,8 @@ function library:Unload()
  self.reopenbtn:Remove()
  end
 
+ self.mobileclosebtn = nil
+
  for _, connection in next, self.connections do
  connection:Disconnect()
  end
@@ -2942,6 +2944,40 @@ function library:Load(options)
 	local titleBounds = utility.textlength(name, Drawing.Fonts.Plex, 13)
 	local tabStartX = math.floor(titleBounds.X) + 14
 
+	local mobileCloseW = 0
+	local mobileCloseBtn
+	if self._isTouch then
+		local closeLabel = "Close UI"
+		mobileCloseW = math.max(52, utility.textlength(closeLabel, Drawing.Fonts.Plex, 11).X + 12)
+		mobileCloseBtn = utility.create("Square", {
+			Filled = true,
+			Thickness = 0,
+			Size = UDim2.new(0, mobileCloseW, 0, TAB_BAR_H),
+			Position = UDim2.new(1, -mobileCloseW, 0, 3),
+			Theme = "Tab Background",
+			ZIndex = 11,
+			Parent = holder,
+		})
+		utility.outline(mobileCloseBtn, "Tab Border")
+		utility.create("Text", {
+			Text = closeLabel,
+			Font = Drawing.Fonts.Plex,
+			Size = 11,
+			Position = UDim2.new(0.5, 0, 0, 4),
+			Theme = "Text",
+			ZIndex = 12,
+			Center = true,
+			Outline = true,
+			Parent = mobileCloseBtn,
+		})
+		mobileCloseBtn.MouseButton1Click:Connect(function()
+			if self.open then
+				self:Close()
+			end
+		end)
+		self.mobileclosebtn = mobileCloseBtn
+	end
+
 	utility.create("Text", {
 		Text = name,
 		Font = Drawing.Fonts.Plex,
@@ -2954,7 +2990,7 @@ function library:Load(options)
 	})
 
 	local tabtoggleholder = utility.create("Square", {
-		Size = UDim2.new(1, -(tabStartX + 6), 0, TAB_BAR_H),
+		Size = UDim2.new(1, -(tabStartX + 6 + mobileCloseW), 0, TAB_BAR_H),
 		Position = UDim2.new(0, tabStartX, 0, 3),
 		Theme = "Tab Background",
 		Thickness = 0,
@@ -3060,7 +3096,7 @@ function library:Load(options)
 
 		local maxW = tabtoggleholder.AbsoluteSize.X
 		if not maxW or maxW <= 0 then
-			maxW = sizeX - tabStartX - 6
+			maxW = sizeX - tabStartX - 6 - mobileCloseW
 		end
 
 		local widths = {}
@@ -3096,7 +3132,11 @@ function library:Load(options)
 		holder.Size = UDim2.new(0, sizeX, 0, TITLE_BAR_H)
 		holder.Position = utility.getcenter(sizeX, sizeY)
 		main.Size = UDim2.new(1, 0, 0, sizeY)
-		tabtoggleholder.Size = UDim2.new(1, -(tabStartX + 6), 0, TAB_BAR_H)
+		tabtoggleholder.Size = UDim2.new(1, -(tabStartX + 6 + mobileCloseW), 0, TAB_BAR_H)
+		if mobileCloseBtn then
+			mobileCloseBtn.Size = UDim2.new(0, mobileCloseW, 0, TAB_BAR_H)
+			mobileCloseBtn.Position = UDim2.new(1, -mobileCloseW, 0, 3)
+		end
 		dragoutline.Size = UDim2.new(0, sizeX, 0, sizeY)
 		dragoutline.Position = utility.getcenter(sizeX, sizeY)
 		relayoutTabToggles()
