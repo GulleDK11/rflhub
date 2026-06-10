@@ -474,15 +474,42 @@ local drawing = {} do
  not scroll(-1)
  end
 
- self.InputChanged:Connect(function(input)
- if input.UserInputType == Enum.UserInputType.MouseWheel then
- if input.Position.Z > 0 then
- scroll(-1)
- else
- scroll(1)
- end
- end
- end)
+	self.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseWheel then
+	if input.Position.Z > 0 then
+	scroll(-1)
+	else
+	scroll(1)
+	end
+	end
+	end)
+
+	local touchScrollY, touchScrolling = nil, false
+	local touchScrollThreshold = Scale.IsMobile() and 18 or 24
+
+	self.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch then
+	touchScrolling = true
+	touchScrollY = input.Position.Y
+	end
+	end)
+
+	self.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Touch then
+	touchScrolling = false
+	touchScrollY = nil
+	end
+	end)
+
+	utility.connect(services.InputService.InputChanged, function(input)
+	if touchScrolling and input.UserInputType == Enum.UserInputType.Touch and touchScrollY then
+	local dy = input.Position.Y - touchScrollY
+	if math.abs(dy) >= touchScrollThreshold then
+	scroll(dy > 0 and 1 or -1)
+	touchScrollY = input.Position.Y
+	end
+	end
+	end)
  else
  attemptedscrollable = true
  end
@@ -1015,34 +1042,36 @@ end
 
 local utility = {}
 
-function utility.dragify(handle, dragoutline, moveTarget)
-	local start, objectposition, dragging, currentpos
-	moveTarget = moveTarget or handle
+function utility.ispointerinput(input)
+	return input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch
+end
 
-	local function isDragInput(input)
-		return input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch
-	end
+function utility.dragify(object, dragoutline)
+	local start, objectposition, dragging, currentpos
 
 	local function pointerPos(input)
 		if input.UserInputType == Enum.UserInputType.Touch then
 			return Vector2.new(input.Position.X, input.Position.Y)
 		end
-		return services.InputService:GetMouseLocation()
+		return input.Position
 	end
 
-	handle.InputBegan:Connect(function(input)
-		if isDragInput(input) then
+	object.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 			start = pointerPos(input)
 			dragoutline.Visible = true
-			objectposition = moveTarget.Position
+			objectposition = object.Position
 			currentpos = objectposition
 		end
 	end)
 
 	utility.connect(services.InputService.InputChanged, function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		if not dragging then
+			return
+		end
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
 			local pos = pointerPos(input)
 			currentpos = UDim2.new(
 				objectposition.X.Scale,
@@ -1055,11 +1084,11 @@ function utility.dragify(handle, dragoutline, moveTarget)
 	end)
 
 	utility.connect(services.InputService.InputEnded, function(input)
-		if isDragInput(input) and dragging then
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
 			dragging = false
 			dragoutline.Visible = false
 			if currentpos then
-				moveTarget.Position = currentpos
+				object.Position = currentpos
 			end
 		end
 	end)
@@ -1105,6 +1134,29 @@ end
 
 function utility.getcenter(sizeX, sizeY)
  return UDim2.new(0.5, -(sizeX / 2), 0.5, -(sizeY / 2))
+end
+
+function utility.placeMobileReopenBtn(btn)
+	local vp = Scale.GetViewport()
+	local margin = 16
+	local w = btn.Size.X
+	local h = btn.Size.Y
+	btn.Position = UDim2.new(0, vp.X - w - margin, 0, vp.Y - h - margin)
+end
+
+function utility.layoutTabColumns(column1, column2)
+	local stack = Scale.ShouldStackColumns(Scale.GetViewport())
+	if stack then
+		column1.Size = UDim2.new(1, 0, 0.5, -6)
+		column1.Position = UDim2.new(0, 0, 0, 0)
+		column2.Size = UDim2.new(1, 0, 0.5, -6)
+		column2.Position = UDim2.new(0, 0, 0.5, 6)
+	else
+		column1.Size = UDim2.new(0.5, -4, 1, 0)
+		column1.Position = UDim2.new(0, 0, 0, 0)
+		column2.Size = UDim2.new(0.5, -4, 1, 0)
+		column2.Position = UDim2.new(0.5, 4, 0, 0)
+	end
 end
 
 function utility.table(tbl, usemt)
@@ -1420,8 +1472,7 @@ function library:Close()
  if self.reopenbtn and rawget(self.reopenbtn, "exists") == true then
  self.reopenbtn.Visible = (not self.open) and (self._isTouch == true)
  if not self.open and self._isTouch then
- local vp = Scale.GetViewport()
- self.reopenbtn.Position = UDim2.new(0, vp.X - self.reopenbtn.Size.X - 14, 0, vp.Y - self.reopenbtn.Size.Y - 14)
+ utility.placeMobileReopenBtn(self.reopenbtn)
  end
  end
 end
@@ -2207,7 +2258,7 @@ function library.createslider(min, max, parent, text, default, float, flag, call
  end
 
  utility.connect(slider.InputBegan, function(input)
- if input.UserInputType == Enum.UserInputType.MouseButton1 then
+ if utility.ispointerinput(input) then
  sliding = true
  slider.Color = utility.changecolor(library.theme["Object Background"], 6)
  slide(input)
@@ -2215,14 +2266,14 @@ function library.createslider(min, max, parent, text, default, float, flag, call
  end)
 
  utility.connect(slider.InputEnded, function(input)
- if input.UserInputType == Enum.UserInputType.MouseButton1 then
+ if utility.ispointerinput(input) then
  sliding = false
  slider.Color = mouseover and utility.changecolor(library.theme["Object Background"], 3) or library.theme["Object Background"]
  end
  end)
 
  utility.connect(fill.InputBegan, function(input)
- if input.UserInputType == Enum.UserInputType.MouseButton1 then
+ if utility.ispointerinput(input) then
  sliding = true
  slider.Color = utility.changecolor(library.theme["Object Background"], 6)
  slide(input)
@@ -2230,17 +2281,15 @@ function library.createslider(min, max, parent, text, default, float, flag, call
  end)
 
  utility.connect(fill.InputEnded, function(input)
- if input.UserInputType == Enum.UserInputType.MouseButton1 then
+ if utility.ispointerinput(input) then
  sliding = false
  slider.Color = mouseover and utility.changecolor(library.theme["Object Background"], 3) or library.theme["Object Background"]
  end
  end)
 
  utility.connect(services.InputService.InputChanged, function(input)
- if input.UserInputType == Enum.UserInputType.MouseMovement then
- if sliding then
+ if sliding and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
  slide(input)
- end
  end
  end)
 
@@ -2551,14 +2600,14 @@ function library.createcolorpicker(default, defaultalpha, parent, count, flag, c
  local slidingsaturation = false
 
  saturation.InputBegan:Connect(function(input)
- if input.UserInputType == Enum.UserInputType.MouseButton1 then
+ if utility.ispointerinput(input) then
  slidingsaturation = true
  updatesatval(input)
  end
  end)
 
  saturation.InputEnded:Connect(function(input)
- if input.UserInputType == Enum.UserInputType.MouseButton1 then
+ if utility.ispointerinput(input) then
  slidingsaturation = false
  end
  end)
@@ -2577,14 +2626,14 @@ function library.createcolorpicker(default, defaultalpha, parent, count, flag, c
  end
 
  hueframe.InputBegan:Connect(function(input)
- if input.UserInputType == Enum.UserInputType.MouseButton1 then
+ if utility.ispointerinput(input) then
  slidinghue = true
  updatehue(input)
  end
  end)
 
  hueframe.InputEnded:Connect(function(input)
- if input.UserInputType == Enum.UserInputType.MouseButton1 then
+ if utility.ispointerinput(input) then
  slidinghue = false
  end
  end)
@@ -2601,20 +2650,20 @@ function library.createcolorpicker(default, defaultalpha, parent, count, flag, c
  end
 
  alphaframe.InputBegan:Connect(function(input)
- if input.UserInputType == Enum.UserInputType.MouseButton1 then
+ if utility.ispointerinput(input) then
  slidingalpha = true
  updatealpha(input)
  end
  end)
 
  alphaframe.InputEnded:Connect(function(input)
- if input.UserInputType == Enum.UserInputType.MouseButton1 then
+ if utility.ispointerinput(input) then
  slidingalpha = false
  end
  end)
 
  utility.connect(services.InputService.InputChanged, function(input)
- if input.UserInputType == Enum.UserInputType.MouseMovement then
+ if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
  if slidingalpha then
  updatealpha(input)
  end
@@ -2905,8 +2954,9 @@ function library:Load(options)
  self._baseSizeX = baseSizeX
  self._baseSizeY = baseSizeY
  self._isTouch = services.InputService.TouchEnabled
- local TITLE_BAR_H = 24
- local TAB_BAR_H = 18
+ local TITLE_BAR_H = self._isTouch and 34 or 24
+ local TAB_BAR_H = self._isTouch and 26 or 18
+ local TAB_CONTENT_TOP = TITLE_BAR_H + 8
  self._titleBarH = TITLE_BAR_H
 
 	local sizeX, sizeY = baseSizeX, baseSizeY
@@ -2917,24 +2967,30 @@ function library:Load(options)
  ZIndex = 1000
  })
 
- self.cursor = cursor
+	self.cursor = cursor
+	cursor.Visible = false
 
- if not self._isTouch then
+	if not self._isTouch then
  services.InputService.MouseIconEnabled = false
  end
 
- utility.connect(services.RunService.RenderStepped, function()
- if self.open and not self._isTouch then
- local mousepos = services.InputService:GetMouseLocation()
- cursor.PointA = mousepos
- cursor.PointB = mousepos + Vector2.new(6, 12)
- cursor.PointC = mousepos + Vector2.new(6, 12)
- end
- end)
+	utility.connect(services.RunService.RenderStepped, function()
+		if self.open and not self._isTouch then
+			local mousepos = services.InputService:GetMouseLocation()
+			cursor.Visible = true
+			cursor.PointA = mousepos
+			cursor.PointB = mousepos + Vector2.new(6, 12)
+			cursor.PointC = mousepos + Vector2.new(2, 10)
+		else
+			cursor.Visible = false
+		end
+	end)
 
+	-- Drawing hit-test uses global ZIndex across all Squares. Holder is only 24px tall, so ZIndex 100
+	-- wins in the title strip without blocking controls in the body below. Tabs need ZIndex > 100.
 	local holder = utility.create("Square", {
 		Transparency = 0,
-		ZIndex = 1,
+		ZIndex = 100,
 		Size = UDim2.new(0, sizeX, 0, TITLE_BAR_H),
 		Position = utility.getcenter(sizeX, sizeY)
 	})
@@ -2943,29 +2999,30 @@ function library:Load(options)
 
 	local titleBounds = utility.textlength(name, Drawing.Fonts.Plex, 13)
 	local tabStartX = math.floor(titleBounds.X) + 14
+	local tabBarY = math.max(0, math.floor((TITLE_BAR_H - TAB_BAR_H) / 2))
 
 	local mobileCloseW = 0
 	local mobileCloseBtn
 	if self._isTouch then
-		local closeLabel = "Close UI"
-		mobileCloseW = math.max(52, utility.textlength(closeLabel, Drawing.Fonts.Plex, 11).X + 12)
+		local closeLabel = "−"
+		mobileCloseW = math.max(44, utility.textlength(closeLabel, Drawing.Fonts.Plex, 16).X + 20)
 		mobileCloseBtn = utility.create("Square", {
 			Filled = true,
 			Thickness = 0,
 			Size = UDim2.new(0, mobileCloseW, 0, TAB_BAR_H),
-			Position = UDim2.new(1, -mobileCloseW, 0, 3),
+			Position = UDim2.new(1, -mobileCloseW, 0, tabBarY),
 			Theme = "Tab Background",
-			ZIndex = 11,
+			ZIndex = 104,
 			Parent = holder,
 		})
 		utility.outline(mobileCloseBtn, "Tab Border")
 		utility.create("Text", {
 			Text = closeLabel,
 			Font = Drawing.Fonts.Plex,
-			Size = 11,
-			Position = UDim2.new(0.5, 0, 0, 4),
+			Size = 16,
+			Position = UDim2.new(0.5, 0, 0, 5),
 			Theme = "Text",
-			ZIndex = 12,
+			ZIndex = 105,
 			Center = true,
 			Outline = true,
 			Parent = mobileCloseBtn,
@@ -2991,10 +3048,10 @@ function library:Load(options)
 
 	local tabtoggleholder = utility.create("Square", {
 		Size = UDim2.new(1, -(tabStartX + 6 + mobileCloseW), 0, TAB_BAR_H),
-		Position = UDim2.new(0, tabStartX, 0, 3),
+		Position = UDim2.new(0, tabStartX, 0, tabBarY),
 		Theme = "Tab Background",
 		Thickness = 0,
-		ZIndex = 8,
+		ZIndex = 101,
 		Filled = true,
 		ClipsDescendants = true,
 		Parent = holder
@@ -3044,24 +3101,26 @@ function library:Load(options)
 
 	utility.dragify(holder, dragoutline)
 
- local reopenW = math.min(120, #name * 7 + 24)
+ local reopenSize = self._isTouch and 52 or math.min(120, #name * 7 + 24)
+ local reopenH = self._isTouch and 52 or 28
+ local reopenLabel = self._isTouch and "UI" or name
  local reopenBtn = utility.create("Square", {
  Filled = true,
  Thickness = 0,
  Visible = false,
- Size = UDim2.new(0, reopenW, 0, 28),
- ZIndex = 200,
+ Size = UDim2.new(0, reopenSize, 0, reopenH),
+ ZIndex = 250,
  Theme = "Window Background"
  })
  utility.outline(reopenBtn, "Accent")
  utility.create("Text", {
- Text = name,
+ Text = reopenLabel,
  Font = Drawing.Fonts.Plex,
- Size = 12,
- Position = UDim2.new(0.5, 0, 0, 6),
+ Size = self._isTouch and 14 or 12,
+ Position = UDim2.new(0.5, 0, 0, self._isTouch and 16 or 6),
  Theme = "Text",
  Center = true,
- ZIndex = 201,
+ ZIndex = 251,
  Outline = true,
  Parent = reopenBtn,
  })
@@ -3074,8 +3133,8 @@ function library:Load(options)
 	end)
 
 	local tabholder = utility.create("Square", {
-		Size = UDim2.new(1, -16, 1, -40),
-		Position = UDim2.new(0, 8, 0, 32),
+		Size = UDim2.new(1, -16, 1, -(TAB_CONTENT_TOP + 8)),
+		Position = UDim2.new(0, 8, 0, TAB_CONTENT_TOP),
 		Filled = true,
 		Thickness = 0,
 		Parent = main,
@@ -3085,7 +3144,13 @@ function library:Load(options)
 
 	utility.outline(tabholder, "Tab Border")
 
-	local windowtypes = utility.table({tabtoggles = {}, tabtoggleoutlines = {}, tabs = {}, tabtoggletitles = {}, count = 0}, true)
+	local windowtypes = utility.table({tabtoggles = {}, tabtoggleoutlines = {}, tabs = {}, tabtoggletitles = {}, columnlayouts = {}, count = 0}, true)
+
+	local function relayoutAllColumns()
+		for _, layout in next, windowtypes.columnlayouts do
+			layout()
+		end
+	end
 
 	local function relayoutTabToggles()
 		local pad = 2
@@ -3124,31 +3189,41 @@ function library:Load(options)
 		end
 	end
 
-	local function applyScale()
+	local function applyScale(resetPosition)
 		local vp = Scale.GetViewport()
 		local s = Scale.ComputeUIScale(vp, Scale.IsMobile())
 		sizeX = math.floor(baseSizeX * s)
 		sizeY = math.floor(baseSizeY * s)
 		holder.Size = UDim2.new(0, sizeX, 0, TITLE_BAR_H)
-		holder.Position = utility.getcenter(sizeX, sizeY)
+		if resetPosition then
+			holder.Position = utility.getcenter(sizeX, sizeY)
+		end
 		main.Size = UDim2.new(1, 0, 0, sizeY)
 		tabtoggleholder.Size = UDim2.new(1, -(tabStartX + 6 + mobileCloseW), 0, TAB_BAR_H)
+		tabtoggleholder.Position = UDim2.new(0, tabStartX, 0, tabBarY)
 		if mobileCloseBtn then
 			mobileCloseBtn.Size = UDim2.new(0, mobileCloseW, 0, TAB_BAR_H)
-			mobileCloseBtn.Position = UDim2.new(1, -mobileCloseW, 0, 3)
+			mobileCloseBtn.Position = UDim2.new(1, -mobileCloseW, 0, tabBarY)
 		end
 		dragoutline.Size = UDim2.new(0, sizeX, 0, sizeY)
-		dragoutline.Position = utility.getcenter(sizeX, sizeY)
+		if resetPosition then
+			dragoutline.Position = holder.Position
+		elseif not dragoutline.Visible then
+			dragoutline.Position = holder.Position
+		end
 		relayoutTabToggles()
+		relayoutAllColumns()
 		if self.reopenbtn and rawget(self.reopenbtn, "exists") == true and not self.open and self._isTouch then
-			self.reopenbtn.Position = UDim2.new(0, vp.X - self.reopenbtn.Size.X - 14, 0, vp.Y - self.reopenbtn.Size.Y - 14)
+			utility.placeMobileReopenBtn(self.reopenbtn)
 		end
 	end
 
-	applyScale()
+	applyScale(true)
 	local cam = workspace.CurrentCamera
 	if cam then
-		utility.connect(cam:GetPropertyChangedSignal("ViewportSize"), applyScale)
+		utility.connect(cam:GetPropertyChangedSignal("ViewportSize"), function()
+			applyScale(false)
+		end)
 	end
 
 	-- Match GulleUiLibraryV2: plain InputBegan, ignore gameProcessed so the key always toggles.
@@ -3167,7 +3242,7 @@ function library:Load(options)
  Filled = true,
  Thickness = 0,
  Parent = tabtoggleholder,
- ZIndex = 9,
+ ZIndex = 102,
  Theme = #self.tabtoggles == 0 and "Tab Toggle Background" or "Tab Background"
  })
 
@@ -3182,7 +3257,7 @@ function library:Load(options)
 		Size = 13,
 		Position = UDim2.new(0.5, 0, 0, 3),
 		Theme = #self.tabtoggles == 1 and "Text" or "Disabled Text",
-		ZIndex = 10,
+		ZIndex = 103,
 		Center = true,
 		Outline = true,
 		Parent = tabtoggle,
@@ -3225,6 +3300,11 @@ function library:Load(options)
 
  column2:AddListLayout(12)
  column2:MakeScrollable()
+
+	table.insert(windowtypes.columnlayouts, function()
+		utility.layoutTabColumns(column1, column2)
+	end)
+	utility.layoutTabColumns(column1, column2)
 
  local mouseover = false
 
