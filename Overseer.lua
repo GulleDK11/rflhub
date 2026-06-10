@@ -547,6 +547,14 @@ local drawing = {} do
  return udim2posobjs[obj] or objpositions[obj] or obj[k]
  end
 
+ if k == "AbsolutePosition" then
+ return customproperties.AbsolutePosition or obj[k]
+ end
+
+ if k == "AbsoluteSize" then
+ return customproperties.AbsoluteSize or obj[k]
+ end
+
  if k == "Size" then
  return udim2sizeobjs[obj] or obj[k]
  end
@@ -1014,50 +1022,86 @@ function utility.ispointerinput(input)
 		or input.UserInputType == Enum.UserInputType.Touch
 end
 
-function utility.dragify(handle, dragoutline, moveTarget)
-	local start, objectposition, dragging, currentpos
+function utility.dragify(handle, dragoutline, moveTarget, opts)
+	opts = opts or {}
 	moveTarget = moveTarget or handle
+	local start, objectposition, dragging, currentpos
 
 	local function pointerPos(input)
 		if input.UserInputType == Enum.UserInputType.Touch then
 			return Vector2.new(input.Position.X, input.Position.Y)
 		end
-		return input.Position
+		return Vector2.new(input.Position.X, input.Position.Y)
 	end
 
-	handle.InputBegan:Connect(function(input)
-		if utility.ispointerinput(input) then
-			dragging = true
-			start = pointerPos(input)
-			dragoutline.Visible = true
-			objectposition = moveTarget.Position
-			currentpos = objectposition
+	local function inDragZone()
+		local mp = services.InputService:GetMouseLocation()
+		local pos = handle.AbsolutePosition
+		local size = handle.AbsoluteSize
+
+		if typeof(pos) ~= "Vector2" or typeof(size) ~= "Vector2" then
+			return false
 		end
+
+		if mp.X < pos.X or mp.Y < pos.Y or mp.X > pos.X + size.X or mp.Y > pos.Y + size.Y then
+			return false
+		end
+
+		local relX = mp.X - pos.X
+		if opts.tabStartX and relX >= opts.tabStartX then
+			return false
+		end
+
+		if opts.mobileCloseW and opts.mobileCloseW > 0 and relX >= size.X - opts.mobileCloseW then
+			return false
+		end
+
+		return true
+	end
+
+	utility.connect(services.InputService.InputBegan, function(input)
+		if not utility.ispointerinput(input) then
+			return
+		end
+		if not inDragZone() then
+			return
+		end
+
+		dragging = true
+		start = pointerPos(input)
+		objectposition = moveTarget.Position
+		currentpos = objectposition
+		dragoutline.Visible = true
+		dragoutline.Position = objectposition
 	end)
 
 	utility.connect(services.InputService.InputChanged, function(input)
 		if not dragging then
 			return
 		end
-		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-			local pos = pointerPos(input)
-			currentpos = UDim2.new(
-				objectposition.X.Scale,
-				objectposition.X.Offset + (pos.X - start.X),
-				objectposition.Y.Scale,
-				objectposition.Y.Offset + (pos.Y - start.Y)
-			)
-			dragoutline.Position = currentpos
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
 		end
+
+		local pos = pointerPos(input)
+		currentpos = UDim2.new(
+			objectposition.X.Scale,
+			objectposition.X.Offset + (pos.X - start.X),
+			objectposition.Y.Scale,
+			objectposition.Y.Offset + (pos.Y - start.Y)
+		)
+		dragoutline.Position = currentpos
 	end)
 
 	utility.connect(services.InputService.InputEnded, function(input)
-		if dragging and utility.ispointerinput(input) then
-			dragging = false
-			dragoutline.Visible = false
-			if currentpos then
-				moveTarget.Position = currentpos
-			end
+		if not dragging or not utility.ispointerinput(input) then
+			return
+		end
+
+		dragging = false
+		dragoutline.Visible = false
+		if currentpos then
+			moveTarget.Position = currentpos
 		end
 	end)
 end
@@ -3025,13 +3069,18 @@ function library:Load(options)
  })
 
  local dragHandle = utility.create("Square", {
- Transparency = 0,
- Size = UDim2.new(0, tabStartX, 0, TITLE_BAR_H),
- ZIndex = 10,
+ Filled = true,
+ Transparency = 1,
+ Size = UDim2.new(1, -mobileCloseW, 0, TITLE_BAR_H),
+ Position = UDim2.new(0, 0, 0, 0),
+ ZIndex = 6,
  Parent = holder,
  })
 
- utility.dragify(dragHandle, dragoutline, holder)
+ utility.dragify(dragHandle, dragoutline, holder, {
+ tabStartX = tabStartX,
+ mobileCloseW = mobileCloseW,
+ })
 
  local reopenW = math.min(120, #name * 7 + 24)
  local reopenBtn = utility.create("Square", {
@@ -3127,7 +3176,7 @@ function library:Load(options)
  tabholder.Size = UDim2.new(1, -16, 1, -(TAB_CONTENT_TOP + 8))
  tabholder.Position = UDim2.new(0, 8, 0, TAB_CONTENT_TOP)
  tabtoggleholder.Size = UDim2.new(1, -(tabStartX + 6 + mobileCloseW), 0, TAB_BAR_H)
- dragHandle.Size = UDim2.new(0, tabStartX, 0, TITLE_BAR_H)
+ dragHandle.Size = UDim2.new(1, -mobileCloseW, 0, TITLE_BAR_H)
  if self.mobileclosebtn and rawget(self.mobileclosebtn, "exists") == true then
  self.mobileclosebtn.Size = UDim2.new(0, mobileCloseW, 0, TAB_BAR_H)
  self.mobileclosebtn.Position = UDim2.new(1, -mobileCloseW, 0, 3)
