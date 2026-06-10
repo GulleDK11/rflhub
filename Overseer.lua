@@ -483,6 +483,32 @@ local drawing = {} do
 	end
 	end
 	end)
+
+	if services.InputService.TouchEnabled then
+		local lastTouchY
+
+		self.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then
+				lastTouchY = input.Position.Y
+			end
+		end)
+
+		self.InputChanged:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch and lastTouchY then
+				local dy = input.Position.Y - lastTouchY
+				if math.abs(dy) >= 8 then
+					scroll(dy > 0 and 1 or -1)
+					lastTouchY = input.Position.Y
+				end
+			end
+		end)
+
+		self.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.Touch then
+				lastTouchY = nil
+			end
+		end)
+	end
  else
  attemptedscrollable = true
  end
@@ -1015,6 +1041,19 @@ function Scale.ComputeUIScale(viewport, isMobile)
  return math.clamp(fit, minScale, 1)
 end
 
+function Scale.ShouldStackColumns()
+ return Scale.IsMobile()
+end
+
+function Scale.GetChrome(isMobile, uiScale)
+ if isMobile then
+ local titleBarH = math.max(32, math.floor(36 * uiScale))
+ local tabBarH = math.max(22, math.floor(26 * uiScale))
+ return titleBarH, tabBarH, titleBarH + 8
+ end
+ return 24, 18, 32
+end
+
 local utility = {}
 
 function utility.ispointerinput(input)
@@ -1119,6 +1158,26 @@ function utility.dragify(handle, dragoutline, moveTarget, opts)
 			moveTarget.Position = currentpos
 		end
 	end)
+end
+
+function utility.placeMobileReopenBtn(btn)
+	local vp = Scale.GetViewport()
+	local margin = 16
+	btn.Position = UDim2.new(0, vp.X - btn.Size.X - margin, 0, vp.Y - btn.Size.Y - margin)
+end
+
+function utility.layoutTabColumns(column1, column2, stack)
+	if stack then
+		column1.Size = UDim2.new(1, 0, 0.5, -6)
+		column1.Position = UDim2.new(0, 0, 0, 0)
+		column2.Size = UDim2.new(1, 0, 0.5, -6)
+		column2.Position = UDim2.new(0, 0, 0.5, 6)
+	else
+		column1.Size = UDim2.new(0.5, -4, 1, 0)
+		column1.Position = UDim2.new(0, 0, 0, 0)
+		column2.Size = UDim2.new(0.5, -4, 1, 0)
+		column2.Position = UDim2.new(0.5, 4, 0, 0)
+	end
 end
 
 function utility.textlength(str, font, fontsize)
@@ -1476,8 +1535,7 @@ function library:Close()
  if self.reopenbtn and rawget(self.reopenbtn, "exists") == true then
  self.reopenbtn.Visible = (not self.open) and (self._isTouch == true)
  if not self.open and self._isTouch then
- local vp = Scale.GetViewport()
- self.reopenbtn.Position = UDim2.new(0, vp.X - self.reopenbtn.Size.X - 14, 0, vp.Y - self.reopenbtn.Size.Y - 14)
+ utility.placeMobileReopenBtn(self.reopenbtn)
  end
  end
 end
@@ -2959,10 +3017,9 @@ function library:Load(options)
  self._baseSizeX = baseSizeX
  self._baseSizeY = baseSizeY
  self._isTouch = services.InputService.TouchEnabled
- local TITLE_BAR_H = 24
- local TAB_BAR_H = 18
- self._titleBarH = TITLE_BAR_H
 
+ local titleBarH, tabBarH, tabContentTop = 24, 18, 32
+ local tabBarY = 3
  local sizeX, sizeY = baseSizeX, baseSizeY
 
  local cursor = utility.create("Triangle", {
@@ -2977,26 +3034,28 @@ function library:Load(options)
  local holder = utility.create("Square", {
  Transparency = 1,
  ZIndex = 1,
- Size = UDim2.new(0, sizeX, 0, TITLE_BAR_H),
+ Size = UDim2.new(0, sizeX, 0, titleBarH),
  Position = utility.getcenter(sizeX, sizeY)
  })
 
  self.holder = holder
 
- local windowtypes = utility.table({tabtoggles = {}, tabtoggleoutlines = {}, tabs = {}, tabtoggletitles = {}, count = 0}, true)
+ local windowtypes = utility.table({tabtoggles = {}, tabtoggleoutlines = {}, tabs = {}, tabtoggletitles = {}, columnlayouts = {}, count = 0}, true)
 
- local titleBounds = utility.textlength(name, Drawing.Fonts.Plex, 13)
- local tabStartX = math.floor(titleBounds.X) + 14
+ local titleFontSize = self._isTouch and 14 or 13
+ local titleBounds = utility.textlength(name, Drawing.Fonts.Plex, titleFontSize)
+ local tabStartX = math.floor(titleBounds.X) + (self._isTouch and 16 or 14)
 
  local mobileCloseW = 0
+ local mobileCloseBtn
  if self._isTouch then
  local closeLabel = "Close"
- mobileCloseW = math.max(52, utility.textlength(closeLabel, Drawing.Fonts.Plex, 11).X + 12)
- local mobileCloseBtn = utility.create("Square", {
+ mobileCloseW = math.max(56, utility.textlength(closeLabel, Drawing.Fonts.Plex, 12).X + 16)
+ mobileCloseBtn = utility.create("Square", {
  Filled = true,
  Thickness = 0,
- Size = UDim2.new(0, mobileCloseW, 0, TAB_BAR_H),
- Position = UDim2.new(1, -mobileCloseW, 0, 3),
+ Size = UDim2.new(0, mobileCloseW, 0, tabBarH),
+ Position = UDim2.new(1, -mobileCloseW, 0, tabBarY),
  Theme = "Tab Background",
  ZIndex = 11,
  Parent = holder,
@@ -3005,8 +3064,8 @@ function library:Load(options)
  utility.create("Text", {
  Text = closeLabel,
  Font = Drawing.Fonts.Plex,
- Size = 11,
- Position = UDim2.new(0.5, 0, 0, 4),
+ Size = 12,
+ Position = UDim2.new(0.5, 0, 0, 5),
  Theme = "Text",
  ZIndex = 12,
  Center = true,
@@ -3024,8 +3083,8 @@ function library:Load(options)
  utility.create("Text", {
  Text = name,
  Font = Drawing.Fonts.Plex,
- Size = 13,
- Position = UDim2.new(0, 6, 0, 4),
+ Size = titleFontSize,
+ Position = UDim2.new(0, 6, 0, self._isTouch and 6 or 4),
  Theme = "Text",
  ZIndex = 12,
  Outline = true,
@@ -3033,8 +3092,8 @@ function library:Load(options)
  })
 
  local tabtoggleholder = utility.create("Square", {
- Size = UDim2.new(1, -(tabStartX + 6 + mobileCloseW), 0, TAB_BAR_H),
- Position = UDim2.new(0, tabStartX, 0, 3),
+ Size = UDim2.new(1, -(tabStartX + 6 + mobileCloseW), 0, tabBarH),
+ Position = UDim2.new(0, tabStartX, 0, tabBarY),
  Theme = "Tab Background",
  Thickness = 0,
  ZIndex = 8,
@@ -3090,24 +3149,26 @@ function library:Load(options)
  mobileCloseBtn = self.mobileclosebtn,
  })
 
- local reopenW = math.min(120, #name * 7 + 24)
+ local reopenW = self._isTouch and 56 or math.min(120, #name * 7 + 24)
+ local reopenH = self._isTouch and 56 or 28
+ local reopenLabel = self._isTouch and "UI" or name
  local reopenBtn = utility.create("Square", {
  Filled = true,
  Thickness = 0,
  Visible = false,
- Size = UDim2.new(0, reopenW, 0, 28),
- ZIndex = 200,
+ Size = UDim2.new(0, reopenW, 0, reopenH),
+ ZIndex = 250,
  Theme = "Window Background"
  })
  utility.outline(reopenBtn, "Accent")
  utility.create("Text", {
- Text = name,
+ Text = reopenLabel,
  Font = Drawing.Fonts.Plex,
- Size = 12,
- Position = UDim2.new(0.5, 0, 0, 6),
+ Size = self._isTouch and 15 or 12,
+ Position = UDim2.new(0.5, 0, 0, self._isTouch and 18 or 6),
  Theme = "Text",
  Center = true,
- ZIndex = 201,
+ ZIndex = 251,
  Outline = true,
  Parent = reopenBtn,
  })
@@ -3119,10 +3180,9 @@ function library:Load(options)
  end
  end)
 
- local TAB_CONTENT_TOP = 32
  local tabholder = utility.create("Square", {
- Size = UDim2.new(1, -16, 1, -(TAB_CONTENT_TOP + 8)),
- Position = UDim2.new(0, 8, 0, TAB_CONTENT_TOP),
+ Size = UDim2.new(1, -16, 1, -(tabContentTop + 8)),
+ Position = UDim2.new(0, 8, 0, tabContentTop),
  Filled = true,
  Thickness = 0,
  Parent = main,
@@ -3133,67 +3193,81 @@ function library:Load(options)
  utility.outline(tabholder, "Tab Border")
 
  local function relayoutTabToggles()
-		local pad = 2
-		local count = #windowtypes.tabtoggles
-		if count == 0 then
-			return
-		end
+ local pad = self._isTouch and 3 or 2
+ local minTabW = self._isTouch and 52 or 48
+ local minTabScaled = self._isTouch and 40 or 36
+ local count = #windowtypes.tabtoggles
+ if count == 0 then
+ return
+ end
 
-		local maxW = tabtoggleholder.AbsoluteSize.X
-		if not maxW or maxW <= 0 then
-			maxW = sizeX - tabStartX - 6 - mobileCloseW
-		end
+ local maxW = tabtoggleholder.AbsoluteSize.X
+ if not maxW or maxW <= 0 then
+ maxW = sizeX - tabStartX - 6 - mobileCloseW
+ end
 
-		local widths = {}
-		local total = 0
+ local widths = {}
+ local total = 0
 
-		for i, label in ipairs(windowtypes.tabtoggletitles) do
-			local w = math.max(48, utility.textlength(label.Text, Drawing.Fonts.Plex, 13).X + 14)
-			widths[i] = w
-			total += w + (i > 1 and pad or 0)
-		end
+ for i, label in ipairs(windowtypes.tabtoggletitles) do
+ local w = math.max(minTabW, utility.textlength(label.Text, Drawing.Fonts.Plex, 13).X + 14)
+ widths[i] = w
+ total += w + (i > 1 and pad or 0)
+ end
 
-		if total > maxW then
-			local scale = maxW / total
-			for i = 1, count do
-				widths[i] = math.max(36, math.floor(widths[i] * scale))
-			end
-		end
+ if total > maxW then
+ local scale = maxW / total
+ for i = 1, count do
+ widths[i] = math.max(minTabScaled, math.floor(widths[i] * scale))
+ end
+ end
 
-		local x = 0
-		for i, toggle in ipairs(windowtypes.tabtoggles) do
-			local w = widths[i]
-			toggle.Size = UDim2.new(0, w, 1, 0)
-			toggle.Position = UDim2.new(0, x, 0, 0)
-			x += w + pad
-		end
-	end
+ local x = 0
+ for i, toggle in ipairs(windowtypes.tabtoggles) do
+ local w = widths[i]
+ toggle.Size = UDim2.new(0, w, 1, 0)
+ toggle.Position = UDim2.new(0, x, 0, 0)
+ x += w + pad
+ end
+ end
+
+ local function relayoutAllColumns()
+ for _, layout in next, windowtypes.columnlayouts do
+ layout()
+ end
+ end
 
  local function applyScale(resetPosition)
  local vp = Scale.GetViewport()
- local s = Scale.ComputeUIScale(vp, Scale.IsMobile())
+ local isMobile = Scale.IsMobile()
+ local s = Scale.ComputeUIScale(vp, isMobile)
  sizeX = math.floor(baseSizeX * s)
  sizeY = math.floor(baseSizeY * s)
- holder.Size = UDim2.new(0, sizeX, 0, TITLE_BAR_H)
+ titleBarH, tabBarH, tabContentTop = Scale.GetChrome(isMobile, s)
+ tabBarY = math.max(0, math.floor((titleBarH - tabBarH) / 2))
+ self._titleBarH = titleBarH
+
+ holder.Size = UDim2.new(0, sizeX, 0, titleBarH)
  if resetPosition then
  holder.Position = utility.getcenter(sizeX, sizeY)
  end
  main.Size = UDim2.new(1, 0, 0, sizeY)
- tabholder.Size = UDim2.new(1, -16, 1, -(TAB_CONTENT_TOP + 8))
- tabholder.Position = UDim2.new(0, 8, 0, TAB_CONTENT_TOP)
- tabtoggleholder.Size = UDim2.new(1, -(tabStartX + 6 + mobileCloseW), 0, TAB_BAR_H)
- if self.mobileclosebtn and rawget(self.mobileclosebtn, "exists") == true then
- self.mobileclosebtn.Size = UDim2.new(0, mobileCloseW, 0, TAB_BAR_H)
- self.mobileclosebtn.Position = UDim2.new(1, -mobileCloseW, 0, 3)
+ tabholder.Size = UDim2.new(1, -16, 1, -(tabContentTop + 8))
+ tabholder.Position = UDim2.new(0, 8, 0, tabContentTop)
+ tabtoggleholder.Size = UDim2.new(1, -(tabStartX + 6 + mobileCloseW), 0, tabBarH)
+ tabtoggleholder.Position = UDim2.new(0, tabStartX, 0, tabBarY)
+ if mobileCloseBtn and rawget(mobileCloseBtn, "exists") == true then
+ mobileCloseBtn.Size = UDim2.new(0, mobileCloseW, 0, tabBarH)
+ mobileCloseBtn.Position = UDim2.new(1, -mobileCloseW, 0, tabBarY)
  end
  dragoutline.Size = UDim2.new(0, sizeX, 0, sizeY)
  if resetPosition or not dragoutline.Visible then
  dragoutline.Position = holder.Position
  end
  relayoutTabToggles()
+ relayoutAllColumns()
  if self.reopenbtn and rawget(self.reopenbtn, "exists") == true and not self.open and self._isTouch then
- local vp2 = Scale.GetViewport()
- self.reopenbtn.Position = UDim2.new(0, vp2.X - self.reopenbtn.Size.X - 14, 0, vp2.Y - self.reopenbtn.Size.Y - 14)
+ utility.placeMobileReopenBtn(self.reopenbtn)
  end
  end
 
@@ -3278,6 +3352,11 @@ function library:Load(options)
 
  column2:AddListLayout(12)
  column2:MakeScrollable()
+
+ table.insert(windowtypes.columnlayouts, function()
+ utility.layoutTabColumns(column1, column2, Scale.ShouldStackColumns())
+ end)
+ utility.layoutTabColumns(column1, column2, Scale.ShouldStackColumns())
 
  local mouseover = false
 
