@@ -1037,7 +1037,7 @@ function Scale.ComputeUIScale(viewport, isMobile)
 end
 
 function Scale.ShouldStackColumns(viewport)
- return Scale.IsMobile() or viewport.X < Scale.MOBILE_THRESHOLD
+ return Scale.IsMobile()
 end
 
 local utility = {}
@@ -1047,8 +1047,9 @@ function utility.ispointerinput(input)
 		or input.UserInputType == Enum.UserInputType.Touch
 end
 
-function utility.dragify(object, dragoutline)
+function utility.dragify(handle, dragoutline, moveTarget)
 	local start, objectposition, dragging, currentpos
+	moveTarget = moveTarget or handle
 
 	local function pointerPos(input)
 		if input.UserInputType == Enum.UserInputType.Touch then
@@ -1057,12 +1058,12 @@ function utility.dragify(object, dragoutline)
 		return input.Position
 	end
 
-	object.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+	handle.InputBegan:Connect(function(input)
+		if utility.ispointerinput(input) then
 			dragging = true
 			start = pointerPos(input)
 			dragoutline.Visible = true
-			objectposition = object.Position
+			objectposition = moveTarget.Position
 			currentpos = objectposition
 		end
 	end)
@@ -1084,11 +1085,11 @@ function utility.dragify(object, dragoutline)
 	end)
 
 	utility.connect(services.InputService.InputEnded, function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+		if dragging and utility.ispointerinput(input) then
 			dragging = false
 			dragoutline.Visible = false
 			if currentpos then
-				object.Position = currentpos
+				moveTarget.Position = currentpos
 			end
 		end
 	end)
@@ -1459,14 +1460,16 @@ end
 function library:Close()
  self.open = not self.open
 
+ if not self._isTouch then
  services.InputService.MouseIconEnabled = not self.open and self.mousestate or false
+ end
 
  if self.holder then
  self.holder.Visible = self.open
  end
 
  if self.cursor then
- self.cursor.Visible = self.open and not self._isTouch
+ self.cursor.Visible = false
  end
 
  if self.reopenbtn and rawget(self.reopenbtn, "exists") == true then
@@ -2956,8 +2959,7 @@ function library:Load(options)
  self._isTouch = services.InputService.TouchEnabled
  local TITLE_BAR_H = self._isTouch and 34 or 24
  local TAB_BAR_H = self._isTouch and 26 or 18
- local TAB_CONTENT_TOP = TITLE_BAR_H + 8
- self._titleBarH = TITLE_BAR_H
+	self._titleBarH = TITLE_BAR_H
 
 	local sizeX, sizeY = baseSizeX, baseSizeY
 
@@ -2970,27 +2972,9 @@ function library:Load(options)
 	self.cursor = cursor
 	cursor.Visible = false
 
-	if not self._isTouch then
- services.InputService.MouseIconEnabled = false
- end
-
-	utility.connect(services.RunService.RenderStepped, function()
-		if self.open and not self._isTouch then
-			local mousepos = services.InputService:GetMouseLocation()
-			cursor.Visible = true
-			cursor.PointA = mousepos
-			cursor.PointB = mousepos + Vector2.new(6, 12)
-			cursor.PointC = mousepos + Vector2.new(2, 10)
-		else
-			cursor.Visible = false
-		end
-	end)
-
-	-- Drawing hit-test uses global ZIndex across all Squares. Holder is only 24px tall, so ZIndex 100
-	-- wins in the title strip without blocking controls in the body below. Tabs need ZIndex > 100.
 	local holder = utility.create("Square", {
 		Transparency = 0,
-		ZIndex = 100,
+		ZIndex = 1,
 		Size = UDim2.new(0, sizeX, 0, TITLE_BAR_H),
 		Position = utility.getcenter(sizeX, sizeY)
 	})
@@ -3012,7 +2996,7 @@ function library:Load(options)
 			Size = UDim2.new(0, mobileCloseW, 0, TAB_BAR_H),
 			Position = UDim2.new(1, -mobileCloseW, 0, tabBarY),
 			Theme = "Tab Background",
-			ZIndex = 104,
+			ZIndex = 12,
 			Parent = holder,
 		})
 		utility.outline(mobileCloseBtn, "Tab Border")
@@ -3022,7 +3006,7 @@ function library:Load(options)
 			Size = 16,
 			Position = UDim2.new(0.5, 0, 0, 5),
 			Theme = "Text",
-			ZIndex = 105,
+			ZIndex = 13,
 			Center = true,
 			Outline = true,
 			Parent = mobileCloseBtn,
@@ -3051,7 +3035,7 @@ function library:Load(options)
 		Position = UDim2.new(0, tabStartX, 0, tabBarY),
 		Theme = "Tab Background",
 		Thickness = 0,
-		ZIndex = 101,
+		ZIndex = 8,
 		Filled = true,
 		ClipsDescendants = true,
 		Parent = holder
@@ -3099,7 +3083,14 @@ function library:Load(options)
 		Theme = "Window Border",
 	})
 
-	utility.dragify(holder, dragoutline)
+	local dragHandle = utility.create("Square", {
+		Transparency = 0,
+		Size = UDim2.new(0, tabStartX, 0, TITLE_BAR_H),
+		ZIndex = 10,
+		Parent = holder,
+	})
+
+	utility.dragify(dragHandle, dragoutline, holder)
 
  local reopenSize = self._isTouch and 52 or math.min(120, #name * 7 + 24)
  local reopenH = self._isTouch and 52 or 28
@@ -3132,9 +3123,10 @@ function library:Load(options)
 		end
 	end)
 
+	local tabContentTop = self._isTouch and (TITLE_BAR_H + 8) or 32
 	local tabholder = utility.create("Square", {
-		Size = UDim2.new(1, -16, 1, -(TAB_CONTENT_TOP + 8)),
-		Position = UDim2.new(0, 8, 0, TAB_CONTENT_TOP),
+		Size = UDim2.new(1, -16, 1, -(tabContentTop + 8)),
+		Position = UDim2.new(0, 8, 0, tabContentTop),
 		Filled = true,
 		Thickness = 0,
 		Parent = main,
@@ -3201,6 +3193,7 @@ function library:Load(options)
 		main.Size = UDim2.new(1, 0, 0, sizeY)
 		tabtoggleholder.Size = UDim2.new(1, -(tabStartX + 6 + mobileCloseW), 0, TAB_BAR_H)
 		tabtoggleholder.Position = UDim2.new(0, tabStartX, 0, tabBarY)
+		dragHandle.Size = UDim2.new(0, tabStartX, 0, TITLE_BAR_H)
 		if mobileCloseBtn then
 			mobileCloseBtn.Size = UDim2.new(0, mobileCloseW, 0, TAB_BAR_H)
 			mobileCloseBtn.Position = UDim2.new(1, -mobileCloseW, 0, tabBarY)
@@ -3242,7 +3235,7 @@ function library:Load(options)
  Filled = true,
  Thickness = 0,
  Parent = tabtoggleholder,
- ZIndex = 102,
+ ZIndex = 9,
  Theme = #self.tabtoggles == 0 and "Tab Toggle Background" or "Tab Background"
  })
 
@@ -3257,7 +3250,7 @@ function library:Load(options)
 		Size = 13,
 		Position = UDim2.new(0.5, 0, 0, 3),
 		Theme = #self.tabtoggles == 1 and "Text" or "Disabled Text",
-		ZIndex = 103,
+		ZIndex = 10,
 		Center = true,
 		Outline = true,
 		Parent = tabtoggle,
