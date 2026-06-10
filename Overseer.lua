@@ -1047,13 +1047,28 @@ function utility.dragify(handle, dragoutline, moveTarget, opts)
 			return false
 		end
 
-		local relX = mp.X - pos.X
-		if opts.tabStartX and relX >= opts.tabStartX then
-			return false
+		if opts.mobileCloseBtn and rawget(opts.mobileCloseBtn, "exists") == true then
+			local cpos = opts.mobileCloseBtn.AbsolutePosition
+			local csize = opts.mobileCloseBtn.AbsoluteSize
+			if typeof(cpos) == "Vector2" and typeof(csize) == "Vector2" then
+				if mp.X >= cpos.X and mp.Y >= cpos.Y and mp.X <= cpos.X + csize.X and mp.Y <= cpos.Y + csize.Y then
+					return false
+				end
+			end
 		end
 
-		if opts.mobileCloseW and opts.mobileCloseW > 0 and relX >= size.X - opts.mobileCloseW then
-			return false
+		if opts.windowtypes and opts.windowtypes.tabtoggles then
+			for _, toggle in ipairs(opts.windowtypes.tabtoggles) do
+				if rawget(toggle, "exists") == true then
+					local tpos = toggle.AbsolutePosition
+					local tsize = toggle.AbsoluteSize
+					if typeof(tpos) == "Vector2" and typeof(tsize) == "Vector2" then
+						if mp.X >= tpos.X and mp.Y >= tpos.Y and mp.X <= tpos.X + tsize.X and mp.Y <= tpos.Y + tsize.Y then
+							return false
+						end
+					end
+				end
+			end
 		end
 
 		return true
@@ -2960,13 +2975,15 @@ function library:Load(options)
  cursor.Visible = false
 
  local holder = utility.create("Square", {
- Transparency = 0,
+ Transparency = 1,
  ZIndex = 1,
  Size = UDim2.new(0, sizeX, 0, TITLE_BAR_H),
  Position = utility.getcenter(sizeX, sizeY)
  })
 
  self.holder = holder
+
+ local windowtypes = utility.table({tabtoggles = {}, tabtoggleoutlines = {}, tabs = {}, tabtoggletitles = {}, count = 0}, true)
 
  local titleBounds = utility.textlength(name, Drawing.Fonts.Plex, 13)
  local tabStartX = math.floor(titleBounds.X) + 14
@@ -3004,16 +3021,16 @@ function library:Load(options)
  self.mobileclosebtn = mobileCloseBtn
  end
 
-	utility.create("Text", {
-		Text = name,
-		Font = Drawing.Fonts.Plex,
-		Size = 13,
-		Position = UDim2.new(0, 6, 0, 4),
-		Theme = "Text",
-		ZIndex = 4,
-		Outline = true,
-		Parent = holder,
-	})
+ utility.create("Text", {
+ Text = name,
+ Font = Drawing.Fonts.Plex,
+ Size = 13,
+ Position = UDim2.new(0, 6, 0, 4),
+ Theme = "Text",
+ ZIndex = 12,
+ Outline = true,
+ Parent = holder,
+ })
 
  local tabtoggleholder = utility.create("Square", {
  Size = UDim2.new(1, -(tabStartX + 6 + mobileCloseW), 0, TAB_BAR_H),
@@ -3068,18 +3085,9 @@ function library:Load(options)
  Theme = "Window Border",
  })
 
- local dragHandle = utility.create("Square", {
- Filled = true,
- Transparency = 1,
- Size = UDim2.new(1, -mobileCloseW, 0, TITLE_BAR_H),
- Position = UDim2.new(0, 0, 0, 0),
- ZIndex = 6,
- Parent = holder,
- })
-
- utility.dragify(dragHandle, dragoutline, holder, {
- tabStartX = tabStartX,
- mobileCloseW = mobileCloseW,
+ utility.dragify(holder, dragoutline, holder, {
+ windowtypes = windowtypes,
+ mobileCloseBtn = self.mobileclosebtn,
  })
 
  local reopenW = math.min(120, #name * 7 + 24)
@@ -3124,9 +3132,7 @@ function library:Load(options)
 
  utility.outline(tabholder, "Tab Border")
 
- local windowtypes = utility.table({tabtoggles = {}, tabtoggleoutlines = {}, tabs = {}, tabtoggletitles = {}, count = 0}, true)
-
-	local function relayoutTabToggles()
+ local function relayoutTabToggles()
 		local pad = 2
 		local count = #windowtypes.tabtoggles
 		if count == 0 then
@@ -3176,7 +3182,6 @@ function library:Load(options)
  tabholder.Size = UDim2.new(1, -16, 1, -(TAB_CONTENT_TOP + 8))
  tabholder.Position = UDim2.new(0, 8, 0, TAB_CONTENT_TOP)
  tabtoggleholder.Size = UDim2.new(1, -(tabStartX + 6 + mobileCloseW), 0, TAB_BAR_H)
- dragHandle.Size = UDim2.new(1, -mobileCloseW, 0, TITLE_BAR_H)
  if self.mobileclosebtn and rawget(self.mobileclosebtn, "exists") == true then
  self.mobileclosebtn.Size = UDim2.new(0, mobileCloseW, 0, TAB_BAR_H)
  self.mobileclosebtn.Position = UDim2.new(1, -mobileCloseW, 0, 3)
