@@ -245,6 +245,12 @@ local drawing = {} do
  end
 
  services.InputService.InputEnded:Connect(function(input, gpe)
+ if input.UserInputType == Enum.UserInputType.Touch then
+ pointerPos = Vector2.new(input.Position.X, input.Position.Y)
+ elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+ pointerPos = services.InputService:GetMouseLocation()
+ end
+
  for obj, signals in next, objsignals do
  if objexists[obj] then
  if signals.inputbegan[input] then
@@ -314,6 +320,12 @@ local drawing = {} do
  end)
 
  services.InputService.InputBegan:Connect(function(input, gpe)
+ if input.UserInputType == Enum.UserInputType.Touch then
+ pointerPos = Vector2.new(input.Position.X, input.Position.Y)
+ elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+ pointerPos = services.InputService:GetMouseLocation()
+ end
+
  for obj, signals in next, objsignals do
  if objexists[obj] then
  if obj.Visible then
@@ -496,7 +508,7 @@ local drawing = {} do
 		self.InputChanged:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.Touch and lastTouchY then
 				local dy = input.Position.Y - lastTouchY
-				if math.abs(dy) >= 8 then
+				if math.abs(dy) >= 20 then
 					scroll(dy > 0 and 1 or -1)
 					lastTouchY = input.Position.Y
 				end
@@ -1064,17 +1076,17 @@ end
 function utility.dragify(handle, dragoutline, moveTarget, opts)
 	opts = opts or {}
 	moveTarget = moveTarget or handle
-	local start, objectposition, dragging, currentpos
+	local start, objectposition, dragging, currentpos, dragPointer
 
 	local function pointerPos(input)
 		if input.UserInputType == Enum.UserInputType.Touch then
 			return Vector2.new(input.Position.X, input.Position.Y)
 		end
-		return Vector2.new(input.Position.X, input.Position.Y)
+		return services.InputService:GetMouseLocation()
 	end
 
-	local function inDragZone()
-		local mp = services.InputService:GetMouseLocation()
+	local function inDragZone(mp)
+		mp = mp or services.InputService:GetMouseLocation()
 		local pos = handle.AbsolutePosition
 		local size = handle.AbsoluteSize
 
@@ -1086,7 +1098,12 @@ function utility.dragify(handle, dragoutline, moveTarget, opts)
 			return false
 		end
 
-		if opts.mobileCloseBtn and rawget(opts.mobileCloseBtn, "exists") == true then
+		local relX = mp.X - pos.X
+		if opts.tabStartX and relX >= opts.tabStartX then
+			return false
+		end
+
+		if opts.mobileCloseBtn and rawget(opts.mobileCloseBtn, "exists") == true and opts.mobileCloseBtn.Visible then
 			local cpos = opts.mobileCloseBtn.AbsolutePosition
 			local csize = opts.mobileCloseBtn.AbsoluteSize
 			if typeof(cpos) == "Vector2" and typeof(csize) == "Vector2" then
@@ -1117,12 +1134,15 @@ function utility.dragify(handle, dragoutline, moveTarget, opts)
 		if not utility.ispointerinput(input) then
 			return
 		end
-		if not inDragZone() then
+		dragPointer = input
+		local mp = pointerPos(input)
+		if not inDragZone(mp) then
+			dragPointer = nil
 			return
 		end
 
 		dragging = true
-		start = pointerPos(input)
+		start = mp
 		objectposition = moveTarget.Position
 		currentpos = objectposition
 		dragoutline.Visible = true
@@ -1131,6 +1151,9 @@ function utility.dragify(handle, dragoutline, moveTarget, opts)
 
 	utility.connect(services.InputService.InputChanged, function(input)
 		if not dragging then
+			return
+		end
+		if dragPointer and input ~= dragPointer then
 			return
 		end
 		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
@@ -1151,13 +1174,23 @@ function utility.dragify(handle, dragoutline, moveTarget, opts)
 		if not dragging or not utility.ispointerinput(input) then
 			return
 		end
+		if dragPointer and input ~= dragPointer then
+			return
+		end
 
 		dragging = false
+		dragPointer = nil
 		dragoutline.Visible = false
 		if currentpos then
 			moveTarget.Position = currentpos
 		end
 	end)
+end
+
+function utility.placeMobileCloseBtn(btn)
+	local vp = Scale.GetViewport()
+	local margin = 12
+	btn.Position = UDim2.new(0, vp.X - btn.Size.X - margin, 0, margin)
 end
 
 function utility.placeMobileReopenBtn(btn)
@@ -1532,6 +1565,13 @@ function library:Close()
  self.holder.Visible = self.open
  end
 
+ if self.mobileclosebtn and rawget(self.mobileclosebtn, "exists") == true then
+ self.mobileclosebtn.Visible = self.open and (self._isTouch == true)
+ if self.open and self._isTouch then
+ utility.placeMobileCloseBtn(self.mobileclosebtn)
+ end
+ end
+
  if self.cursor then
  self.cursor.Visible = false
  end
@@ -1669,6 +1709,10 @@ function library:Unload()
 
  if self.reopenbtn then
  self.reopenbtn:Remove()
+ end
+
+ if self.mobileclosebtn then
+ self.mobileclosebtn:Remove()
  end
 
  self.mobileclosebtn = nil
@@ -3068,10 +3112,8 @@ function library:Load(options)
  Filled = true,
  Thickness = 0,
  Size = UDim2.new(0, mobileCloseW, 0, tabBarH),
- Position = UDim2.new(1, -mobileCloseW, 0, tabBarY),
  Theme = "Tab Background",
- ZIndex = 11,
- Parent = holder,
+ ZIndex = 260,
  })
  utility.outline(mobileCloseBtn, "Tab Border")
  utility.create("Text", {
@@ -3080,11 +3122,12 @@ function library:Load(options)
  Size = 12,
  Position = UDim2.new(0.5, 0, 0, 5),
  Theme = "Text",
- ZIndex = 12,
+ ZIndex = 261,
  Center = true,
  Outline = true,
  Parent = mobileCloseBtn,
  })
+ utility.placeMobileCloseBtn(mobileCloseBtn)
  mobileCloseBtn.MouseButton1Click:Connect(function()
  if self.open then
  self:Close()
@@ -3105,7 +3148,7 @@ function library:Load(options)
  })
 
  local tabtoggleholder = utility.create("Square", {
- Size = UDim2.new(1, -(tabStartX + 6 + mobileCloseW), 0, tabBarH),
+ Size = UDim2.new(1, -(tabStartX + 6), 0, tabBarH),
  Position = UDim2.new(0, tabStartX, 0, tabBarY),
  Theme = "Tab Background",
  Thickness = 0,
@@ -3149,7 +3192,8 @@ function library:Load(options)
 
  utility.dragify(holder, dragoutline, holder, {
  windowtypes = windowtypes,
- mobileCloseBtn = self.mobileclosebtn,
+ mobileCloseBtn = mobileCloseBtn,
+ tabStartX = tabStartX,
  })
 
  local reopenW = self._isTouch and 56 or math.min(120, #name * 7 + 24)
@@ -3160,7 +3204,7 @@ function library:Load(options)
  Thickness = 0,
  Visible = false,
  Size = UDim2.new(0, reopenW, 0, reopenH),
- ZIndex = 250,
+ ZIndex = 260,
  Theme = "Window Background"
  })
  utility.outline(reopenBtn, "Accent")
@@ -3171,7 +3215,7 @@ function library:Load(options)
  Position = UDim2.new(0.5, 0, 0, self._isTouch and 18 or 6),
  Theme = "Text",
  Center = true,
- ZIndex = 251,
+ ZIndex = 261,
  Outline = true,
  Parent = reopenBtn,
  })
@@ -3206,7 +3250,7 @@ function library:Load(options)
 
  local maxW = tabtoggleholder.AbsoluteSize.X
  if not maxW or maxW <= 0 then
- maxW = sizeX - tabStartX - 6 - mobileCloseW
+ maxW = sizeX - tabStartX - 6
  end
 
  local widths = {}
@@ -3259,11 +3303,10 @@ function library:Load(options)
  main.Size = UDim2.new(1, 0, 0, sizeY)
  tabholder.Size = UDim2.new(1, -16, 1, -(tabContentTop + 8))
  tabholder.Position = UDim2.new(0, 8, 0, tabContentTop)
- tabtoggleholder.Size = UDim2.new(1, -(tabStartX + 6 + mobileCloseW), 0, tabBarH)
+ tabtoggleholder.Size = UDim2.new(1, -(tabStartX + 6), 0, tabBarH)
  tabtoggleholder.Position = UDim2.new(0, tabStartX, 0, tabBarY)
- if mobileCloseBtn and rawget(mobileCloseBtn, "exists") == true then
- mobileCloseBtn.Size = UDim2.new(0, mobileCloseW, 0, tabBarH)
- mobileCloseBtn.Position = UDim2.new(1, -mobileCloseW, 0, tabBarY)
+ if mobileCloseBtn and rawget(mobileCloseBtn, "exists") == true and self.open then
+ utility.placeMobileCloseBtn(mobileCloseBtn)
  end
  dragoutline.Size = UDim2.new(0, sizeX, 0, sizeY)
  if resetPosition or not dragoutline.Visible then
@@ -3279,6 +3322,10 @@ function library:Load(options)
  self._scrollSinkBound = false
 
  local function updateScrollSink()
+ if self._isTouch then
+ return
+ end
+
  if not self.open or not self.holder or rawget(self.holder, "exists") ~= true then
  if self._scrollSinkBound then
  self._scrollSinkBound = false
@@ -3290,10 +3337,11 @@ function library:Load(options)
  local mp = services.InputService:GetMouseLocation()
  local pos = self.holder.AbsolutePosition
  local w, h = self._winW, self._winH
+ local barH = self._titleBarH or 24
  local over = false
 
  if typeof(pos) == "Vector2" and w and h then
- over = mp.X >= pos.X and mp.Y >= pos.Y and mp.X <= pos.X + w and mp.Y <= pos.Y + h
+ over = mp.X >= pos.X and mp.Y >= pos.Y and mp.X <= pos.X + w and mp.Y <= pos.Y + barH + h
  end
 
  if over and not self._scrollSinkBound then
