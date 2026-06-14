@@ -1187,16 +1187,32 @@ function utility.dragify(handle, dragoutline, moveTarget, opts)
 	end)
 end
 
+function utility.getObjectSize(obj)
+	local abs = obj.AbsoluteSize
+	if typeof(abs) == "Vector2" then
+		return abs.X, abs.Y
+	end
+
+	local sz = obj.Size
+	if typeof(sz) == "UDim2" then
+		return sz.X.Offset, sz.Y.Offset
+	end
+
+	return sz.X, sz.Y
+end
+
 function utility.placeMobileCloseBtn(btn)
 	local vp = Scale.GetViewport()
 	local margin = 12
-	btn.Position = UDim2.new(0, vp.X - btn.Size.X - margin, 0, margin)
+	local w = utility.getObjectSize(btn)
+	btn.Position = Vector2.new(math.floor(vp.X - w - margin), margin)
 end
 
 function utility.placeMobileReopenBtn(btn)
 	local vp = Scale.GetViewport()
 	local margin = 16
-	btn.Position = UDim2.new(0, vp.X - btn.Size.X - margin, 0, vp.Y - btn.Size.Y - margin)
+	local w, h = utility.getObjectSize(btn)
+	btn.Position = Vector2.new(math.floor(vp.X - w - margin), math.floor(vp.Y - h - margin))
 end
 
 function utility.layoutTabColumns(column1, column2, stack)
