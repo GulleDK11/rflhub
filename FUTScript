@@ -31,6 +31,28 @@ local GK_TOUCH_SKIP = { shielding = true, Ball = true }
 local connections = {}
 local scriptState = { alive = true, killed = false }
 
+local predState = {
+    lastUpdate = 0,
+    velocityHistory = {},
+    forcePredictUntil = {},
+    attachmentTemplate = Instance.new("Attachment"),
+}
+
+local function clearBallPredictState(ball)
+    if not ball then
+        return
+    end
+    predState.velocityHistory[ball] = nil
+    predState.forcePredictUntil[ball] = nil
+end
+
+local function markShotPredict(ball, seconds)
+    if not ball then
+        return
+    end
+    predState.forcePredictUntil[ball] = tick() + (seconds or 2.5)
+end
+
 local function trackConnection(conn)
     if conn then
         table.insert(connections, conn)
@@ -80,7 +102,7 @@ local function applyKnuckleShotScale(velocity, powerMult, loftStuds)
     end
 
     local speed = horizMag * powerMult
-    local loftY = math.max(0, loftStuds) * 3.25
+    local loftY = math.max(0, loftStuds) * 1.65
 
     return Vector3.new(dir.X * speed, loftY, dir.Z * speed)
 end
@@ -125,20 +147,16 @@ local mods = {
     insanePower = 2,
     insaneHeight = 1,
     powerKnuckleEnabled = false,
-    knucklePower = 1.15,
-    knuckleHeight = 3,
-    powerKnuckleIntensity = 22,
-    powerKnuckleTime = 2,
-    knuckleFlutter = 1,
-    knuckleSmooth = 5.5,
-    knuckleMix = 1,
+    knucklePower = 1.08,
+    knuckleHeight = 2,
+    powerKnuckleIntensity = 14,
+    powerKnuckleTime = 1.6,
+    knuckleFlutter = 0.85,
+    knuckleSmooth = 7,
+    knuckleMix = 0.55,
     autoGoalEnabled = false,
     autoGoalTarget = "Opposite",
-    autoGoalZone = "top_center",
-    autoGoalSpeed = 1.15,
-    autoGoalHeight = 14,
-    autoGoalCurve = 10,
-    autoGoalPathTime = 1.1,
+    autoGoalZone = "random_bins",
     autoGoalSpread = 2,
     autoGoalShowMarker = true,
     autoGoalKnuckle = false,
@@ -168,7 +186,7 @@ local shotTamperState = { connection = nil, lastKnuckle = 0, lastAutoGoal = 0 }
 local CONST = {
     KNUCKLE_TICK = 0.05,
     AUTO_GOAL_TICK = 0.033,
-    KNUCKLE_VORTEX_HZ = 3.5,
+    KNUCKLE_VORTEX_HZ = 2.6,
     NET_TEAM_MAP = { EfNeth = "Home", EfNeta = "Away" },
     FREEKICK_GATE = Vector3.new(0, 2, 0),
     REACT_DECLINE_TIME = 1.25,
@@ -559,6 +577,35 @@ local function getCurrentFoot()
     return "R"
 end
 
+local function getAutoGoalArcHeight(flatDist, heightDelta, outside)
+    if outside then
+        return math.clamp(5 + heightDelta * 0.26 + math.max(0, flatDist - 38) * 0.032, 4.5, 15)
+    end
+    return math.clamp(2.5 + heightDelta * 0.2 + flatDist * 0.012, 2, 8)
+end
+
+local function getAutoGoalCurvePower(flatDist, outside, side)
+    local base
+    if outside then
+        base = math.clamp(1.6 + math.max(0, flatDist - 28) * 0.048, 1.6, 10)
+    else
+        base = math.clamp(0.7 + flatDist * 0.016, 0.7, 3.5)
+    end
+    return base * side * 0.5
+end
+
+local function getAutoGoalMarkerLift(collide)
+    local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    local flatDist = 55
+    local outside = true
+    if hrp and collide then
+        local delta = collide.Position - hrp.Position
+        flatDist = Vector3.new(delta.X, 0, delta.Z).Magnitude
+        outside = not isInsidePitchBoxAt(hrp.Position)
+    end
+    return getAutoGoalArcHeight(flatDist, 6, outside) / 1.25
+end
+
 local function getTopCornerFromCollide(collide, foot)
     if not collide then
         return nil
@@ -566,7 +613,7 @@ local function getTopCornerFromCollide(collide, foot)
 
     local xOffset = foot == "L" and (collide.Size.X / 2.2) or -(collide.Size.X / 2.2)
     local corner = (collide.CFrame * CFrame.new(xOffset, collide.Size.Y / 2.4, 0)).Position
-    return corner - Vector3.new(0, 10, 0) + Vector3.new(0, mods.autoGoalHeight / 1.25, 0)
+    return corner - Vector3.new(0, 10, 0) + Vector3.new(0, getAutoGoalMarkerLift(collide), 0)
 end
 
 local function getCrossbarTarget(collide)
@@ -575,7 +622,7 @@ local function getCrossbarTarget(collide)
     end
 
     local corner = (collide.CFrame * CFrame.new(0, collide.Size.Y / 2.4, 0)).Position
-    return corner - Vector3.new(0, 10, 0) + Vector3.new(0, mods.autoGoalHeight / 1.25, 0)
+    return corner - Vector3.new(0, 10, 0) + Vector3.new(0, getAutoGoalMarkerLift(collide), 0)
 end
 
 local function resolveOwnerFromValue(value)
@@ -824,7 +871,7 @@ local predPhysics = {
     MaxTime = 5,
     Step = 1 / 60,
     VisualStep = 1 / 20,
-    UpdateRate = 1 / 45,
+    UpdateRate = 0,
     MaxBounces = 4,
     Restitution = 0.78,
     Friction = 0.985,
@@ -845,13 +892,6 @@ local predPhysics = {
     MinPointDistance = 0.3,
     VelocityStabilizeFrames = 5,
     VelocityDeltaThreshold = 6,
-}
-
-local predState = {
-    lastUpdate = 0,
-    velocityHistory = {},
-    forcePredictUntil = {},
-    attachmentTemplate = Instance.new("Attachment"),
 }
 
 clearTrajectory = function()
@@ -923,6 +963,30 @@ getBallMotionVelocity = function(ball)
     return ball.AssemblyLinearVelocity, nil
 end
 
+local function getPredictionVelocity(ball)
+    local constraintVel, constraint = getBallMotionVelocity(ball)
+    local assemblyVel = ball.AssemblyLinearVelocity
+
+    if assemblyVel.Magnitude < config.dribbleSpeedThreshold then
+        return constraintVel, constraint
+    end
+
+    if constraintVel.Magnitude < config.dribbleSpeedThreshold then
+        return assemblyVel, constraint
+    end
+
+    local divergence = (assemblyVel - constraintVel).Magnitude / math.max(constraintVel.Magnitude, 1)
+    if divergence > 0.12 then
+        local blend = math.clamp(divergence * 0.85, 0.2, 0.72)
+        if isActiveShotBall(ball) then
+            blend = math.max(blend, 0.35)
+        end
+        return constraintVel:Lerp(assemblyVel, blend), constraint
+    end
+
+    return constraintVel, constraint
+end
+
 isActiveShotBall = function(ball)
     local shootVel = ball:FindFirstChild("ShootVelocity")
     return shootVel
@@ -931,6 +995,10 @@ isActiveShotBall = function(ball)
 end
 
 local function updateVelocityHistory(ball, now)
+    if not ball or not ball.Parent then
+        return
+    end
+
     if isActiveShotBall(ball) then
         local history = predState.velocityHistory
         if not history[ball] then
@@ -1008,9 +1076,15 @@ local function buildSimState(ball)
     }
 
     if state.bodyVelocity then
-        state.initialBodyVelocity = state.bodyVelocity.Velocity
+        local constraintVel = state.bodyVelocity.Velocity
+        local predictedVel = getPredictionVelocity(ball)
+        if (predictedVel - constraintVel).Magnitude > 0.5 then
+            state.initialBodyVelocity = predictedVel
+        else
+            state.initialBodyVelocity = constraintVel
+        end
     else
-        state.initialBodyVelocity = getBallMotionVelocity(ball)
+        state.initialBodyVelocity = getPredictionVelocity(ball)
     end
 
     if bav then
@@ -1135,8 +1209,63 @@ local function handleBounce(velocity, normal, state, bounceCount)
     return bounceVel + newTangent
 end
 
+local function trimPredictionFromBall(points, ball)
+    if #points < 2 then
+        return points
+    end
+
+    local ballPos = ball.Position
+    local bestIndex = 1
+    local bestDistSq = math.huge
+
+    for i = 1, #points do
+        local offset = points[i].pos - ballPos
+        local distSq = offset.X * offset.X + offset.Y * offset.Y + offset.Z * offset.Z
+        if distSq < bestDistSq then
+            bestDistSq = distSq
+            bestIndex = i
+        end
+    end
+
+    local flightDir
+    local nextIdx = math.min(bestIndex + 1, #points)
+    local segment = points[nextIdx].pos - points[bestIndex].pos
+    if segment.Magnitude > 0.05 then
+        flightDir = segment.Unit
+    else
+        local vel = getPredictionVelocity(ball)
+        flightDir = vel.Magnitude > 1 and vel.Unit or Vector3.new(0, 0, -1)
+    end
+
+    while bestIndex < #points do
+        local ahead = (points[bestIndex + 1].pos - ballPos):Dot(flightDir)
+        if ahead > 0.08 then
+            break
+        end
+        bestIndex += 1
+    end
+
+    local anchor = points[bestIndex]
+    local trimmed = {
+        {
+            pos = ballPos,
+            time = anchor.time or 0,
+            speed = anchor.speed or getPredictionVelocity(ball).Magnitude,
+            bounce = anchor.bounce or 0,
+            hit = false,
+            hitNet = false,
+        },
+    }
+
+    for i = bestIndex + 1, #points do
+        table.insert(trimmed, points[i])
+    end
+
+    return trimmed
+end
+
 local function predictBallPath(ball)
-    local vel = getBallMotionVelocity(ball)
+    local vel = getPredictionVelocity(ball)
     if vel.Magnitude < config.dribbleSpeedThreshold then
         return {}
     end
@@ -1288,10 +1417,13 @@ local function createLandingMarker(worldPos, hitNet)
 end
 
 runPredictionVisualize = function()
-    if not config.predictorEnabled then return end
+    if not config.predictorEnabled then
+        return
+    end
 
+    local ok, err = pcall(function()
     local now = tick()
-    if now - predState.lastUpdate < predPhysics.UpdateRate then
+    if predPhysics.UpdateRate > 0 and now - predState.lastUpdate < predPhysics.UpdateRate then
         return
     end
     predState.lastUpdate = now
@@ -1314,15 +1446,13 @@ runPredictionVisualize = function()
             continue
         end
 
-        local vel = getBallMotionVelocity(ball)
+        local vel = getPredictionVelocity(ball)
         if not isValidTrajectoryBall(ball, vel) then
             continue
         end
 
-        local forceUntil = predState.forcePredictUntil and predState.forcePredictUntil[ball]
-        local isForcedShot = forceUntil and tick() < forceUntil
-
         local points = predictBallPath(ball)
+        points = trimPredictionFromBall(points, ball)
         if #points < 2 then
             continue
         end
@@ -1334,15 +1464,22 @@ runPredictionVisualize = function()
             end
         end
 
+        local ballRadius = math.max(ball.Size.Y * 0.5, 0.2)
         for i = 1, #points - 1 do
             local p0, p1 = points[i], points[i + 1]
-            if (p1.pos - p0.pos).Magnitude >= 0.05 then
+            local segment = p1.pos - p0.pos
+            if segment.Magnitude >= 0.05 and (i > 1 or segment.Magnitude > ballRadius * 0.35) then
                 createPredBeam(p0, p1, maxSpeed)
             end
         end
 
         local endPoint = points[#points]
         createLandingMarker(endPoint.pos, endPoint.hitNet == true)
+    end
+    end)
+
+    if not ok then
+        warn("[FUT] prediction error:", err)
     end
 end
 
@@ -1409,7 +1546,7 @@ local function resolveAutoGoalZone()
         return AUTO_GOAL_ZONES[idx]
     end
 
-    return "top_center"
+    return "random_bins"
 end
 
 local function jitterGoalTarget(pos, horizontal, vertical)
@@ -1783,8 +1920,8 @@ local function buildKnuckleGoalCorridor(launchPos, flatDir, right, netModel)
         goalDist = goalDist,
         lateralMax = lateralMax,
         verticalMax = verticalMax,
-        offsetRightMax = math.clamp(lateralMax * 0.095, 0.045, 0.16),
-        offsetUpMax = math.clamp(verticalMax * 0.11, 0.035, 0.13),
+        offsetRightMax = math.clamp(lateralMax * 0.07, 0.028, 0.1),
+        offsetUpMax = math.clamp(verticalMax * 0.08, 0.022, 0.085),
     }
 end
 
@@ -1803,7 +1940,7 @@ local function initKnuckleFlight(scaled)
         offsetRight = 0,
         offsetUp = 0,
         breakIndex = 0,
-        nextBreakAt = 0.16 + knuckleRand(speed) * 0.14,
+        nextBreakAt = 0.22 + knuckleRand(speed) * 0.18,
         breakSeed = speed * 0.37 + launchY,
     }
 end
@@ -1841,45 +1978,42 @@ local function stepKnuckleOffsets(state, elapsed, dt, ball)
     state.smoothRight = state.smoothRight or 0
     state.smoothUp = state.smoothUp or 0
 
-    while elapsed >= state.nextBreakAt and state.breakIndex < 14 do
+    while elapsed >= state.nextBreakAt and state.breakIndex < 8 do
         local seed = state.breakSeed + state.breakIndex * 1.73
         local flipL = knuckleRand(seed) > 0.5 and 1 or -1
         local flipV = knuckleRand(seed + 6.4) > 0.5 and 1 or -1
 
-        if state.breakIndex > 0 and knuckleRand(seed + 4.1) > 0.55 then
+        if state.breakIndex > 0 and knuckleRand(seed + 4.1) > 0.62 then
             flipL = -flipL
         end
-        if knuckleRand(seed + 8.2) > 0.6 then
+        if knuckleRand(seed + 8.2) > 0.65 then
             flipV = -flipV
         end
 
-        local breakL = intensity * 0.007 * (0.45 + knuckleRand(seed + 1.9) * 0.75)
-        local breakV = intensity * 0.0058 * (0.4 + knuckleRand(seed + 3.3) * 0.8)
+        local breakL = intensity * 0.0055 * (0.35 + knuckleRand(seed + 1.9) * 0.55)
+        local breakV = intensity * 0.0042 * (0.3 + knuckleRand(seed + 3.3) * 0.55)
 
         state.targetRight = state.targetRight + flipL * breakL
         state.targetUp = state.targetUp + flipV * breakV
 
-        if knuckleRand(seed + 5.5) > 0.68 then
-            state.targetUp = state.targetUp + flipV * breakV * 0.75
-        end
-        if knuckleRand(seed + 2.2) > 0.72 then
-            state.targetRight = state.targetRight + flipL * breakL * 0.55
+        if knuckleRand(seed + 5.5) > 0.74 then
+            state.targetUp = state.targetUp + flipV * breakV * 0.45
         end
 
         state.breakIndex = state.breakIndex + 1
-        state.nextBreakAt = elapsed + 0.14 + knuckleRand(seed + 2.7) * 0.24
+        state.nextBreakAt = elapsed + 0.2 + knuckleRand(seed + 2.7) * 0.28
     end
 
-    state.targetRight = state.targetRight * math.exp(-0.75 * dt)
-    state.targetUp = state.targetUp * math.exp(-0.68 * dt)
+    state.targetRight = state.targetRight * math.exp(-1.1 * dt)
+    state.targetUp = state.targetUp * math.exp(-0.95 * dt)
 
     local vortexHz = CONST.KNUCKLE_VORTEX_HZ
     local vortexL = math.sin(elapsed * math.pi * 2 * vortexHz + state.breakSeed)
-    local vortexU = math.cos(elapsed * math.pi * 2 * (vortexHz * 0.9) + state.breakSeed * 1.25)
-    local harmonic = math.sin(elapsed * math.pi * 2 * 2.15 + state.breakSeed * 0.55) * 0.22
+    local vortexU = math.cos(elapsed * math.pi * 2 * (vortexHz * 0.88) + state.breakSeed * 1.25)
+    local harmonic = math.sin(elapsed * math.pi * 2 * 1.6 + state.breakSeed * 0.55) * 0.12
 
-    local desiredRight = state.targetRight * (0.62 + vortexL * 0.34 + harmonic)
-    local desiredUp = state.targetUp * (0.58 + vortexU * 0.36)
+    local desiredRight = state.targetRight * (0.55 + vortexL * 0.22 + harmonic)
+    local desiredUp = state.targetUp * (0.52 + vortexU * 0.2)
 
     local blend = 1 - math.exp(-smoothRate * dt)
     state.smoothRight = state.smoothRight + (desiredRight - state.smoothRight) * blend
@@ -1915,16 +2049,14 @@ local function getKnuckleFlutterScalars(state, elapsed, fadeScale)
     local flutterMult = mods.knuckleFlutter
     local vortexHz = CONST.KNUCKLE_VORTEX_HZ
     local flutterR = (
-        math.sin(elapsed * math.pi * 2 * vortexHz * 1.05 + state.breakSeed) * 0.55
-        + math.sin(elapsed * math.pi * 2 * 2.1 + state.breakSeed * 0.7) * 0.28
-    ) * mods.powerKnuckleIntensity * 0.0004 * fade * flutterMult
+        math.sin(elapsed * math.pi * 2 * vortexHz * 1.02 + state.breakSeed) * 0.42
+        + math.sin(elapsed * math.pi * 2 * 1.55 + state.breakSeed * 0.7) * 0.18
+    ) * mods.powerKnuckleIntensity * 0.00075 * fade * flutterMult
     local flutterU = (
-        math.cos(elapsed * math.pi * 2 * vortexHz * 0.88 + state.breakSeed * 1.15) * 0.58
-        + math.sin(elapsed * math.pi * 2 * 1.8 + state.breakSeed * 0.45) * 0.3
-    ) * mods.powerKnuckleIntensity * 0.00036 * fade * flutterMult
-    local lateralScale = mods.powerKnuckleIntensity * 0.0011
-    local verticalScale = mods.powerKnuckleIntensity * 0.001
-    return flutterR, flutterU, lateralScale, verticalScale, fade
+        math.cos(elapsed * math.pi * 2 * vortexHz * 0.9 + state.breakSeed * 1.1) * 0.45
+        + math.sin(elapsed * math.pi * 2 * 1.35 + state.breakSeed * 0.42) * 0.2
+    ) * mods.powerKnuckleIntensity * 0.00065 * fade * flutterMult
+    return flutterR, flutterU, fade
 end
 
 local function initAutoGoalKnuckleState(agState, ball, velocity, target)
@@ -2097,20 +2229,23 @@ local function computeCustomKnuckleVelocity(state, elapsed, ball)
 
     stepKnuckleOffsets(state, elapsed, dt, ball)
 
-    local fade = math.clamp(1 - (elapsed / math.max(mods.powerKnuckleTime, 0.1)), 0.4, 1)
-    local flutterR, flutterU, lateralScale, verticalScale = getKnuckleFlutterScalars(state, elapsed, 1)
-    local mix = math.clamp(mods.knuckleMix, 0.2, 1)
+    local fade = math.clamp(1 - (elapsed / math.max(mods.powerKnuckleTime, 0.1)), 0.25, 1)
+    local flutterR, flutterU = getKnuckleFlutterScalars(state, elapsed, fade)
+    local mix = math.clamp(mods.knuckleMix * 0.7, 0.18, 0.68)
 
     local flatDir = state.flatDir
     local right = state.right
-    local desiredDir = flatDir + right * (state.smoothRight * lateralScale + flutterR)
+    local bendStrength = mods.powerKnuckleIntensity * 0.0026 * fade * mods.knuckleFlutter
+    local lateral = state.smoothRight * bendStrength + flutterR * 3.2
+
+    local desiredDir = flatDir + right * lateral
     if desiredDir.Magnitude > 0.01 then
         desiredDir = desiredDir.Unit
     else
         desiredDir = flatDir
     end
 
-    local maxTurnRad = math.rad(44) * dt * (0.7 + mix * 0.5)
+    local maxTurnRad = math.rad(26) * dt * (0.55 + mix * 0.45)
     if state.heading and state.heading.Magnitude > 0.01 then
         local heading = state.heading.Unit
         local dot = math.clamp(heading:Dot(desiredDir), -1, 1)
@@ -2122,24 +2257,19 @@ local function computeCustomKnuckleVelocity(state, elapsed, ball)
     end
     state.heading = desiredDir
 
-    local baseY = state.launchY - elapsed * 1.35
-    local desiredY = baseY + state.smoothUp * state.speed * verticalScale + flutterU * state.speed
-    state.smoothYVel = state.smoothYVel or baseY
-    local yRate = 1 - math.exp(-mods.knuckleSmooth * 0.8 * dt)
-    state.smoothYVel = state.smoothYVel + (desiredY - state.smoothYVel) * yRate
+    local baseY = state.launchY - elapsed * 0.9
+    local vertAmp = mods.powerKnuckleIntensity * 0.0014 * fade * mods.knuckleFlutter
+    local vertical = state.smoothUp * vertAmp * state.horizSpeed + flutterU * state.horizSpeed * 2.8
+    local desiredY = baseY + vertical
 
-    local horizMag = math.sqrt(math.max(state.speed * state.speed - state.smoothYVel * state.smoothYVel, 0))
-    if horizMag < 1 then
-        horizMag = state.horizSpeed * fade
-    end
-
+    local horizMag = state.horizSpeed * math.clamp(fade + 0.12, 0.45, 1)
     local baseVel = Vector3.new(flatDir.X * horizMag, baseY, flatDir.Z * horizMag)
-    local knuckleVel = Vector3.new(desiredDir.X * horizMag, state.smoothYVel, desiredDir.Z * horizMag)
-    local targetOut = baseVel:Lerp(knuckleVel, mix)
+    local knuckleVel = Vector3.new(desiredDir.X * horizMag, desiredY, desiredDir.Z * horizMag)
+    local targetVel = baseVel:Lerp(knuckleVel, mix)
 
-    state.smoothVel = state.smoothVel or targetOut
-    local outRate = 1 - math.exp(-(5.5 + mods.knuckleSmooth * 0.45) * dt)
-    state.smoothVel = state.smoothVel + (targetOut - state.smoothVel) * outRate
+    state.smoothVel = state.smoothVel or targetVel
+    local outRate = 1 - math.exp(-(3.8 + mods.knuckleSmooth * 0.5) * dt)
+    state.smoothVel = state.smoothVel + (targetVel - state.smoothVel) * math.clamp(outRate, 0.08, 0.42)
 
     return state.smoothVel
 end
@@ -2250,16 +2380,27 @@ local function smoothstep(t)
     return t * t * (3 - 2 * t)
 end
 
-local function buildAutoGoalCurve(startPos, targetPos)
-    local delta = targetPos - startPos
+local function buildAutoGoalPath(ballPos, targetPos)
+    local delta = targetPos - ballPos
     if delta.Magnitude < 1 then
-        return startPos, startPos, targetPos
+        return ballPos, ballPos, targetPos, {
+            outside = false,
+            flatDist = 0,
+            loft = 3,
+            pathTime = 0.5,
+            loftBias = 0.05,
+        }
     end
 
     local direction = delta.Unit
+    local flatDist = Vector3.new(delta.X, 0, delta.Z).Magnitude
+    local heightDelta = math.max(targetPos.Y - ballPos.Y, 0)
+    local outside = not isInsidePitchBoxAt(ballPos)
     local foot = getCurrentFoot()
     local side = foot == "L" and -1 or 1
-    local curvePower = mods.autoGoalCurve * side * 0.55
+    local curvePower = getAutoGoalCurvePower(flatDist, outside, side)
+    local loft = getAutoGoalArcHeight(flatDist, heightDelta, outside)
+
     local curveDir = direction:Cross(Vector3.yAxis)
     if curveDir.Magnitude < 0.01 then
         curveDir = Vector3.xAxis
@@ -2267,30 +2408,98 @@ local function buildAutoGoalCurve(startPos, targetPos)
         curveDir = curveDir.Unit
     end
 
-    local control = (startPos + targetPos) * 0.5
+    local control = (ballPos + targetPos) * 0.5
         + curveDir * curvePower
-        + Vector3.new(0, math.min(mods.autoGoalHeight * 0.08, 6), 0)
+        + Vector3.new(0, loft * 0.5, 0)
 
-    return startPos, control, targetPos
-end
+    local pathTime = outside
+        and math.clamp(0.5 + flatDist / 185, 0.5, 0.92)
+        or math.clamp(0.4 + flatDist / 230, 0.38, 0.68)
 
-local function getAutoGoalSpeedMultiplier(ballPos, targetPos)
-    if isInsidePitchBoxAt(ballPos) then
-        return 1
-    end
-
-    local flatDist = (Vector3.new(targetPos.X, 0, targetPos.Z) - Vector3.new(ballPos.X, 0, ballPos.Z)).Magnitude
-    local distBoost = math.clamp(1 + math.max(0, flatDist - 45) / 95, 1, 1.55)
-    return mods.autoGoalSpeed * distBoost
+    return ballPos, control, targetPos, {
+        outside = outside,
+        flatDist = flatDist,
+        loft = loft,
+        curve = curvePower,
+        pathTime = pathTime,
+        loftBias = loft / math.max(flatDist, 1),
+    }
 end
 
 local function resolveAutoGoalSpeed(baseSpeed, ballPos, targetPos)
-    local multiplier = getAutoGoalSpeedMultiplier(ballPos, targetPos)
+    local naturalSpeed = math.max(baseSpeed, config.shotSpeedThreshold)
+
+    if isInsidePitchBoxAt(ballPos) then
+        return math.clamp(naturalSpeed, config.shotSpeedThreshold, 300)
+    end
+
+    local flatDist = (Vector3.new(targetPos.X, 0, targetPos.Z) - Vector3.new(ballPos.X, 0, ballPos.Z)).Magnitude
+    local heightDelta = math.max(targetPos.Y - ballPos.Y + 2, 0)
+    local arcLength = flatDist + heightDelta * 0.45
+    local travelTime = math.clamp(0.5 + arcLength / 168, 0.52, 0.9)
+    local neededSpeed = arcLength / travelTime
+    local maxBoost = math.clamp(1.04 + math.max(0, flatDist - 50) / 220, 1.04, 1.22)
+
     return math.clamp(
-        math.max(baseSpeed, config.shotSpeedThreshold) * multiplier,
+        math.max(neededSpeed, naturalSpeed * maxBoost),
         config.shotSpeedThreshold,
-        300
+        naturalSpeed * 1.28
     )
+end
+
+local function blendGameLikeAutoGoalVelocity(state, ball, current, launchVel, launchDir, launchSpeed, pathDir, targetSpeed, steerBlend, speedBlend, elapsed, dt)
+    if current.Magnitude < 1 then
+        current = launchVel or Vector3.zero
+    end
+
+    local outside = state.outsideBox == true
+    local horizPath = Vector3.new(pathDir.X, 0, pathDir.Z)
+    if horizPath.Magnitude < 0.01 then
+        horizPath = Vector3.new(launchDir.X, 0, launchDir.Z)
+    end
+    horizPath = horizPath.Unit
+
+    local horizCurrent = Vector3.new(current.X, 0, current.Z)
+    local currentHorizMag = math.max(horizCurrent.Magnitude, 1)
+
+    local adoptSpeed = outside and speedBlend or speedBlend * 0.3
+    local desiredMag = launchSpeed + (targetSpeed - launchSpeed) * adoptSpeed
+    if outside then
+        desiredMag = currentHorizMag * (1 - adoptSpeed * 0.28) + desiredMag * (adoptSpeed * 0.28)
+    else
+        desiredMag = launchSpeed
+    end
+
+    local steerAmount = outside
+        and math.clamp(0.04 + steerBlend * 0.14, 0.04, 0.18)
+        or math.clamp(0.025 + steerBlend * 0.08, 0.025, 0.1)
+
+    local horizDir = horizCurrent.Magnitude > 2 and horizCurrent.Unit or Vector3.new(launchDir.X, 0, launchDir.Z).Unit
+    horizDir = horizDir:Lerp(horizPath, steerAmount).Unit
+    local horizTarget = horizDir * math.max(desiredMag, currentHorizMag * 0.985)
+
+    local yTarget = current.Y
+    if outside and speedBlend > 0.18 then
+        local naturalDrop = (launchVel and launchVel.Y or 0) - elapsed * 0.72
+        local loftNudge = (state.loftBias or 0.05) * desiredMag * 0.06 * speedBlend
+        local desiredY = naturalDrop * 0.75 + loftNudge
+        yTarget = current.Y + (desiredY - current.Y) * steerAmount * 0.45
+    else
+        local naturalY = (launchVel and launchVel.Y or 0) - elapsed * 0.8
+        yTarget = current.Y + (naturalY - current.Y) * steerAmount * 0.35
+    end
+
+    local targetVel = Vector3.new(horizTarget.X, yTarget, horizTarget.Z)
+    local maxStep = math.max(current.Magnitude * 0.045 * (dt / CONST.AUTO_GOAL_TICK), 1.4)
+    maxStep = maxStep * math.clamp(0.22 + steerBlend, 0.22, 0.55)
+
+    local delta = targetVel - current
+    if delta.Magnitude > maxStep then
+        targetVel = current + delta.Unit * maxStep
+    end
+
+    local alpha = math.clamp(0.04 + steerBlend * (outside and 0.12 or 0.06), 0.04, outside and 0.18 or 0.1)
+    return current:Lerp(targetVel, alpha)
 end
 
 local function bindAutoGoalForceStripper(ball, state)
@@ -2323,15 +2532,27 @@ end
 
 local function getSmoothAutoGoalVelocity(ball, state, elapsed, dt)
     local duration = math.max(state.duration, 0.1)
-    local rawT = math.clamp(elapsed / duration, 0, 1)
-    local t = smoothstep(rawT)
+    local launchVel = state.launchVel
+    local launchSpeed = state.launchSpeed or state.speed
+    local launchDir = launchVel and launchVel.Magnitude > 1 and launchVel.Unit or state.flatDir
 
-    local steerBlend = smoothstep(math.clamp(elapsed / (state.launchBlend or 0.32), 0, 1))
-    local lookT = math.clamp(t + 0.12 * steerBlend, 0, 1)
-    local aimPoint = quadraticBezier(lookT, state.p0, state.p1, state.p2)
-    if rawT > 0.45 then
-        local homeBlend = ((rawT - 0.45) / 0.55) ^ 1.35
-        aimPoint = aimPoint:Lerp(state.p2, homeBlend)
+    local steerBlend = smoothstep(math.clamp(elapsed / (state.launchBlend or 0.38), 0, 1))
+    local speedBlend = smoothstep(math.clamp(elapsed / (state.speedBlend or 0.5), 0, 1))
+
+    local launchHold = state.outsideBox and 0.25 or 0.18
+    local aimPoint
+    if elapsed < launchHold and launchDir then
+        local lead = math.max(launchSpeed, 24) * (0.28 + elapsed * 1.5)
+        aimPoint = ball.Position + launchDir * lead
+    else
+        local rawT = math.clamp(elapsed / duration, 0, 1)
+        local t = smoothstep(rawT)
+        local lookT = math.clamp(t + 0.08 * steerBlend, 0.05, 1)
+        aimPoint = quadraticBezier(lookT, state.p0, state.p1, state.p2)
+        if rawT > 0.5 then
+            local homeBlend = ((rawT - 0.5) / 0.5) ^ 1.4
+            aimPoint = aimPoint:Lerp(state.p2, homeBlend)
+        end
     end
 
     local toTarget = aimPoint - ball.Position
@@ -2339,30 +2560,33 @@ local function getSmoothAutoGoalVelocity(ball, state, elapsed, dt)
         toTarget = state.p2 - ball.Position
     end
     if toTarget.Magnitude < 0.25 then
-        return state.smoothVel or state.launchVel or Vector3.zero
+        return state.smoothVel or launchVel or Vector3.zero
     end
-
-    local dist = toTarget.Magnitude
-    local launchSpeed = state.launchSpeed or state.speed
-    local speed = launchSpeed + (state.speed - launchSpeed) * steerBlend
-    speed = math.min(speed, dist / math.max(dt, CONST.AUTO_GOAL_TICK) * 0.9)
 
     local pathDir = toTarget.Unit
-    local launchVel = state.launchVel
-    local launchDir = launchVel and launchVel.Magnitude > 1 and launchVel.Unit or pathDir
-    local blendedDir = launchDir:Lerp(pathDir, steerBlend)
-    if blendedDir.Magnitude < 0.01 then
-        blendedDir = pathDir
-    else
-        blendedDir = blendedDir.Unit
-    end
+    local sv = ball:FindFirstChild("ShootVelocity")
+    local current = (sv and sv:IsA("BodyVelocity") and sv.Velocity.Magnitude > 1 and sv.Velocity)
+        or (ball.AssemblyLinearVelocity.Magnitude > 1 and ball.AssemblyLinearVelocity)
+        or launchVel
+        or Vector3.zero
 
-    local targetVel = blendedDir * speed
-    local alpha = 1 - math.exp(-10 * math.max(dt, 1 / 240))
-    state.smoothVel = (state.smoothVel or launchVel or targetVel):Lerp(targetVel, alpha)
-    local vel = state.smoothVel
+    local vel = blendGameLikeAutoGoalVelocity(
+        state,
+        ball,
+        current,
+        launchVel,
+        launchDir,
+        launchSpeed,
+        pathDir,
+        state.speed,
+        steerBlend,
+        speedBlend,
+        elapsed,
+        dt
+    )
+    state.smoothVel = vel
 
-    if mods.autoGoalKnuckle and state.knuckle then
+    if mods.autoGoalKnuckle and state.knuckle and elapsed >= 0.22 then
         vel = layerKnuckleOnAutoGoal(vel, state.knuckle, ball, elapsed, dt)
         state.smoothVel = vel
     end
@@ -2371,11 +2595,15 @@ local function getSmoothAutoGoalVelocity(ball, state, elapsed, dt)
 end
 
 local function beginAutoGoalPath(ball, velocity, target)
-    local p0, p1, p2 = buildAutoGoalCurve(ball.Position, target)
+    local p0, p1, p2, profile = buildAutoGoalPath(ball.Position, target)
     local now = tick()
     local speed = resolveAutoGoalSpeed(velocity.Magnitude, ball.Position, target)
     local distance = (target - ball.Position).Magnitude
-    local duration = math.clamp(math.max(mods.autoGoalPathTime, distance / math.max(speed, 1) * 0.95), 0.7, 2.4)
+    local duration = math.clamp(
+        math.max(profile.pathTime, distance / math.max(speed, 1) * 0.82),
+        0.5,
+        1.8
+    )
     local state = {
         p0 = p0,
         p1 = p1,
@@ -2387,24 +2615,25 @@ local function beginAutoGoalPath(ball, velocity, target)
         speed = speed,
         launchVel = velocity,
         launchSpeed = velocity.Magnitude,
-        launchBlend = 0.32,
+        outsideBox = profile.outside,
+        loftBias = profile.loftBias,
+        launchBlend = profile.outside and 0.42 or 0.32,
+        speedBlend = profile.outside and 0.58 or 0.38,
+        flatDir = velocity.Magnitude > 1 and Vector3.new(velocity.X, 0, velocity.Z).Magnitude > 0.1
+            and Vector3.new(velocity.X, 0, velocity.Z).Unit
+            or velocity.Unit,
         smoothVel = velocity,
-        deadline = now + duration + 0.45,
+        deadline = now + duration + 0.35,
     }
 
     autoGoalState.paths[ball] = state
     bindAutoGoalForceStripper(ball, state)
     showAutoGoalMarker(target, false)
+    stripShotCurveForAutoGoal(ball)
 
     if mods.autoGoalKnuckle then
         initAutoGoalKnuckleState(state, ball, velocity, target)
     end
-
-    task.delay(0.08, function()
-        if autoGoalState.paths[ball] == state then
-            stripShotCurveForAutoGoal(ball)
-        end
-    end)
 end
 
 local function clearAutoGoalPath(ball)
@@ -2514,7 +2743,9 @@ local function runVelocityTamperLoop()
                 end
             end
         elseif next(knuckleState.active) then
-            table.clear(knuckleState.active)
+            for ball, _ in knuckleState.active do
+                stopKnuckle(ball)
+            end
         end
 
         if mods.insanePowerEnabled and not mods.autoGoalEnabled and not mods.powerKnuckleEnabled then
@@ -2556,9 +2787,10 @@ local function applyAutoGoal(ball, constraint, velocity)
     end
 
     local elapsed = tick() - state.startTime
-    if elapsed < 0.1 then
+    if elapsed < 0.08 then
+        state.launchVel = velocity
+        state.launchSpeed = velocity.Magnitude
         state.smoothVel = velocity
-        return velocity
     end
 
     local pathVel = getSmoothAutoGoalVelocity(ball, state, elapsed, CONST.AUTO_GOAL_TICK)
@@ -2677,7 +2909,7 @@ local function setupBallPrediction(ball)
         if not isScriptAlive() then return end
         onVelocity(child)
         if child.Name == "ShootVelocity" and child:IsA("BodyVelocity") then
-            predState.forcePredictUntil[ball] = tick() + 2.5
+            markShotPredict(ball, 2.5)
             if config.predictorEnabled then
                 task.defer(runPredictionVisualize)
             end
@@ -2720,7 +2952,7 @@ trackConnection(Engine.ChildAdded:Connect(addReachBall))
 
 trackConnection(Engine.ChildRemoved:Connect(function(ball)
     trackedBalls[ball] = nil
-    predState.velocityHistory[ball] = nil
+    clearBallPredictState(ball)
     removeReachBall(ball)
 end))
 
@@ -2740,7 +2972,7 @@ end))
 
 table.insert(connections, CollectionService:GetInstanceRemovedSignal("Ball"):Connect(function(ball)
     trackedBalls[ball] = nil
-    predState.velocityHistory[ball] = nil
+    clearBallPredictState(ball)
     removeReachBall(ball)
 end))
 table.insert(connections, workspace.DescendantAdded:Connect(function(desc)
@@ -5227,7 +5459,7 @@ ShotsTab:Slider(sliderOpts({
     name = "Knuckle Power",
     min = 0.5,
     max = 2.5,
-    default = 1.15,
+    default = 1.08,
     callback = function(v)
         mods.knucklePower = v
     end,
@@ -5237,7 +5469,7 @@ ShotsTab:Slider(sliderOpts({
     name = "Knuckle Height",
     min = 0,
     max = 18,
-    default = 3,
+    default = 2,
     suffix = " studs",
     callback = function(v)
         mods.knuckleHeight = v
@@ -5248,7 +5480,7 @@ ShotsTab:Slider(sliderOpts({
     name = "Break Strength",
     min = 1,
     max = 30,
-    default = 22,
+    default = 14,
     callback = function(v)
         mods.powerKnuckleIntensity = v
     end,
@@ -5258,7 +5490,7 @@ ShotsTab:Slider(sliderOpts({
     name = "Knuckle Flutter",
     min = 0.2,
     max = 2.5,
-    default = 1,
+    default = 0.85,
     callback = function(v)
         mods.knuckleFlutter = v
     end,
@@ -5268,7 +5500,7 @@ ShotsTab:Slider(sliderOpts({
     name = "Knuckle Smooth",
     min = 2,
     max = 12,
-    default = 5.5,
+    default = 7,
     callback = function(v)
         mods.knuckleSmooth = v
     end,
@@ -5278,7 +5510,7 @@ ShotsTab:Slider(sliderOpts({
     name = "Knuckle Mix",
     min = 0.2,
     max = 1,
-    default = 1,
+    default = 0.55,
     callback = function(v)
         mods.knuckleMix = v
     end,
@@ -5288,7 +5520,7 @@ ShotsTab:Slider(sliderOpts({
     name = "Knuckle Duration",
     min = 0.8,
     max = 3,
-    default = 2,
+    default = 1.6,
     suffix = "s",
     callback = function(v)
         mods.powerKnuckleTime = v
@@ -5389,7 +5621,7 @@ GoalTab:Slider(sliderOpts({
 GoalTab:Dropdown({
     name = "Target Mode",
     items = { "Random Bin", "Top Left", "Top Right", "Center Crossbar", "Random Box" },
-    default = "Center Crossbar",
+    default = "Random Bin",
     callback = function(v)
         for _, option in AUTO_GOAL_ZONE_OPTIONS do
             if option.label == v then
@@ -5397,30 +5629,9 @@ GoalTab:Dropdown({
                 return
             end
         end
-        mods.autoGoalZone = "top_center"
+        mods.autoGoalZone = "random_bins"
     end,
 })
-
-GoalTab:Slider(sliderOpts({
-    name = "Outside Speed",
-    min = 0.8,
-    max = 2,
-    default = 1.15,
-    callback = function(v)
-        mods.autoGoalSpeed = v
-    end,
-}, SLIDER.mult))
-
-GoalTab:Slider(sliderOpts({
-    name = "Goal Height",
-    min = 4,
-    max = 35,
-    default = 14,
-    suffix = " studs",
-    callback = function(v)
-        mods.autoGoalHeight = v
-    end,
-}, SLIDER.studHalf))
 
 GoalTab:Slider(sliderOpts({
     name = "Target Spread",
@@ -5432,28 +5643,6 @@ GoalTab:Slider(sliderOpts({
         mods.autoGoalSpread = v
     end,
 }, SLIDER.stud))
-
-GoalTab:Slider(sliderOpts({
-    name = "Path Curve",
-    min = 2,
-    max = 30,
-    default = 10,
-    suffix = " studs",
-    callback = function(v)
-        mods.autoGoalCurve = v
-    end,
-}, SLIDER.studHalf))
-
-GoalTab:Slider(sliderOpts({
-    name = "Path Time",
-    min = 0.6,
-    max = 2,
-    default = 1.1,
-    suffix = "s",
-    callback = function(v)
-        mods.autoGoalPathTime = v
-    end,
-}, SLIDER.time))
 
 GUI:NavSection("Player")
 local PlayerTab = GUI:CreateTab({ name = "Player", icon = "" })
