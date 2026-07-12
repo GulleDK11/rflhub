@@ -19,7 +19,6 @@ local shotTamperState = Core.shotTamperState
 local connections = Core.connections
 local visuals = Core.visuals
 local networkState = Core.networkState
-local setpieceState = Core.setpieceState
 local netParts = Core.netParts
 local player = Core.player
 local HttpService = Core.HttpService
@@ -60,9 +59,6 @@ killScript = function(skipUiUnload)
         mods.knuckleShotsEnabled = false
         mods.autoCatchEnabled = false
         mods.autoGoalEnabled = false
-        mods.autoSetpieceEnabled = false
-        mods.autoFreekickEnabled = false
-        mods.autoPenEnabled = false
         mods.betterReact = false
         mods.breakReact = false
         mods.reachEnabled = false
@@ -74,12 +70,6 @@ killScript = function(skipUiUnload)
         setPredictionEnabled(false)
         setInfiniteStamina(false)
         setAntiIdle(false)
-        setpieceState.fired = false
-        if setpieceState.connection then
-            setpieceState.connection:Disconnect()
-            setpieceState.connection = nil
-        end
-        setpieceState.button = nil
         table.clear(autoGoalState.paths)
         table.clear(autoGoalState.claimed)
         autoGoalState.lockedTarget = nil
@@ -490,10 +480,6 @@ local UI_HANDLERS = {
         mods.pingMax = v
         resetPingSpoofState()
     end,
-    autoSetpiece = function(v)
-        mods.autoSetpieceEnabled = v
-        if not v then setpieceState.fired = false end
-    end,
     infiniteStamina = function(v)
         setInfiniteStamina(v)
     end,
@@ -720,11 +706,6 @@ local UI_SCHEMA = {
         { side = "Left", header = "Movement", widgets = {
             { t = "toggle", name = "Infinite Stamina", default = false, h = "infiniteStamina" },
             { t = "toggle", name = "Anti Idle", default = false, h = "antiIdle" },
-        }},
-        { side = "Right", header = "Setpieces", widgets = {
-            { t = "toggle", name = "Auto Ready", default = false, h = "autoSetpiece" },
-            { t = "toggle", name = "Auto Freekick", default = false, k = "autoFreekickEnabled" },
-            { t = "toggle", name = "Auto Penalty", default = false, k = "autoPenEnabled" },
         }},
     },
     network = {
