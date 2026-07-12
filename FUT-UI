@@ -1,0 +1,899 @@
+--##UI##
+task.wait(0.5)
+local GUI
+local killScript
+local confirmKillScript
+killScript = function(skipUiUnload)
+    if scriptState.killed then
+        return
+    end
+    scriptState.killed = true
+    scriptState.alive = false
+    pcall(function()
+        mods.infiniteStamina = false
+        mods.insanePowerEnabled = false
+        mods.knuckleShotsEnabled = false
+        mods.autoCatchEnabled = false
+        mods.autoGoalEnabled = false
+        mods.autoSetpieceEnabled = false
+        mods.autoFreekickEnabled = false
+        mods.autoPenEnabled = false
+        mods.betterReact = false
+        mods.breakReact = false
+        mods.reachEnabled = false
+        mods.gkReachEnabled = false
+        mods.pullVectorEnabled = false
+        mods.pingSpoof = false
+        mods.antiIdle = false
+        config.predictorEnabled = false
+        setPredictionEnabled(false)
+        setInfiniteStamina(false)
+        setAntiIdle(false)
+        setpieceState.fired = false
+        if setpieceState.connection then
+            setpieceState.connection:Disconnect()
+            setpieceState.connection = nil
+        end
+        setpieceState.button = nil
+        table.clear(autoGoalState.paths)
+        table.clear(autoGoalState.claimed)
+        autoGoalState.lockedTarget = nil
+        autoGoalState.lockedNet = nil
+        table.clear(powerState.processed)
+        table.clear(powerState.reactBoosted)
+        table.clear(knuckleShotState.active)
+        table.clear(knuckleShotState.watched)
+        clearAutoGoalPreview()
+        clearGoalPostESP()
+        clearAutoGoalFolder()
+        if autoGoalState.marker then
+            autoGoalState.marker:Destroy()
+            autoGoalState.marker = nil
+        end
+        if staminaState.connection then
+            staminaState.connection:Disconnect()
+        end
+        staminaState.connection = nil
+        staminaState.sprintData = nil
+        staminaState.movementStamina = nil
+        for _, conn in powerState.freekickConnections do
+            conn:Disconnect()
+        end
+        table.clear(powerState.freekickConnections)
+        destroyReachVisual("visualFolder", "box")
+        destroyReachVisual("gkVisualFolder", "gkBox")
+        restoreGKGloveSizes()
+        clearTrajectory()
+        if visuals.predConnection then
+            visuals.predConnection:Disconnect()
+            visuals.predConnection = nil
+        end
+        if pingState.hooked and pingState.oldNamecall and hookmetamethod then
+            hookmetamethod(game, "__namecall", pingState.oldNamecall)
+            pingState.hooked = false
+            pingState.oldNamecall = nil
+        end
+        resetPingSpoofState()
+        if gameRoot.revertManipulator then
+            pcall(gameRoot.revertManipulator)
+        end
+        if shotTamperState.connection then
+            shotTamperState.connection:Disconnect()
+            shotTamperState.connection = nil
+        end
+        local conns = table.clone(connections)
+        table.clear(connections)
+        for _, conn in conns do
+            conn:Disconnect()
+        end
+        if GUI and not skipUiUnload then
+            local guiRef = GUI
+            GUI = nil
+            pcall(function()
+                guiRef:Unload()
+            end)
+        else
+            GUI = nil
+        end
+    end)
+    getgenv().OverseerFUT = nil
+    print("Overseer FUT killed")
+end
+confirmKillScript = function()
+    if not GUI then
+        killScript()
+        return
+    end
+    GUI:Dialog({
+        Title = "Overseer FUT",
+        Description = "Kill script and unload all mods? This cannot be undone until you re-execute.",
+        Buttons = {
+            {
+                Name = "Confirm",
+                Callback = function()
+                    task.defer(killScript)
+                end,
+            },
+            {
+                Name = "Cancel",
+            },
+        },
+    })
+end
+local function loadMacLib()
+    local ok, result = pcall(function()
+        return loadstring(game:HttpGet("https://github.com/biggaboy212/Maclib/releases/latest/download/maclib.txt"))()
+    end)
+    if not ok or type(result) ~= "table" or type(result.Window) ~= "function" then
+        warn("Overseer FUT: UI download failed", result)
+        return nil
+    end
+    return result
+end
+local SLIDER = {
+    stud = { display = "Tenths" },
+    studHalf = { display = "Tenths" },
+    mult = { display = "Hundredths" },
+    time = { display = "Hundredths" },
+    int = { display = "Round" },
+}
+local function macSlider(section, opts, preset)
+    section:Slider({
+        Name = opts.name or opts.Name,
+        Default = opts.default or opts.Default,
+        Minimum = opts.min or opts.Minimum,
+        Maximum = opts.max or opts.Maximum,
+        DisplayMethod = preset.display,
+        Callback = opts.callback or opts.Callback,
+    }, opts.flag)
+end
+local function macDropdown(section, opts)
+    local items = opts.items or opts.Options
+    local defaultValue = opts.default or opts.Default
+    local defaultIndex = 1
+    for index, item in items do
+        if item == defaultValue then
+            defaultIndex = index
+            break
+        end
+    end
+    section:Dropdown({
+        Name = opts.name or opts.Name,
+        Options = items,
+        Default = defaultIndex,
+        Callback = opts.callback or opts.Callback,
+    }, opts.flag)
+end
+local function macSection(tab, side)
+    return tab:Section({ Side = side or "Left" })
+end
+local uiState = {
+    scale = 1,
+    showNotifications = true,
+    acrylicBlur = true,
+    showUserInfo = false,
+    dragStyle = 2,
+}
+local configState = {
+    pendingName = "default",
+    macLibConfig = false,
+    root = "OverseerFUT",
+    dir = "OverseerFUT/configs",
+    autoloadFile = "OverseerFUT/autoload.txt",
+}
+local function hasConfigFileIO()
+    return typeof(writefile) == "function"
+        and typeof(readfile) == "function"
+        and typeof(isfile) == "function"
+        and typeof(isfolder) == "function"
+        and typeof(makefolder) == "function"
+end
+local function ensureConfigDir()
+    if not hasConfigFileIO() then
+        return false
+    end
+    local ok = pcall(function()
+        if not isfolder(configState.root) then
+            makefolder(configState.root)
+        end
+        if not isfolder(configState.dir) then
+            makefolder(configState.dir)
+        end
+    end)
+    return ok and isfolder(configState.dir)
+end
+local function sanitizeConfigName(name)
+    local cleaned = tostring(name or "default"):gsub("[^%w%-_]", "")
+    if cleaned == "" then
+        return "default"
+    end
+    return cleaned
+end
+local function serializeConfigValue(value)
+    local valueType = typeof(value)
+    if valueType == "Color3" then
+        return { _t = "Color3", R = value.R, G = value.G, B = value.B }
+    end
+    if valueType == "table" then
+        local out = {}
+        for key, child in value do
+            local serialized = serializeConfigValue(child)
+            if serialized ~= nil then
+                out[key] = serialized
+            end
+        end
+        return out
+    end
+    if valueType == "boolean" or valueType == "number" or valueType == "string" then
+        return value
+    end
+    return nil
+end
+local function deserializeConfigValue(value)
+    if type(value) ~= "table" then
+        return value
+    end
+    if value._t == "Color3" then
+        return Color3.new(value.R, value.G, value.B)
+    end
+    return value
+end
+local function mergeConfigTable(source, dest)
+    if type(source) ~= "table" or type(dest) ~= "table" then
+        return
+    end
+    for key, value in source do
+        if type(value) == "table" and value._t ~= "Color3" then
+            if type(dest[key]) ~= "table" then
+                dest[key] = {}
+            end
+            mergeConfigTable(value, dest[key])
+        else
+            dest[key] = deserializeConfigValue(value)
+        end
+    end
+end
+local function applyOverseerConfig(data)
+    if type(data) ~= "table" then
+        return false
+    end
+    if type(data.mods) == "table" then
+        mergeConfigTable(data.mods, mods)
+    end
+    if type(data.config) == "table" then
+        mergeConfigTable(data.config, config)
+    end
+    if type(data.uiState) == "table" then
+        mergeConfigTable(data.uiState, uiState)
+    end
+    setPredictionEnabled(config.predictorEnabled)
+    setInfiniteStamina(mods.infiniteStamina)
+    setAntiIdle(mods.antiIdle)
+    resetPingSpoofState()
+    if mods.pingSpoof then
+        setupPingSpoof()
+    end
+    return true
+end
+local function saveOverseerConfig(name)
+    local configName = sanitizeConfigName(name or configState.pendingName)
+    if not ensureConfigDir() then
+        warn("Overseer FUT: config save unavailable (no writefile)")
+        return false
+    end
+    local payload = {
+        mods = serializeConfigValue(mods),
+        config = serializeConfigValue(config),
+        uiState = serializeConfigValue(uiState),
+    }
+    local ok, encoded = pcall(function()
+        return HttpService:JSONEncode(payload)
+    end)
+    if not ok or not encoded then
+        return false
+    end
+    writefile(configState.dir .. "/" .. configName .. ".json", encoded)
+    return true
+end
+local function loadOverseerConfig(name)
+    local configName = sanitizeConfigName(name or configState.pendingName)
+    local path = configState.dir .. "/" .. configName .. ".json"
+    if not hasConfigFileIO() or not isfile(path) then
+        return false
+    end
+    local ok, decoded = pcall(function()
+        return HttpService:JSONDecode(readfile(path))
+    end)
+    if not ok or type(decoded) ~= "table" then
+        return false
+    end
+    return applyOverseerConfig(decoded)
+end
+local function setAutoloadConfig(name)
+    local configName = sanitizeConfigName(name)
+    if not hasConfigFileIO() then
+        return false
+    end
+    ensureConfigDir()
+    writefile(configState.autoloadFile, configName)
+    return true
+end
+local function tryLoadAutoloadConfig()
+    if not hasConfigFileIO() or not isfile(configState.autoloadFile) then
+        return false
+    end
+    local ok, name = pcall(function()
+        return readfile(configState.autoloadFile)
+    end)
+    if not ok or not name or name == "" then
+        return false
+    end
+    return loadOverseerConfig(name)
+end
+local function notifyConfig(message)
+    if GUI and uiState.showNotifications then
+        pcall(function()
+            GUI:Notify({
+                Title = "Overseer FUT",
+                Description = message,
+                Lifetime = 3,
+            })
+        end)
+    end
+end
+local function uiNotify(title, description, lifetime)
+    if GUI and uiState.showNotifications then
+        pcall(function()
+            GUI:Notify({
+                Title = title,
+                Description = description,
+                Lifetime = lifetime or 2,
+            })
+        end)
+    end
+end
+local UI_HANDLERS = {
+    reach = function(v)
+        mods.reachEnabled = v
+        if not v then destroyReachVisual("visualFolder", "box") end
+    end,
+    compReach = function(v)
+        mods.compReach = v
+        if not v then mods.reachEnabled = false end
+    end,
+    reachVisual = function(v)
+        mods.reachVisual = v
+        if not v then destroyReachVisual("visualFolder", "box") end
+    end,
+    gkReach = function(v)
+        mods.gkReachEnabled = v
+        if not v then
+            destroyReachVisual("gkVisualFolder", "gkBox")
+            restoreGKGloveSizes()
+        end
+    end,
+    gkGloveExpand = function(v)
+        mods.gkGloveExpand = v
+        if not v then restoreGKGloveSizes() end
+    end,
+    gkReachVisual = function(v)
+        mods.gkReachVisual = v
+        if not v then destroyReachVisual("gkVisualFolder", "gkBox") end
+    end,
+    predictor = function(v)
+        config.predictorEnabled = v
+        setPredictionEnabled(v)
+    end,
+    predictorColor = function(c)
+        config.predictorColor = c
+    end,
+    knuckleShots = function(v)
+        mods.knuckleShotsEnabled = v
+        if not v then table.clear(knuckleShotState.active) end
+    end,
+    resetPower = function()
+        mods.insanePower = 1
+        mods.insaneHeight = 1
+    end,
+    autoGoal = function(v)
+        mods.autoGoalEnabled = v
+        if not v then
+            for ball, _ in autoGoalState.paths do
+                clearAutoGoalPath(ball)
+            end
+            table.clear(autoGoalState.paths)
+            table.clear(autoGoalState.claimed)
+            autoGoalState.lockedTarget = nil
+            autoGoalState.lockedNet = nil
+            if autoGoalState.marker then
+                pcall(function() autoGoalState.marker:Destroy() end)
+                autoGoalState.marker = nil
+            end
+            clearAutoGoalPreview()
+            clearGoalPostESP()
+            clearAutoGoalFolder()
+        else
+            refreshNetParts()
+        end
+    end,
+    goalZone = function(v)
+        for _, option in AUTO_GOAL_ZONE_OPTIONS do
+            if option.label == v then
+                mods.autoGoalZone = option.value
+                return
+            end
+        end
+        mods.autoGoalZone = "random_bins"
+    end,
+    showMarker = function(v)
+        mods.autoGoalShowMarker = v
+        if not v then
+            clearAutoGoalPreview()
+            clearGoalPostESP()
+        end
+    end,
+    pingSpoof = function(v)
+        mods.pingSpoof = v
+        resetPingSpoofState()
+        setupPingSpoof()
+    end,
+    pingMin = function(v)
+        mods.pingMin = v
+        resetPingSpoofState()
+    end,
+    pingMax = function(v)
+        mods.pingMax = v
+        resetPingSpoofState()
+    end,
+    autoSetpiece = function(v)
+        mods.autoSetpieceEnabled = v
+        if not v then setpieceState.fired = false end
+    end,
+    infiniteStamina = function(v)
+        setInfiniteStamina(v)
+    end,
+    antiIdle = function(v)
+        setAntiIdle(v)
+    end,
+    dragMode = function(v)
+        uiState.dragStyle = v == "Move Icon" and 1 or 2
+        uiNotify("Overseer FUT", "Drag mode updates on next script load", 3)
+    end,
+    killScript = function()
+        confirmKillScript()
+    end,
+}
+local function uiCallback(widget)
+    if widget.callback then
+        return widget.callback
+    end
+    if widget.h then
+        return UI_HANDLERS[widget.h]
+    end
+    if widget.k then
+        local store = widget.cfg and config or mods
+        local key = widget.k
+        return function(v)
+            store[key] = v
+        end
+    end
+end
+local KEYBIND_HANDLERS = {
+    menu = {
+        Callback = function() end,
+        onBinded = function(bind)
+            pcall(function() GUI:SetKeybind(bind) end)
+            uiNotify("Overseer FUT", "Menu keybind set to " .. bind.Name, 3)
+        end,
+    },
+    reach = {
+        Callback = function()
+            mods.reachEnabled = not mods.reachEnabled
+            if not mods.reachEnabled then destroyReachVisual("visualFolder", "box") end
+            uiNotify("Reach", mods.reachEnabled and "Enabled" or "Disabled")
+        end,
+    },
+    autoGoal = {
+        Callback = function()
+            mods.autoGoalEnabled = not mods.autoGoalEnabled
+            if not mods.autoGoalEnabled then
+                for ball, _ in autoGoalState.paths do
+                    clearAutoGoalPath(ball)
+                end
+                table.clear(autoGoalState.paths)
+                table.clear(autoGoalState.claimed)
+            end
+            uiNotify("Auto Goal", mods.autoGoalEnabled and "Enabled" or "Disabled")
+        end,
+    },
+    knuckle = {
+        Callback = function()
+            mods.knuckleShotsEnabled = not mods.knuckleShotsEnabled
+            if not mods.knuckleShotsEnabled then table.clear(knuckleShotState.active) end
+            uiNotify("Knuckle Shots", mods.knuckleShotsEnabled and "Enabled" or "Disabled")
+        end,
+    },
+}
+local function applyWidgets(section, widgets)
+    for _, w in widgets do
+        local t = w.t
+        if t == "header" then
+            section:Header({ Text = w.text })
+        elseif t == "sublabel" then
+            section:SubLabel({ Text = w.text })
+        elseif t == "divider" then
+            section:Divider()
+        elseif t == "toggle" then
+            section:Toggle({
+                Name = w.name,
+                Default = w.default,
+                Callback = uiCallback(w),
+            }, w.flag)
+        elseif t == "slider" then
+            macSlider(section, {
+                name = w.name,
+                min = w.min,
+                max = w.max,
+                default = w.default,
+                callback = uiCallback(w),
+            }, SLIDER[w.preset or "stud"])
+        elseif t == "dropdown" then
+            macDropdown(section, {
+                name = w.name,
+                items = w.items,
+                default = w.default,
+                callback = uiCallback(w),
+                flag = w.flag,
+            })
+        elseif t == "color" then
+            section:Colorpicker({
+                Name = w.name,
+                Default = w.default,
+                Callback = uiCallback(w),
+            }, w.flag)
+        elseif t == "button" then
+            section:Button({ Name = w.name, Callback = uiCallback(w) })
+        elseif t == "paragraph" then
+            section:Paragraph({ Header = w.header, Body = w.body })
+        elseif t == "keybind" then
+            local bind = KEYBIND_HANDLERS[w.bind]
+            section:Keybind({
+                Name = w.name,
+                Default = w.default,
+                Callback = bind.Callback,
+                onBinded = bind.onBinded,
+            }, w.flag)
+        end
+    end
+end
+local function buildSection(tab, side, header, widgets)
+    local section = macSection(tab, side)
+    if header then
+        section:Header({ Text = header })
+    end
+    applyWidgets(section, widgets)
+end
+local GOAL_TARGET_ITEMS = { "Opposite", "Closest", "Home", "Away", "Own" }
+local GOAL_MODE_ITEMS = { "Random Bin", "Top Left", "Top Right", "Center Crossbar", "Random Box" }
+local function concatWidgets(...)
+    local out = {}
+    for i = 1, select("#", ...) do
+        for _, widget in select(i, ...) do
+            table.insert(out, widget)
+        end
+    end
+    return out
+end
+local function sizeSliders(label, key, max, defaults, preset)
+    return {
+        { t = "sublabel", text = label },
+        { t = "slider", name = "X", k = key .. "X", min = 0, max = max, default = defaults[1], preset = preset or "stud" },
+        { t = "slider", name = "Y", k = key .. "Y", min = 0, max = max, default = defaults[2], preset = preset or "stud" },
+        { t = "slider", name = "Z", k = key .. "Z", min = 0, max = max, default = defaults[3], preset = preset or "stud" },
+    }
+end
+local function offsetSliders(key)
+    return {
+        { t = "sublabel", text = "Offset" },
+        { t = "slider", name = "Offset X", k = key .. "Ox", min = -10, max = 10, default = 0, preset = "stud" },
+        { t = "slider", name = "Offset Y", k = key .. "Oy", min = -10, max = 10, default = 0, preset = "stud" },
+        { t = "slider", name = "Offset Z", k = key .. "Oz", min = -10, max = 10, default = 0, preset = "stud" },
+    }
+end
+local UI_SCHEMA = {
+    visual = {
+        { side = "Left", header = "Ball Prediction", widgets = {
+            { t = "toggle", name = "Enable Prediction", default = true, h = "predictor", flag = "Predictor" },
+            { t = "sublabel", text = "Shows ball trajectory and landing zone." },
+        }},
+        { side = "Right", header = "Trajectory Style", widgets = {
+            { t = "color", name = "Accent Color", default = Color3.fromRGB(0, 255, 150), h = "predictorColor", flag = "PredictorColor" },
+        }},
+    },
+    reach = {
+        { side = "Left", header = "Player Reach", widgets = concatWidgets({
+            { t = "toggle", name = "Reach", default = false, h = "reach", flag = "Reach" },
+            { t = "toggle", name = "Comp Reach", default = false, h = "compReach" },
+            { t = "toggle", name = "Visualizer", default = true, h = "reachVisual" },
+            { t = "color", name = "Reach Color", default = Color3.fromRGB(0, 200, 255), k = "reachColor" },
+            { t = "divider" },
+        }, sizeSliders("Hitbox Size", "reach", 15, { 5, 3, 5 }), offsetSliders("reach")) },
+        { side = "Right", header = "Goalkeeper Reach", widgets = concatWidgets({
+            { t = "toggle", name = "GK Reach", default = false, h = "gkReach" },
+            { t = "toggle", name = "Expand Gloves", default = true, h = "gkGloveExpand" },
+            { t = "toggle", name = "GK Visualizer", default = true, h = "gkReachVisual" },
+            { t = "color", name = "GK Color", default = Color3.fromRGB(255, 100, 100), k = "gkReachColor" },
+            { t = "divider" },
+        }, sizeSliders("GK Hitbox", "gkReach", 12, { 5, 5, 5 })) },
+        { side = "Left", header = "Ball React", widgets = {
+            { t = "toggle", name = "Better React", default = false, k = "betterReact" },
+            { t = "toggle", name = "Break React", default = false, k = "breakReact" },
+        }},
+        { side = "Right", header = "GK Control", widgets = {
+            { t = "toggle", name = "Auto Catch", default = false, k = "autoCatchEnabled" },
+            { t = "slider", name = "Catch Distance", k = "autoCatchDistance", min = 1, max = 30, default = 12, preset = "studHalf" },
+            { t = "slider", name = "Catch Cooldown", k = "autoCatchCooldown", min = 0.25, max = 3, default = 1, preset = "time" },
+            { t = "divider" },
+            { t = "toggle", name = "Pull Vector", default = false, k = "pullVectorEnabled" },
+            { t = "slider", name = "Pull Distance", k = "pullDistance", min = 1, max = 50, default = 15, preset = "studHalf" },
+            { t = "slider", name = "Pull Strength", k = "pullStrength", min = 0.1, max = 10, default = 2.5, preset = "mult" },
+        }},
+    },
+    shots = {
+        { side = "Left", header = "Insane Power", widgets = {
+            { t = "toggle", name = "Insane Power", default = false, k = "insanePowerEnabled" },
+            { t = "slider", name = "Shot Power", k = "insanePower", min = 0, max = 10, default = 2, preset = "mult" },
+            { t = "slider", name = "Shot Height", k = "insaneHeight", min = 0.1, max = 10, default = 1, preset = "mult" },
+            { t = "button", name = "Reset Power", h = "resetPower" },
+        }},
+        { side = "Right", header = "Knuckle Shots", widgets = {
+            { t = "toggle", name = "Knuckle Shots", default = false, h = "knuckleShots", flag = "KnuckleShots" },
+            { t = "slider", name = "Knuckle Power", k = "knucklePulsePower", min = 0.3, max = 3, default = 1, preset = "mult" },
+            { t = "slider", name = "Knuckle Spin", k = "knuckleSpinPower", min = 0.2, max = 3, default = 1, preset = "mult" },
+            { t = "sublabel", text = "1.0 = default. 3.0 = 3x intensity." },
+            { t = "divider" },
+            { t = "sublabel", text = "Pulse Timing" },
+            { t = "slider", name = "Knuckle Delay", k = "knucklePulseDelay", min = 0.15, max = 0.8, default = 0.4, preset = "time" },
+            { t = "slider", name = "Knuckle Flutter", k = "knucklePulseGap", min = 0.15, max = 0.7, default = 0.35, preset = "time" },
+        }},
+    },
+    goal = {
+        { side = "Left", header = "Targeting", widgets = {
+            { t = "toggle", name = "Auto Goal", default = false, h = "autoGoal", flag = "AutoGoal" },
+            { t = "dropdown", name = "Goal Target", items = GOAL_TARGET_ITEMS, default = "Opposite", k = "autoGoalTarget", flag = "GoalTarget" },
+            { t = "dropdown", name = "Target Mode", items = GOAL_MODE_ITEMS, default = "Random Bin", h = "goalZone", flag = "GoalZone" },
+            { t = "toggle", name = "Show Marker", default = true, h = "showMarker", flag = "AutoGoalShowMarker" },
+        }},
+        { side = "Right", header = "Flight Path", widgets = {
+            { t = "slider", name = "Target Spread", k = "autoGoalSpread", min = 0, max = 6, default = 2, preset = "stud" },
+            { t = "slider", name = "Goal Height", k = "autoGoalHeight", min = 4, max = 35, default = 14, preset = "studHalf" },
+            { t = "slider", name = "Path Curve", k = "autoGoalCurve", min = 2, max = 30, default = 10, preset = "studHalf" },
+            { t = "slider", name = "Path Time", k = "autoGoalPathTime", min = 0.5, max = 2, default = 0.85, preset = "time" },
+        }},
+    },
+    player = {
+        { side = "Left", header = "Movement", widgets = {
+            { t = "toggle", name = "Infinite Stamina", default = false, h = "infiniteStamina" },
+            { t = "toggle", name = "Anti Idle", default = false, h = "antiIdle" },
+        }},
+        { side = "Right", header = "Setpieces", widgets = {
+            { t = "toggle", name = "Auto Ready", default = false, h = "autoSetpiece" },
+            { t = "toggle", name = "Auto Freekick", default = false, k = "autoFreekickEnabled" },
+            { t = "toggle", name = "Auto Penalty", default = false, k = "autoPenEnabled" },
+        }},
+    },
+    network = {
+        { side = "Left", header = "Ping Spoof", widgets = {
+            { t = "toggle", name = "Ping Spoofer", default = false, h = "pingSpoof", flag = "PingSpoof" },
+            { t = "slider", name = "Ping Min", min = 1, max = 200, default = 28, preset = "int", h = "pingMin" },
+            { t = "slider", name = "Ping Max", min = 1, max = 200, default = 42, preset = "int", h = "pingMax" },
+        }},
+        { side = "Right", header = "Changelog", widgets = {
+            { t = "paragraph", header = "Overseer FUT v5.6", body = "v5.6 — configs, keybinds, auto goal marker." },
+        }},
+    },
+    settings = {
+        { side = "Right", header = "Interface", widgets = {
+            { t = "dropdown", name = "Drag Mode", items = { "Full Window", "Move Icon" }, default = "Full Window", h = "dragMode" },
+            { t = "sublabel", text = "Full Window = drag anywhere on the menu." },
+            { t = "keybind", name = "Toggle Menu", bind = "menu", default = Enum.KeyCode.RightShift, flag = "MenuKeybind" },
+            { t = "divider" },
+            { t = "header", text = "Feature Keybinds" },
+            { t = "keybind", name = "Toggle Reach", bind = "reach", flag = "ReachKeybind" },
+            { t = "keybind", name = "Toggle Auto Goal", bind = "autoGoal", flag = "AutoGoalKeybind" },
+            { t = "keybind", name = "Toggle Knuckle", bind = "knuckle", flag = "KnuckleKeybind" },
+            { t = "divider" },
+            { t = "button", name = "Kill Script", h = "killScript" },
+        }},
+    },
+}
+local function renderUiSchema(group, tabName, sections)
+    local tab = group:Tab({ Name = tabName })
+    for _, sectionDef in sections do
+        buildSection(tab, sectionDef.side, sectionDef.header, sectionDef.widgets)
+    end
+    return tab
+end
+local function renderUiSections(tab, sections)
+    for _, sectionDef in sections do
+        buildSection(tab, sectionDef.side, sectionDef.header, sectionDef.widgets)
+    end
+end
+local function buildSettingsConfigSection(settingsTab)
+    if configState.macLibConfig and type(settingsTab.InsertConfigSection) == "function" then
+        settingsTab:InsertConfigSection("Left")
+        return
+    end
+    local settingsConfig = macSection(settingsTab, "Left")
+    settingsConfig:Header({ Text = "Configs" })
+    settingsConfig:Paragraph({
+        Header = "Overseer Configs",
+        Body = "MacLib config API not found in this build. Using Overseer file configs instead.",
+    })
+    settingsConfig:Input({
+        Name = "Config Name",
+        Placeholder = "default",
+        AcceptedCharacters = function(text)
+            return text:gsub("[^%w%-_]", "")
+        end,
+        Callback = function(text)
+            configState.pendingName = sanitizeConfigName(text)
+        end,
+        onChanged = function(text)
+            configState.pendingName = sanitizeConfigName(text)
+        end,
+    })
+    settingsConfig:Button({
+        Name = "Save Config",
+        Callback = function()
+            if saveOverseerConfig(configState.pendingName) then
+                notifyConfig("Saved config: " .. sanitizeConfigName(configState.pendingName))
+            else
+                notifyConfig("Failed to save config")
+            end
+        end,
+    })
+    settingsConfig:Button({
+        Name = "Load Config",
+        Callback = function()
+            if loadOverseerConfig(configState.pendingName) then
+                notifyConfig("Loaded config: " .. sanitizeConfigName(configState.pendingName))
+            else
+                notifyConfig("Failed to load config")
+            end
+        end,
+    })
+    settingsConfig:Button({
+        Name = "Set Autoload",
+        Callback = function()
+            if setAutoloadConfig(configState.pendingName) then
+                notifyConfig("Autoload set: " .. sanitizeConfigName(configState.pendingName))
+            else
+                notifyConfig("Failed to set autoload")
+            end
+        end,
+    })
+end
+local function buildFutUI()
+local MacLib = loadMacLib()
+if not MacLib then
+    warn("Overseer FUT v5.6: UI failed to load. Gameplay mods are still active.")
+    getgenv().OverseerFUT = {
+        Network = networkState,
+        GameRoot = gameRoot,
+        RetryForge = tryInitNetworkForger,
+        RetryRoot = function()
+            if findGameRoot() then
+                patchGameReact()
+                if not gameRoot.manipulatorInstalled then
+                    installReactManipulator()
+                end
+                return true
+            end
+            return false
+        end,
+        Kill = killScript,
+    }
+    print("Overseer FUT v5.6 | UI offline | Balls:", #reachState.balls)
+    return
+end
+configState.macLibConfig = type(MacLib.SetFolder) == "function"
+if configState.macLibConfig then
+    pcall(function()
+        MacLib:SetFolder(configState.root)
+    end)
+else
+    warn("Overseer FUT: MacLib config API missing, using file-based configs")
+end
+GUI = MacLib:Window({
+    Title = "Overseer FUT",
+    Subtitle = "v5.6 | Overseer FUT",
+    Size = UDim2.fromOffset(868, 650),
+    DragStyle = uiState.dragStyle or 2,
+    DisabledWindowControls = {},
+    ShowUserInfo = false,
+    Keybind = Enum.KeyCode.RightShift,
+    AcrylicBlur = uiState.acrylicBlur,
+})
+GUI.onUnloaded(function()
+    killScript(true)
+end)
+for _, gs in {
+    { name = "Acrylic Blur", key = "acrylicBlur", setter = "SetAcrylicBlurState" },
+    { name = "Notifications", key = "showNotifications", setter = "SetNotificationsState" },
+    { name = "Show User Info", key = "showUserInfo", setter = "SetUserInfoState" },
+} do
+    GUI:GlobalSetting({
+        Name = gs.name,
+        Default = uiState[gs.key],
+        Callback = function(state)
+            uiState[gs.key] = state
+            pcall(function()
+                if GUI and GUI[gs.setter] then
+                    GUI[gs.setter](GUI, state)
+                end
+            end)
+        end,
+    })
+end
+local VisualGroup = GUI:TabGroup()
+renderUiSchema(VisualGroup, "Visual", UI_SCHEMA.visual)
+local GameplayGroup = GUI:TabGroup()
+renderUiSchema(GameplayGroup, "Reach", UI_SCHEMA.reach)
+renderUiSchema(GameplayGroup, "Shots", UI_SCHEMA.shots)
+renderUiSchema(GameplayGroup, "Goal", UI_SCHEMA.goal)
+local PlayerGroup = GUI:TabGroup()
+renderUiSchema(PlayerGroup, "Player", UI_SCHEMA.player)
+local SystemGroup = GUI:TabGroup()
+renderUiSchema(SystemGroup, "Network", UI_SCHEMA.network)
+local SettingsTab = SystemGroup:Tab({ Name = "Settings" })
+buildSettingsConfigSection(SettingsTab)
+UI_SCHEMA.settings[1].widgets[1].default = uiState.dragStyle == 1 and "Move Icon" or "Full Window"
+renderUiSections(SettingsTab, UI_SCHEMA.settings)
+getgenv().OverseerFUT = {
+    Network = networkState,
+    GameRoot = gameRoot,
+    RetryForge = tryInitNetworkForger,
+    RetryRoot = function()
+        if findGameRoot() then
+            patchGameReact()
+            if not gameRoot.manipulatorInstalled then
+                installReactManipulator()
+            end
+            return true
+        end
+        return false
+    end,
+    Kill = killScript,
+    ConfirmKill = confirmKillScript,
+    SaveConfig = function(name)
+        if configState.macLibConfig and type(MacLib.SaveConfig) == "function" then
+            return MacLib:SaveConfig(name)
+        end
+        return saveOverseerConfig(name)
+    end,
+    LoadConfig = function(name)
+        if configState.macLibConfig and type(MacLib.LoadConfig) == "function" then
+            return MacLib:LoadConfig(name)
+        end
+        return loadOverseerConfig(name)
+    end,
+}
+GUI:Notify({
+    Title = "Overseer FUT",
+    Description = "v5.6 loaded — configs ready",
+    Lifetime = 4,
+})
+if configState.macLibConfig and type(MacLib.LoadAutoLoadConfig) == "function" then
+    pcall(function()
+        MacLib:LoadAutoLoadConfig()
+    end)
+else
+    tryLoadAutoloadConfig()
+end
+setPredictionEnabled(config.predictorEnabled)
+local previewNet = resolveAutoGoalNet(getAutoGoalPreviewFromPos(), Vector3.new(0, 0, -1))
+local previewCenters = previewNet and #getNetCenterParts(previewNet) or 0
+print("Overseer FUT v5.6 | Balls:", #reachState.balls, "| NetParts:", #netParts, "| Centers:", previewCenters, "| Collide:", previewNet and getNetCollide(previewNet) ~= nil)
+end
+buildFutUI()
