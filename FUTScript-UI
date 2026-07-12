@@ -1,5 +1,50 @@
 --##UI##
 task.wait(0.5)
+local Core = getgenv().OverseerFUT_Core
+if not Core or type(Core.mods) ~= "table" then
+    warn("Overseer FUT v5.6: UI bridge missing — re-execute core script")
+    return
+end
+local mods = Core.mods
+local config = Core.config
+local scriptState = Core.scriptState
+local autoGoalState = Core.autoGoalState
+local knuckleShotState = Core.knuckleShotState
+local powerState = Core.powerState
+local reachState = Core.reachState
+local staminaState = Core.staminaState
+local pingState = Core.pingState
+local gameRoot = Core.gameRoot
+local shotTamperState = Core.shotTamperState
+local connections = Core.connections
+local visuals = Core.visuals
+local networkState = Core.networkState
+local setpieceState = Core.setpieceState
+local netParts = Core.netParts
+local player = Core.player
+local HttpService = Core.HttpService
+local AUTO_GOAL_ZONE_OPTIONS = Core.AUTO_GOAL_ZONE_OPTIONS
+local setPredictionEnabled = Core.setPredictionEnabled
+local setInfiniteStamina = Core.setInfiniteStamina
+local setAntiIdle = Core.setAntiIdle
+local clearAutoGoalPreview = Core.clearAutoGoalPreview
+local clearGoalPostESP = Core.clearGoalPostESP
+local clearAutoGoalFolder = Core.clearAutoGoalFolder
+local clearAutoGoalPath = Core.clearAutoGoalPath
+local clearTrajectory = Core.clearTrajectory
+local destroyReachVisual = Core.destroyReachVisual
+local restoreGKGloveSizes = Core.restoreGKGloveSizes
+local resetPingSpoofState = Core.resetPingSpoofState
+local setupPingSpoof = Core.setupPingSpoof
+local refreshNetParts = Core.refreshNetParts
+local findGameRoot = Core.findGameRoot
+local patchGameReact = Core.patchGameReact
+local installReactManipulator = Core.installReactManipulator
+local tryInitNetworkForger = Core.tryInitNetworkForger
+local resolveAutoGoalNet = Core.resolveAutoGoalNet
+local getAutoGoalPreviewFromPos = Core.getAutoGoalPreviewFromPos
+local getNetCenterParts = Core.getNetCenterParts
+local getNetCollide = Core.getNetCollide
 local GUI
 local killScript
 local confirmKillScript
