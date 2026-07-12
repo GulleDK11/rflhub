@@ -5,9 +5,10 @@ local CoreGui = game:GetService("CoreGui")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualUser = game:GetService("VirtualUser")
 local CollectionService = game:GetService("CollectionService")
+local HttpService = game:GetService("HttpService")
 
-if getgenv().futmod then
-    pcall(getgenv().futmod.Kill)
+if getgenv().OverseerFUT then
+    pcall(getgenv().OverseerFUT.Kill)
 end
 
 if not game:IsLoaded() then
@@ -31,27 +32,29 @@ local GK_TOUCH_SKIP = { shielding = true, Ball = true }
 local connections = {}
 local scriptState = { alive = true, killed = false }
 
-local predState = {
-    lastUpdate = 0,
-    velocityHistory = {},
-    forcePredictUntil = {},
-    attachmentTemplate = Instance.new("Attachment"),
-}
+local predState
 
-local function clearBallPredictState(ball)
-    if not ball then
-        return
+local function getPredState()
+    if type(predState) ~= "table" then
+        predState = {
+            lastUpdate = 0,
+            velocityHistory = {},
+            forcePredictUntil = {},
+            attachmentTemplate = Instance.new("Attachment"),
+        }
     end
-    predState.velocityHistory[ball] = nil
-    predState.forcePredictUntil[ball] = nil
+    predState.velocityHistory = predState.velocityHistory or {}
+    predState.forcePredictUntil = predState.forcePredictUntil or {}
+    if not predState.attachmentTemplate then
+        predState.attachmentTemplate = Instance.new("Attachment")
+    end
+    return predState
 end
 
-local function markShotPredict(ball, seconds)
-    if not ball then
-        return
-    end
-    predState.forcePredictUntil[ball] = tick() + (seconds or 2.5)
-end
+getPredState()
+
+local markShotPredict
+local clearBallPredictState
 
 local function trackConnection(conn)
     if conn then
@@ -67,7 +70,7 @@ local config = {
     predictorEnabled = true,
     predictorColor = Color3.fromRGB(0, 255, 150),
     trajectoryWidth = 0.4,
-    impactRadius = 4,
+    impactRadius = 1.33,
     pathMarkerRadius = 0.45,
     maxBeamSegments = 48,
     trajectoryLifetime = 4,
@@ -78,33 +81,18 @@ local config = {
 }
 
 local function applyShotPowerScale(velocity, powerMult, heightMult)
-    local horizontal = Vector3.new(velocity.X, 0, velocity.Z)
-    return Vector3.new(
-        horizontal.X * powerMult,
-        velocity.Y * heightMult,
-        horizontal.Z * powerMult
-    )
-end
-
-local function applyKnuckleShotScale(velocity, powerMult, loftStuds)
-    local horizontal = Vector3.new(velocity.X, 0, velocity.Z)
-    local horizMag = horizontal.Magnitude
-    local dir
-
-    if horizMag > 0.01 then
-        dir = horizontal.Unit
-    elseif velocity.Magnitude > 0.01 then
-        dir = Vector3.new(velocity.X, 0, velocity.Z).Unit
-        horizMag = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
-    else
-        dir = Vector3.new(0, 0, -1)
-        horizMag = 1
+    if velocity.Magnitude < 0.01 then
+        return velocity
     end
 
-    local speed = horizMag * powerMult
-    local loftY = math.max(0, loftStuds) * 1.65
+    powerMult = math.max(tonumber(powerMult) or 1, 0.01)
+    heightMult = math.max(tonumber(heightMult) or 1, 0.01)
 
-    return Vector3.new(dir.X * speed, loftY, dir.Z * speed)
+    return Vector3.new(
+        velocity.X * powerMult,
+        velocity.Y * heightMult,
+        velocity.Z * powerMult
+    )
 end
 
 local mods = {
@@ -146,24 +134,19 @@ local mods = {
     insanePowerEnabled = false,
     insanePower = 2,
     insaneHeight = 1,
-    powerKnuckleEnabled = false,
-    knucklePower = 1.08,
-    knuckleHeight = 2,
-    powerKnuckleIntensity = 14,
-    powerKnuckleTime = 1.6,
-    knuckleFlutter = 0.85,
-    knuckleSmooth = 7,
-    knuckleMix = 0.55,
+    knuckleShotsEnabled = false,
+    knucklePulsePower = 1,
+    knuckleSpinPower = 1,
+    knucklePulseDelay = 0.4,
+    knucklePulseGap = 0.35,
     autoGoalEnabled = false,
     autoGoalTarget = "Opposite",
     autoGoalZone = "random_bins",
     autoGoalSpread = 2,
+    autoGoalHeight = 14,
+    autoGoalCurve = 10,
+    autoGoalPathTime = 0.85,
     autoGoalShowMarker = true,
-    autoGoalKnuckle = false,
-    autoGoalKnuckleIntensity = 18,
-    autoGoalKnuckleFlutter = 1,
-    autoGoalKnuckleSmooth = 5.5,
-    autoGoalKnuckleMix = 0.35,
     autoSetpieceEnabled = false,
     autoFreekickEnabled = false,
     autoPenEnabled = false,
@@ -173,24 +156,33 @@ local visuals = { trajectoryFolder = nil, predConnection = nil }
 local netParts = {}
 local netPartLookup = {}
 local netBounds = {}
-local knuckleState = { active = {} }
 local autoGoalState = {
     marker = nil,
     previewMarker = nil,
     lastNetRefresh = 0,
     paths = {},
+    claimed = {},
     lockedTarget = nil,
     lockedNet = nil,
+    postEsp = {
+        net = nil,
+        adornee = nil,
+        box = nil,
+    },
 }
-local shotTamperState = { connection = nil, lastKnuckle = 0, lastAutoGoal = 0 }
+local shotTamperState = { connection = nil, lastAutoGoal = 0 }
+local knuckleShotState = { active = {}, watched = {} }
 local CONST = {
-    KNUCKLE_TICK = 0.05,
     AUTO_GOAL_TICK = 0.033,
-    KNUCKLE_VORTEX_HZ = 2.6,
     NET_TEAM_MAP = { EfNeth = "Home", EfNeta = "Away" },
     FREEKICK_GATE = Vector3.new(0, 2, 0),
     REACT_DECLINE_TIME = 1.25,
     STRIP_FORCE_NAMES = { "CurveForce", "RisingForce", "BodyForce" },
+    KNUCKLE_SPIN = Vector3.new(0, 1, 1),
+    FINESSE_SPIN = Vector3.new(0, 30, 15),
+    FINESSE_CURVE = -1.55,
+    FINESSE_CURVE_DURATION = 1,
+    KNUCKLE_PULSE_DURATION = 0.2,
     CORNER_SIGNS = {
         Vector3.new(-1, -1, -1), Vector3.new(-1, -1, 1), Vector3.new(-1, 1, -1), Vector3.new(-1, 1, 1),
         Vector3.new(1, -1, -1), Vector3.new(1, -1, 1), Vector3.new(1, 1, -1), Vector3.new(1, 1, 1),
@@ -199,6 +191,7 @@ local CONST = {
 
 local isValidTrajectoryBall
 local getBallMotionVelocity
+local isForcePredictBall
 local isActiveShotBall
 local clearTrajectory
 local setPredictionEnabled
@@ -220,8 +213,7 @@ local reachState = {
 local powerState = {
     processed = {},
     freekickConnections = {},
-    enforcers = {},
-    maintain = {},
+    reactBoosted = {},
 }
 local lastAutoCatch = 0
 local staminaState = {
@@ -269,25 +261,116 @@ local function getNetCollide(netModel)
     return nil
 end
 
+local function getNetGoalPost(netModel)
+    if not netModel then
+        return nil
+    end
+
+    local direct = netModel:FindFirstChild("Post")
+    if direct and direct:IsA("BasePart") then
+        return direct
+    end
+
+    for _, desc in netModel:GetDescendants() do
+        if desc.Name == "Post" and desc:IsA("BasePart") then
+            return desc
+        end
+    end
+
+    return nil
+end
+
+local function getNetPartsFolder(netModel)
+    if not netModel then
+        return nil
+    end
+    return netModel:FindFirstChild("parts") or netModel:FindFirstChild("Parts")
+end
+
+local function getNetCenterParts(netModel)
+    local collected = {}
+    local partsFolder = getNetPartsFolder(netModel)
+    if not partsFolder then
+        return collected
+    end
+
+    for _, child in partsFolder:GetChildren() do
+        if child:IsA("BasePart") and child.Name == "Center" then
+            table.insert(collected, child)
+        end
+    end
+
+    if #collected == 0 then
+        for _, child in partsFolder:GetChildren() do
+            if child:IsA("BasePart") then
+                table.insert(collected, child)
+            end
+        end
+    end
+
+    return collected
+end
+
+local function computeBoundsFromPartList(partList)
+    if #partList == 0 then
+        return nil
+    end
+
+    local minV = Vector3.new(math.huge, math.huge, math.huge)
+    local maxV = Vector3.new(-math.huge, -math.huge, -math.huge)
+
+    for _, part in partList do
+        minV, maxV = absorbPartBounds(minV, maxV, part.CFrame, part.Size * 0.5)
+    end
+
+    return {
+        min = minV,
+        max = maxV,
+        center = (minV + maxV) * 0.5,
+    }
+end
+
 local function collectNetParts(netModel)
     local collected = {}
+    local seen = {}
     if not netModel then
         return collected
     end
 
-    local partsFolder = netModel:FindFirstChild("parts")
-    if partsFolder then
-        for _, part in partsFolder:GetChildren() do
-            if part:IsA("BasePart") then
-                table.insert(collected, part)
+    local function pushPart(part)
+        if part and part:IsA("BasePart") and not seen[part] then
+            seen[part] = true
+            table.insert(collected, part)
+        end
+    end
+
+    for _, part in getNetCenterParts(netModel) do
+        pushPart(part)
+    end
+
+    if #collected == 0 then
+        for _, childName in { "Collide", "Post", "Net", "posts", "parts", "back" } do
+            local child = netModel:FindFirstChild(childName)
+            if child then
+                if child:IsA("BasePart") then
+                    pushPart(child)
+                else
+                    for _, desc in child:GetDescendants() do
+                        pushPart(desc)
+                    end
+                end
             end
         end
     end
 
     if #collected == 0 then
-        local collide = getNetCollide(netModel)
-        if collide then
-            table.insert(collected, collide)
+        for _, desc in netModel:GetDescendants() do
+            if desc:IsA("BasePart") and desc.Name ~= "FUT_GoalEspAnchor" then
+                local parent = desc.Parent
+                if parent and parent.Name ~= "InitialPoses" then
+                    pushPart(desc)
+                end
+            end
         end
     end
 
@@ -484,6 +567,54 @@ local function resolveAutoGoalNet(fromPos, velocity)
     return getGoalNet(fromPos, velocity or Vector3.new(0, 0, -1))
 end
 
+local function createBoxHighlight(target)
+    local box = Instance.new("BoxHandleAdornment")
+    box.Name = "FUT_GoalPostESP"
+    box.Size = target.Size
+    box.AlwaysOnTop = true
+    box.ZIndex = 0
+    box.Adornee = target
+    box.Color3 = Color3.fromRGB(255, 0, 0)
+    box.Transparency = 0.5
+    box.Parent = target
+    return box
+end
+
+local function clearGoalPostESP()
+    if autoGoalState.postEsp.box then
+        pcall(function() autoGoalState.postEsp.box:Destroy() end)
+    end
+    autoGoalState.postEsp.box = nil
+    autoGoalState.postEsp.adornee = nil
+    autoGoalState.postEsp.net = nil
+end
+
+local function updateGoalPostESP(netModel)
+    if not netModel or not netModel.Parent then
+        clearGoalPostESP()
+        return
+    end
+
+    local post = getNetGoalPost(netModel)
+    if not post then
+        clearGoalPostESP()
+        return
+    end
+
+    local esp = autoGoalState.postEsp
+    if esp.net == netModel and esp.adornee == post and esp.box and esp.box.Parent then
+        return
+    end
+
+    clearGoalPostESP()
+
+    local box = createBoxHighlight(post)
+
+    autoGoalState.postEsp.net = netModel
+    autoGoalState.postEsp.adornee = post
+    autoGoalState.postEsp.box = box
+end
+
 local function showAutoGoalMarker(targetPos, persistent)
     if not mods.autoGoalShowMarker or not targetPos then
         return
@@ -505,40 +636,46 @@ local function showAutoGoalMarker(targetPos, persistent)
     marker.CanQuery = false
     marker.CanTouch = false
     marker.CastShadow = false
-    marker.Color = persistent and Color3.fromRGB(70, 150, 255) or Color3.fromRGB(255, 220, 60)
-    marker.Transparency = persistent and 0.12 or 0.05
-    marker.Size = Vector3.new(4, 4, 4)
+    marker.Color = persistent and Color3.fromRGB(0, 180, 255) or Color3.fromRGB(255, 200, 40)
+    marker.Transparency = persistent and 0.15 or 0.05
+    marker.Size = persistent and Vector3.new(3.2, 3.2, 3.2) or Vector3.new(2.5, 2.5, 2.5)
     marker.CFrame = CFrame.new(targetPos)
     marker.Parent = getAutoGoalFolder()
 
-    local light = Instance.new("PointLight")
-    light.Brightness = persistent and 3 or 2
-    light.Range = 18
-    light.Color = marker.Color
-    light.Parent = marker
+    if persistent then
+        local light = Instance.new("PointLight")
+        light.Color = Color3.fromRGB(0, 200, 255)
+        light.Brightness = 2
+        light.Range = 14
+        light.Parent = marker
 
-    local billboard = Instance.new("BillboardGui")
-    billboard.Name = "FUT_AutoGoalLabel"
-    billboard.AlwaysOnTop = true
-    billboard.Size = UDim2.new(0, 120, 0, 28)
-    billboard.StudsOffset = Vector3.new(0, 3, 0)
-    billboard.Parent = marker
+        local billboard = Instance.new("BillboardGui")
+        billboard.Name = "FUT_AutoGoalLabel"
+        billboard.Adornee = marker
+        billboard.AlwaysOnTop = true
+        billboard.LightInfluence = 0
+        billboard.MaxDistance = 500
+        billboard.Size = UDim2.fromOffset(200, 40)
+        billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+        billboard.Parent = marker
 
-    local label = Instance.new("TextLabel")
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.new(1, 0, 1, 0)
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 14
-    label.TextColor3 = Color3.fromRGB(120, 200, 255)
-    label.TextStrokeTransparency = 0.4
-    label.Text = persistent and "AUTO GOAL" or "SHOT"
-    label.Parent = billboard
+        local label = Instance.new("TextLabel")
+        label.BackgroundTransparency = 1
+        label.Size = UDim2.fromScale(1, 1)
+        label.Font = Enum.Font.GothamBold
+        label.Text = "AUTO GOAL"
+        label.TextColor3 = Color3.fromRGB(0, 210, 255)
+        label.TextStrokeColor3 = Color3.fromRGB(0, 40, 80)
+        label.TextStrokeTransparency = 0.2
+        label.TextScaled = true
+        label.Parent = billboard
+    end
 
     autoGoalState[key] = marker
 
     if not persistent then
-        Debris:AddItem(marker, 5)
-        task.delay(5, function()
+        Debris:AddItem(marker, 4)
+        task.delay(4, function()
             if autoGoalState.marker == marker then
                 autoGoalState.marker = nil
             end
@@ -577,33 +714,8 @@ local function getCurrentFoot()
     return "R"
 end
 
-local function getAutoGoalArcHeight(flatDist, heightDelta, outside)
-    if outside then
-        return math.clamp(5 + heightDelta * 0.26 + math.max(0, flatDist - 38) * 0.032, 4.5, 15)
-    end
-    return math.clamp(2.5 + heightDelta * 0.2 + flatDist * 0.012, 2, 8)
-end
-
-local function getAutoGoalCurvePower(flatDist, outside, side)
-    local base
-    if outside then
-        base = math.clamp(1.6 + math.max(0, flatDist - 28) * 0.048, 1.6, 10)
-    else
-        base = math.clamp(0.7 + flatDist * 0.016, 0.7, 3.5)
-    end
-    return base * side * 0.5
-end
-
-local function getAutoGoalMarkerLift(collide)
-    local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-    local flatDist = 55
-    local outside = true
-    if hrp and collide then
-        local delta = collide.Position - hrp.Position
-        flatDist = Vector3.new(delta.X, 0, delta.Z).Magnitude
-        outside = not isInsidePitchBoxAt(hrp.Position)
-    end
-    return getAutoGoalArcHeight(flatDist, 6, outside) / 1.25
+local function getAutoGoalMarkerLift(_collide)
+    return mods.autoGoalHeight / 1.25
 end
 
 local function getTopCornerFromCollide(collide, foot)
@@ -723,7 +835,7 @@ isValidTrajectoryBall = function(ball, velocity)
         motionVel = getBallMotionVelocity(ball)
     end
 
-    if isActiveShotBall(ball) then
+    if isActiveShotBall(ball) or isForcePredictBall(ball) then
         return motionVel.Magnitude >= config.dribbleSpeedThreshold and motionVel ~= CONST.FREEKICK_GATE
     end
 
@@ -741,7 +853,15 @@ task.spawn(function()
     end)
     if ok and nets then
         trackConnection(nets.DescendantAdded:Connect(function(desc)
-            if desc:IsA("BasePart") and (desc.Name == "Collide" or (desc.Parent and desc.Parent.Name == "parts")) then
+            if not desc:IsA("BasePart") then
+                return
+            end
+            if desc.Name == "Collide" or desc.Name == "Center" then
+                task.defer(refreshNetParts)
+                return
+            end
+            local parent = desc.Parent
+            if parent and (parent.Name == "parts" or parent.Name == "Parts" or parent.Name == "back") then
                 task.defer(refreshNetParts)
             end
         end))
@@ -871,7 +991,7 @@ local predPhysics = {
     MaxTime = 5,
     Step = 1 / 60,
     VisualStep = 1 / 20,
-    UpdateRate = 0,
+    UpdateRate = 1 / 30,
     MaxBounces = 4,
     Restitution = 0.78,
     Friction = 0.985,
@@ -880,7 +1000,7 @@ local predPhysics = {
     MinSpeed = 2,
     BeamWidth = 0.18,
     BodyForceDuration = 1,
-    BvLockTime = 0.9,
+    BvLockTime = 0.35,
     BallDensity = 10,
     SpinForceMultiplier = 50,
     CurveMultiplier = 0.2,
@@ -936,6 +1056,18 @@ getBallMotionVelocity = function(ball)
         return Vector3.zero, nil
     end
 
+    if isActiveShotBall(ball) then
+        local shootVel = ball:FindFirstChild("ShootVelocity")
+        if shootVel and shootVel:IsA("BodyVelocity") then
+            return shootVel.Velocity, shootVel
+        end
+    end
+
+    local assemblyVel = ball.AssemblyLinearVelocity
+    if assemblyVel.Magnitude >= config.dribbleSpeedThreshold and assemblyVel ~= CONST.FREEKICK_GATE then
+        return assemblyVel, nil
+    end
+
     local shootVel = ball:FindFirstChild("ShootVelocity")
     if shootVel and shootVel:IsA("BodyVelocity") then
         local velocity = shootVel.Velocity
@@ -960,38 +1092,50 @@ getBallMotionVelocity = function(ball)
         end
     end
 
-    return ball.AssemblyLinearVelocity, nil
+    return assemblyVel, nil
 end
 
-local function getPredictionVelocity(ball)
-    local constraintVel, constraint = getBallMotionVelocity(ball)
-    local assemblyVel = ball.AssemblyLinearVelocity
-
-    if assemblyVel.Magnitude < config.dribbleSpeedThreshold then
-        return constraintVel, constraint
+clearBallPredictState = function(ball)
+    if not ball then
+        return
     end
+    local state = getPredState()
+    state.velocityHistory[ball] = nil
+    state.forcePredictUntil[ball] = nil
+end
 
-    if constraintVel.Magnitude < config.dribbleSpeedThreshold then
-        return assemblyVel, constraint
+markShotPredict = function(ball, seconds)
+    if not ball then
+        return
     end
+    local state = getPredState()
+    state.forcePredictUntil[ball] = tick() + (seconds or 2.5)
+end
 
-    local divergence = (assemblyVel - constraintVel).Magnitude / math.max(constraintVel.Magnitude, 1)
-    if divergence > 0.12 then
-        local blend = math.clamp(divergence * 0.85, 0.2, 0.72)
-        if isActiveShotBall(ball) then
-            blend = math.max(blend, 0.35)
-        end
-        return constraintVel:Lerp(assemblyVel, blend), constraint
+isForcePredictBall = function(ball)
+    if not ball then
+        return false
     end
-
-    return constraintVel, constraint
+    local untilTime = getPredState().forcePredictUntil[ball]
+    return untilTime ~= nil and tick() < untilTime
 end
 
 isActiveShotBall = function(ball)
     local shootVel = ball:FindFirstChild("ShootVelocity")
-    return shootVel
-        and shootVel:IsA("BodyVelocity")
-        and shootVel.Velocity.Magnitude >= config.shotSpeedThreshold
+    if not shootVel or not shootVel:IsA("BodyVelocity") then
+        return false
+    end
+
+    local velocity = shootVel.Velocity
+    if velocity.Magnitude < config.dribbleSpeedThreshold or velocity == CONST.FREEKICK_GATE then
+        return false
+    end
+
+    if velocity.Magnitude >= config.shotSpeedThreshold then
+        return true
+    end
+
+    return isForcePredictBall(ball)
 end
 
 local function updateVelocityHistory(ball, now)
@@ -999,20 +1143,22 @@ local function updateVelocityHistory(ball, now)
         return
     end
 
+    local pred = getPredState()
+
     if isActiveShotBall(ball) then
-        local history = predState.velocityHistory
+        local history = pred.velocityHistory
         if not history[ball] then
             history[ball] = { samples = {}, lastBigChangeTime = 0, stable = true }
         else
             history[ball].stable = true
             history[ball].lastBigChangeTime = 0
         end
-        predState.forcePredictUntil = predState.forcePredictUntil or {}
-        predState.forcePredictUntil[ball] = now + 2
+        pred.forcePredictUntil = pred.forcePredictUntil or {}
+        pred.forcePredictUntil[ball] = now + 2
         return
     end
 
-    local history = predState.velocityHistory
+    local history = pred.velocityHistory
     if not history[ball] then
         history[ball] = { samples = {}, lastBigChangeTime = 0, stable = false }
     end
@@ -1050,7 +1196,7 @@ local function updateVelocityHistory(ball, now)
 end
 
 local function isBallStable(ball)
-    local tracker = predState.velocityHistory[ball]
+    local tracker = getPredState().velocityHistory[ball]
     return tracker and tracker.stable
 end
 
@@ -1076,15 +1222,10 @@ local function buildSimState(ball)
     }
 
     if state.bodyVelocity then
-        local constraintVel = state.bodyVelocity.Velocity
-        local predictedVel = getPredictionVelocity(ball)
-        if (predictedVel - constraintVel).Magnitude > 0.5 then
-            state.initialBodyVelocity = predictedVel
-        else
-            state.initialBodyVelocity = constraintVel
-        end
+        state.initialBodyVelocity = state.bodyVelocity.Velocity
     else
-        state.initialBodyVelocity = getPredictionVelocity(ball)
+        local motionVel = getBallMotionVelocity(ball)
+        state.initialBodyVelocity = typeof(motionVel) == "Vector3" and motionVel or ball.AssemblyLinearVelocity
     end
 
     if bav then
@@ -1209,63 +1350,8 @@ local function handleBounce(velocity, normal, state, bounceCount)
     return bounceVel + newTangent
 end
 
-local function trimPredictionFromBall(points, ball)
-    if #points < 2 then
-        return points
-    end
-
-    local ballPos = ball.Position
-    local bestIndex = 1
-    local bestDistSq = math.huge
-
-    for i = 1, #points do
-        local offset = points[i].pos - ballPos
-        local distSq = offset.X * offset.X + offset.Y * offset.Y + offset.Z * offset.Z
-        if distSq < bestDistSq then
-            bestDistSq = distSq
-            bestIndex = i
-        end
-    end
-
-    local flightDir
-    local nextIdx = math.min(bestIndex + 1, #points)
-    local segment = points[nextIdx].pos - points[bestIndex].pos
-    if segment.Magnitude > 0.05 then
-        flightDir = segment.Unit
-    else
-        local vel = getPredictionVelocity(ball)
-        flightDir = vel.Magnitude > 1 and vel.Unit or Vector3.new(0, 0, -1)
-    end
-
-    while bestIndex < #points do
-        local ahead = (points[bestIndex + 1].pos - ballPos):Dot(flightDir)
-        if ahead > 0.08 then
-            break
-        end
-        bestIndex += 1
-    end
-
-    local anchor = points[bestIndex]
-    local trimmed = {
-        {
-            pos = ballPos,
-            time = anchor.time or 0,
-            speed = anchor.speed or getPredictionVelocity(ball).Magnitude,
-            bounce = anchor.bounce or 0,
-            hit = false,
-            hitNet = false,
-        },
-    }
-
-    for i = bestIndex + 1, #points do
-        table.insert(trimmed, points[i])
-    end
-
-    return trimmed
-end
-
 local function predictBallPath(ball)
-    local vel = getPredictionVelocity(ball)
+    local vel = getBallMotionVelocity(ball)
     if vel.Magnitude < config.dribbleSpeedThreshold then
         return {}
     end
@@ -1381,8 +1467,9 @@ local function predictBallPath(ball)
 end
 
 local function createPredBeam(p0, p1, maxSpeed)
-    local att0 = predState.attachmentTemplate:Clone()
-    local att1 = predState.attachmentTemplate:Clone()
+    local pred = getPredState()
+    local att0 = pred.attachmentTemplate:Clone()
+    local att1 = pred.attachmentTemplate:Clone()
     att0.WorldPosition = p0.pos
     att1.WorldPosition = p1.pos
     att0.Parent = visuals.trajectoryFolder
@@ -1409,11 +1496,54 @@ local function createLandingMarker(worldPos, hitNet)
     marker.Anchored = true
     marker.CanCollide = false
     marker.CastShadow = false
-    marker.Color = hitNet and config.predictorColor or Color3.fromRGB(255, 240, 90)
+    marker.Color = Color3.fromRGB(70, 150, 255)
     marker.Transparency = 0.35
     marker.Size = Vector3.new(config.impactRadius * 2, config.impactRadius * 2, config.impactRadius * 2)
     marker.CFrame = CFrame.new(worldPos)
     marker.Parent = visuals.trajectoryFolder
+end
+
+local function ensureTrajectoryFolder()
+    local folder = visuals.trajectoryFolder
+    if folder and folder.Parent then
+        return folder
+    end
+
+    folder = Instance.new("Folder")
+    folder.Name = "FUT_Prediction"
+    folder.Parent = workspace
+    visuals.trajectoryFolder = folder
+    return folder
+end
+
+local function clearTrajectoryChildren()
+    local folder = visuals.trajectoryFolder
+    if not folder then
+        return
+    end
+
+    for _, child in folder:GetChildren() do
+        child:Destroy()
+    end
+end
+
+local function shouldKeepPredictionVisible()
+    for _, ball in reachState.balls do
+        if not (ball and ball.Parent) then
+            continue
+        end
+
+        if isForcePredictBall(ball) or isActiveShotBall(ball) then
+            return true
+        end
+
+        local vel = getBallMotionVelocity(ball)
+        if vel.Magnitude >= config.dribbleSpeedThreshold and vel ~= CONST.FREEKICK_GATE then
+            return true
+        end
+    end
+
+    return false
 end
 
 runPredictionVisualize = function()
@@ -1422,60 +1552,71 @@ runPredictionVisualize = function()
     end
 
     local ok, err = pcall(function()
-    local now = tick()
-    if predPhysics.UpdateRate > 0 and now - predState.lastUpdate < predPhysics.UpdateRate then
-        return
-    end
-    predState.lastUpdate = now
-
-    for _, ball in reachState.balls do
-        if ball and ball.Parent then
-            updateVelocityHistory(ball, now)
+        local pred = getPredState()
+        local now = tick()
+        if now - pred.lastUpdate < predPhysics.UpdateRate then
+            return
         end
-    end
+        pred.lastUpdate = now
 
-    clearTrajectory()
-
-    local folder = Instance.new("Folder")
-    folder.Name = "FUT_Prediction"
-    folder.Parent = workspace
-    visuals.trajectoryFolder = folder
-
-    for _, ball in reachState.balls do
-        if not (ball and ball.Parent and ball:IsA("BasePart")) then
-            continue
-        end
-
-        local vel = getPredictionVelocity(ball)
-        if not isValidTrajectoryBall(ball, vel) then
-            continue
-        end
-
-        local points = predictBallPath(ball)
-        points = trimPredictionFromBall(points, ball)
-        if #points < 2 then
-            continue
-        end
-
-        local maxSpeed = 0
-        for _, p in points do
-            if p.speed > maxSpeed then
-                maxSpeed = p.speed
+        for _, ball in reachState.balls do
+            if ball and ball.Parent then
+                updateVelocityHistory(ball, now)
             end
         end
 
-        local ballRadius = math.max(ball.Size.Y * 0.5, 0.2)
-        for i = 1, #points - 1 do
-            local p0, p1 = points[i], points[i + 1]
-            local segment = p1.pos - p0.pos
-            if segment.Magnitude >= 0.05 and (i > 1 or segment.Magnitude > ballRadius * 0.35) then
-                createPredBeam(p0, p1, maxSpeed)
+        local draws = {}
+
+        for _, ball in reachState.balls do
+            if not (ball and ball.Parent and ball:IsA("BasePart")) then
+                continue
             end
+
+            local vel = getBallMotionVelocity(ball)
+            if not isValidTrajectoryBall(ball, vel) then
+                continue
+            end
+
+            local points = predictBallPath(ball)
+            if #points < 2 then
+                continue
+            end
+
+            local maxSpeed = 0
+            for _, p in points do
+                if p.speed > maxSpeed then
+                    maxSpeed = p.speed
+                end
+            end
+
+            table.insert(draws, { points = points, maxSpeed = maxSpeed })
         end
 
-        local endPoint = points[#points]
-        createLandingMarker(endPoint.pos, endPoint.hitNet == true)
-    end
+        if #draws == 0 then
+            if shouldKeepPredictionVisible() then
+                return
+            end
+            clearTrajectoryChildren()
+            return
+        end
+
+        local folder = ensureTrajectoryFolder()
+        clearTrajectoryChildren()
+
+        for _, draw in draws do
+            local points = draw.points
+            local maxSpeed = draw.maxSpeed
+
+            for i = 1, #points - 1 do
+                local p0, p1 = points[i], points[i + 1]
+                if (p1.pos - p0.pos).Magnitude >= 0.05 then
+                    createPredBeam(p0, p1, maxSpeed)
+                end
+            end
+
+            local endPoint = points[#points]
+            createLandingMarker(endPoint.pos, endPoint.hitNet == true)
+        end
     end)
 
     if not ok then
@@ -1494,6 +1635,43 @@ setPredictionEnabled = function(enabled)
     end
 end
 end
+
+local destroyReachVisual
+local patchGameReact
+local setInfiniteStamina
+local setAntiIdle
+local findGameRoot
+local setupBallPrediction
+local runVelocityTamperLoop
+local clearAutoGoalPath
+local manipulateReactVector
+local getValidBalls
+local updateBoxVisual
+local restoreGKGloveSizes
+local tryBoundsReach
+local applyGKGloveExpansion
+local syncGKRootLimbSizes
+local installReactManipulator
+
+local networkState = {
+    ready = false,
+    error = "Network forger not initialized",
+    Network = nil,
+    GetNetworkKey = nil,
+}
+
+local tryInitNetworkForger
+
+local AUTO_GOAL_ZONES = { "random_bins", "top_left", "top_right", "top_center", "random_box" }
+local AUTO_GOAL_ZONE_OPTIONS = {
+    { label = "Random Bin", value = "random_bins" },
+    { label = "Top Left", value = "top_left" },
+    { label = "Top Right", value = "top_right" },
+    { label = "Center Crossbar", value = "top_center" },
+    { label = "Random Box", value = "random_box" },
+}
+
+do
 
 local function isValidShotBall(ball, velocity)
     if not isValidTrajectoryBall(ball, velocity) then return false end
@@ -1527,14 +1705,6 @@ local function isGKConstraint(constraint)
 end
 
 --##AUTO GOAL##
-local AUTO_GOAL_ZONES = { "random_bins", "top_left", "top_right", "top_center", "random_box" }
-local AUTO_GOAL_ZONE_OPTIONS = {
-    { label = "Random Bin", value = "random_bins" },
-    { label = "Top Left", value = "top_left" },
-    { label = "Top Right", value = "top_right" },
-    { label = "Center Crossbar", value = "top_center" },
-    { label = "Random Box", value = "random_box" },
-}
 
 local function resolveAutoGoalZone()
     if type(mods.autoGoalZone) == "string" and table.find(AUTO_GOAL_ZONES, mods.autoGoalZone) then
@@ -1715,6 +1885,11 @@ local function getGoalNet(fromPos, velocity)
 end
 
 local function getAutoGoalShotTarget(ball, velocity)
+    local existing = autoGoalState.paths[ball]
+    if existing and existing.target then
+        return existing.target
+    end
+
     local net = resolveAutoGoalNet(ball.Position, velocity)
     if not net then
         return nil
@@ -1725,6 +1900,11 @@ local function getAutoGoalShotTarget(ball, velocity)
     end
 
     return getAutoGoalTarget(net, resolveAutoGoalZone())
+end
+
+local function lockAutoGoalShotTarget(ball, target, velocity)
+    autoGoalState.lockedTarget = target
+    autoGoalState.lockedNet = resolveAutoGoalNet(ball.Position, velocity)
 end
 
 --##SHOT TAMPER##
@@ -1763,14 +1943,248 @@ local function shouldStripForceChild(child)
     return child.Name == "CurveForce" or child.Name == "RisingForce" or child.Name == "BodyForce"
 end
 
-local function stripShotCurveForAutoGoal(ball)
-    stripNamedForces(ball, CONST.STRIP_FORCE_NAMES)
+local function shouldStripAutoGoalForceChild(child)
+    if mods.knuckleShotsEnabled then
+        return child.Name == "CurveForce" or child.Name == "RisingForce"
+    end
+    return child.Name == "RisingForce" or child.Name == "BodyForce"
 end
 
-local function stripRisingForce(ball)
+local function getKnuckleAxes()
+    local character = player.Character
+    if not character then
+        return Vector3.xAxis, Vector3.yAxis
+    end
+
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then
+        return Vector3.xAxis, Vector3.yAxis
+    end
+
+    return root.CFrame.RightVector, root.CFrame.UpVector
+end
+
+local function getKnucklePowerScale()
+    return math.clamp(mods.knucklePulsePower, 0.3, 3)
+end
+
+local function getKnuckleSpinScale()
+    return math.clamp(mods.knuckleSpinPower, 0.2, 3)
+end
+
+local function getKnuckleSpinVector()
+    return CONST.KNUCKLE_SPIN * getKnuckleSpinScale()
+end
+
+local function getKnucklePulseMagnitude(minBase, maxBase)
+    local power = getKnucklePowerScale()
+    return math.random(
+        math.floor(minBase * power),
+        math.floor(maxBase * power)
+    )
+end
+
+local function getKnucklePulseDuration()
+    local power = getKnucklePowerScale()
+    return CONST.KNUCKLE_PULSE_DURATION * math.clamp(0.8 + power * 0.2, 0.8, 1.6)
+end
+
+local function stripCurveForceForKnuckle(ball)
+    if not ball or not ball.Parent then
+        return
+    end
+
+    local curve = ball:FindFirstChild("CurveForce")
+    if curve then
+        safeRemoveBallForce(curve)
+    end
+end
+
+local function applyKnuckleSpin(ball)
+    if not ball or not ball.Parent then
+        return
+    end
+
+    stripCurveForceForKnuckle(ball)
+
+    local spin = ball:FindFirstChild("SpinForce")
+    if spin and spin:IsA("BodyAngularVelocity") then
+        spin.AngularVelocity = getKnuckleSpinVector()
+    end
+end
+
+local function createKnucklePulse(ball, direction, magnitude)
+    if not ball or not ball.Parent or direction.Magnitude < 0.01 then
+        return
+    end
+
+    local force = Instance.new("BodyForce")
+    force.Name = "FUT_KnucklePulse"
+    force.Force = direction.Unit * magnitude
+    force.Parent = ball
+    Debris:AddItem(force, getKnucklePulseDuration())
+end
+
+local function isKnuckleShotAborted(ball)
+    return not ball
+        or not ball.Parent
+        or ball:FindFirstChild("no")
+        or not knuckleShotState.active[ball]
+end
+
+local function stopKnuckleShot(ball)
+    knuckleShotState.active[ball] = nil
+end
+
+local function runGameKnucklePulses(ball)
+    local right, up = getKnuckleAxes()
+    local gap = math.clamp(mods.knucklePulseGap, 0.15, 0.7)
+    local power = getKnucklePowerScale()
+
+    if math.random(1, 2) == 1 then
+        createKnucklePulse(ball, right, getKnucklePulseMagnitude(90, 100))
+        task.wait(gap)
+        if isKnuckleShotAborted(ball) then
+            return
+        end
+
+        createKnucklePulse(ball, right, -getKnucklePulseMagnitude(90, 100))
+        task.wait(gap)
+        if isKnuckleShotAborted(ball) then
+            return
+        end
+
+        createKnucklePulse(ball, right, getKnucklePulseMagnitude(90, 100))
+        if power >= 2 then
+            task.wait(gap)
+            if isKnuckleShotAborted(ball) then
+                return
+            end
+            createKnucklePulse(ball, up, -getKnucklePulseMagnitude(70, 95))
+        end
+        return
+    end
+
+    createKnucklePulse(ball, right, -getKnucklePulseMagnitude(80, 100))
+    task.wait(gap)
+    if isKnuckleShotAborted(ball) then
+        return
+    end
+
+    createKnucklePulse(ball, right, getKnucklePulseMagnitude(80, 100))
+    task.wait(gap)
+    if isKnuckleShotAborted(ball) then
+        return
+    end
+
+    createKnucklePulse(ball, up, -getKnucklePulseMagnitude(80, 100))
+    if power >= 2.5 then
+        task.wait(gap)
+        if isKnuckleShotAborted(ball) then
+            return
+        end
+        createKnucklePulse(ball, right, getKnucklePulseMagnitude(75, 95))
+    end
+end
+
+local function beginGameKnuckleShot(ball)
+    if not mods.knuckleShotsEnabled or not ball or not ball.Parent then
+        return
+    end
+
+    local existing = knuckleShotState.active[ball]
+    if existing and tick() - (existing.startedAt or 0) < 0.35 then
+        return
+    end
+
+    knuckleShotState.active[ball] = { startedAt = tick() }
+    applyKnuckleSpin(ball)
+
+    task.spawn(function()
+        task.wait(math.clamp(mods.knucklePulseDelay, 0.15, 0.8))
+        if isKnuckleShotAborted(ball) then
+            stopKnuckleShot(ball)
+            return
+        end
+
+        runGameKnucklePulses(ball)
+        task.delay(getKnucklePulseDuration() + 0.05, function()
+            stopKnuckleShot(ball)
+        end)
+    end)
+end
+
+local function bindKnuckleShotWatcher(ball)
+    if knuckleShotState.watched[ball] then
+        return
+    end
+
+    knuckleShotState.watched[ball] = true
+    trackConnection(ball.ChildAdded:Connect(function(child)
+        if not mods.knuckleShotsEnabled or not isScriptAlive() then
+            return
+        end
+
+        if child.Name == "CurveForce" then
+            task.defer(function()
+                if child.Parent and mods.knuckleShotsEnabled then
+                    safeRemoveBallForce(child)
+                end
+            end)
+        elseif child.Name == "SpinForce" and child:IsA("BodyAngularVelocity") then
+            child.AngularVelocity = getKnuckleSpinVector()
+        end
+    end))
+end
+
+local function applyKnuckleShotMods(ball, isShootVelocity)
+    if not mods.knuckleShotsEnabled or not isShootVelocity then
+        return
+    end
+
+    bindKnuckleShotWatcher(ball)
+    beginGameKnuckleShot(ball)
+end
+
+local function applyAutoGoalShotPhysics(ball, state)
+    if not ball or not ball.Parent then
+        return
+    end
+
+    if mods.knuckleShotsEnabled then
+        stripCurveForceForKnuckle(ball)
+        local rising = ball:FindFirstChild("RisingForce")
+        if rising then
+            safeRemoveBallForce(rising)
+        end
+
+        local spin = ball:FindFirstChild("SpinForce")
+        if spin and spin:IsA("BodyAngularVelocity") then
+            spin.AngularVelocity = getKnuckleSpinVector()
+        end
+        return
+    end
+
     local rising = ball:FindFirstChild("RisingForce")
     if rising then
         safeRemoveBallForce(rising)
+    end
+
+    for _, child in ball:GetChildren() do
+        if child.Name == "BodyForce" and child:IsA("BodyForce") then
+            safeRemoveBallForce(child)
+        end
+    end
+
+    local curve = ball:FindFirstChild("CurveForce")
+    if curve then
+        safeRemoveBallForce(curve)
+    end
+
+    local curveSide = state and state.curveSide or 1
+    local spin = ball:FindFirstChild("SpinForce")
+    if spin and spin:IsA("BodyAngularVelocity") then
+        spin.AngularVelocity = Vector3.new(0, CONST.FINESSE_SPIN.Y * 0.5, CONST.FINESSE_SPIN.Z * 0.5 * curveSide)
     end
 end
 
@@ -1783,495 +2197,21 @@ local function stripShotCurve(ball)
     end
 end
 
-local function stopKnuckle(ball)
-    local state = knuckleState.active[ball]
-    if state and state.forceConn then
-        pcall(function()
-            state.forceConn:Disconnect()
-        end)
-    end
-    knuckleState.active[ball] = nil
-    if not ball or not ball.Parent then
+local function isAutoGoalControlledBall(ball)
+    return autoGoalState.paths[ball] ~= nil or autoGoalState.claimed[ball] == true
+end
+
+local function claimAutoGoalBall(ball)
+    if not ball then
         return
     end
-    for _, name in { "FUT_KnuckleForce", "FUT_KnuckleAtt", "FUT_KnucklePulse" } do
-        local inst = ball:FindFirstChild(name)
-        if inst then
-            inst:Destroy()
-        end
-    end
+    autoGoalState.claimed[ball] = true
 end
 
-local function beginInsanePowerMaintain(ball, velocity)
-    powerState.maintain[ball] = {
-        vel = velocity,
-        deadline = tick() + 0.85,
-    }
-end
-
-local function getNetFromShotDirection(fromPos, velocity)
-    if next(netBounds) == nil then
-        refreshNetParts()
+local function releaseAutoGoalBall(ball)
+    if ball then
+        autoGoalState.claimed[ball] = nil
     end
-
-    local pitch = workspace:FindFirstChild("Game") and workspace.Game:FindFirstChild("Pitch")
-    local netsFolder = pitch and pitch:FindFirstChild("Nets")
-    if not netsFolder then
-        return nil
-    end
-
-    local candidates = {}
-    for _, name in { "EfNeth", "EfNeta" } do
-        local net = netsFolder:FindFirstChild(name)
-        if net then
-            ensureNetBounds(net)
-            if netBounds[net] then
-                table.insert(candidates, net)
-            end
-        end
-    end
-
-    if #candidates == 0 then
-        return nil
-    end
-    if #candidates == 1 then
-        return candidates[1]
-    end
-
-    local velDir = velocity.Magnitude > 1 and velocity.Unit or Vector3.new(0, 0, -1)
-    local best, bestScore = candidates[1], -math.huge
-
-    for _, net in candidates do
-        local center = netBounds[net].center
-        local toNet = center - fromPos
-        if toNet.Magnitude > 0.01 then
-            local score = velDir:Dot(toNet.Unit)
-            if score > bestScore then
-                bestScore = score
-                best = net
-            end
-        end
-    end
-
-    return best
-end
-
-local function knuckleRand(seed)
-    local n = math.sin(seed * 12.9898 + 78.233) * 43758.5453
-    return n - math.floor(n)
-end
-
-local function knuckleSign(v)
-    if v > 0 then
-        return 1
-    end
-    if v < 0 then
-        return -1
-    end
-    return 0
-end
-
-local function buildKnuckleAxes(direction)
-    local horiz = Vector3.new(direction.X, 0, direction.Z)
-    local flatDir = horiz.Magnitude > 0.01 and horiz.Unit or Vector3.new(0, 0, -1)
-    local right = flatDir:Cross(Vector3.yAxis)
-    if right.Magnitude < 0.01 then
-        right = Vector3.xAxis
-    else
-        right = right.Unit
-    end
-    return flatDir, right
-end
-
-local function buildKnuckleGoalCorridor(launchPos, flatDir, right, netModel)
-    local bounds = netModel and ensureNetBounds(netModel)
-    if not bounds then
-        return {
-            aimPoint = launchPos + flatDir * 70,
-            center = launchPos + flatDir * 70,
-            goalDist = 70,
-            lateralMax = 5,
-            verticalMax = 3.5,
-            offsetRightMax = 0.11,
-            offsetUpMax = 0.09,
-        }
-    end
-
-    local minV, maxV = bounds.min, bounds.max
-    local center = bounds.center
-    local goalWidth = math.max(maxV.X - minV.X, maxV.Z - minV.Z)
-    local goalHeight = maxV.Y - minV.Y
-    local halfW = goalWidth * 0.5
-    local halfH = goalHeight * 0.5
-
-    local toCenter = center - launchPos
-    local goalDist = math.max(flatDir:Dot(toCenter), 35)
-    local aimPoint = launchPos + flatDir * goalDist
-
-    local aimOffRight = right:Dot(aimPoint - center)
-    local aimOffUp = aimPoint.Y - center.Y
-
-    local lateralMax = math.max(1.5, (halfW - math.abs(aimOffRight)) * 0.8)
-    local verticalMax = math.max(1.2, (halfH - math.abs(aimOffUp)) * 0.75)
-
-    return {
-        aimPoint = aimPoint,
-        center = center,
-        goalDist = goalDist,
-        lateralMax = lateralMax,
-        verticalMax = verticalMax,
-        offsetRightMax = math.clamp(lateralMax * 0.07, 0.028, 0.1),
-        offsetUpMax = math.clamp(verticalMax * 0.08, 0.022, 0.085),
-    }
-end
-
-local function initKnuckleFlight(scaled)
-    local speed = scaled.Magnitude
-    local pitch = math.asin(math.clamp(scaled.Y / speed, -0.28, 0.28))
-    local launchY = math.sin(pitch) * speed
-    local horizSpeed = math.cos(pitch) * speed
-    local flatDir, right = buildKnuckleAxes(scaled)
-    return {
-        speed = speed,
-        launchY = launchY,
-        horizSpeed = horizSpeed,
-        flatDir = flatDir,
-        right = right,
-        offsetRight = 0,
-        offsetUp = 0,
-        breakIndex = 0,
-        nextBreakAt = 0.22 + knuckleRand(speed) * 0.18,
-        breakSeed = speed * 0.37 + launchY,
-    }
-end
-
-local function applyKnuckleGoalGuard(state, ballPos, dt)
-    local corridor = state.corridor
-    if not corridor or not ballPos or not state.launchPos then
-        return
-    end
-
-    local traveled = (ballPos - state.launchPos):Dot(state.flatDir)
-    local progress = math.clamp(traveled / math.max(corridor.goalDist, 8), 0, 1)
-    local guard = progress * progress
-
-    local offRight = state.right:Dot(ballPos - corridor.aimPoint)
-    local offUp = ballPos.Y - corridor.aimPoint.Y
-
-    if math.abs(offRight) > corridor.lateralMax * 0.55 then
-        state.offsetRight = state.offsetRight - knuckleSign(offRight) * guard * dt * 2.4
-    end
-    if math.abs(offUp) > corridor.verticalMax * 0.5 then
-        state.offsetUp = state.offsetUp - knuckleSign(offUp) * guard * dt * 2.0
-    end
-
-    state.offsetRight = math.clamp(state.offsetRight, -corridor.offsetRightMax, corridor.offsetRightMax)
-    state.offsetUp = math.clamp(state.offsetUp, -corridor.offsetUpMax, corridor.offsetUpMax)
-end
-
-local function stepKnuckleOffsets(state, elapsed, dt, ball)
-    local intensity = mods.powerKnuckleIntensity
-    local smoothRate = mods.knuckleSmooth
-
-    state.targetRight = state.targetRight or 0
-    state.targetUp = state.targetUp or 0
-    state.smoothRight = state.smoothRight or 0
-    state.smoothUp = state.smoothUp or 0
-
-    while elapsed >= state.nextBreakAt and state.breakIndex < 8 do
-        local seed = state.breakSeed + state.breakIndex * 1.73
-        local flipL = knuckleRand(seed) > 0.5 and 1 or -1
-        local flipV = knuckleRand(seed + 6.4) > 0.5 and 1 or -1
-
-        if state.breakIndex > 0 and knuckleRand(seed + 4.1) > 0.62 then
-            flipL = -flipL
-        end
-        if knuckleRand(seed + 8.2) > 0.65 then
-            flipV = -flipV
-        end
-
-        local breakL = intensity * 0.0055 * (0.35 + knuckleRand(seed + 1.9) * 0.55)
-        local breakV = intensity * 0.0042 * (0.3 + knuckleRand(seed + 3.3) * 0.55)
-
-        state.targetRight = state.targetRight + flipL * breakL
-        state.targetUp = state.targetUp + flipV * breakV
-
-        if knuckleRand(seed + 5.5) > 0.74 then
-            state.targetUp = state.targetUp + flipV * breakV * 0.45
-        end
-
-        state.breakIndex = state.breakIndex + 1
-        state.nextBreakAt = elapsed + 0.2 + knuckleRand(seed + 2.7) * 0.28
-    end
-
-    state.targetRight = state.targetRight * math.exp(-1.1 * dt)
-    state.targetUp = state.targetUp * math.exp(-0.95 * dt)
-
-    local vortexHz = CONST.KNUCKLE_VORTEX_HZ
-    local vortexL = math.sin(elapsed * math.pi * 2 * vortexHz + state.breakSeed)
-    local vortexU = math.cos(elapsed * math.pi * 2 * (vortexHz * 0.88) + state.breakSeed * 1.25)
-    local harmonic = math.sin(elapsed * math.pi * 2 * 1.6 + state.breakSeed * 0.55) * 0.12
-
-    local desiredRight = state.targetRight * (0.55 + vortexL * 0.22 + harmonic)
-    local desiredUp = state.targetUp * (0.52 + vortexU * 0.2)
-
-    local blend = 1 - math.exp(-smoothRate * dt)
-    state.smoothRight = state.smoothRight + (desiredRight - state.smoothRight) * blend
-    state.smoothUp = state.smoothUp + (desiredUp - state.smoothUp) * blend
-
-    state.offsetRight = state.smoothRight
-    state.offsetUp = state.smoothUp
-
-    if state.corridor then
-        state.smoothRight = math.clamp(
-            state.smoothRight,
-            -state.corridor.offsetRightMax,
-            state.corridor.offsetRightMax
-        )
-        state.smoothUp = math.clamp(
-            state.smoothUp,
-            -state.corridor.offsetUpMax,
-            state.corridor.offsetUpMax
-        )
-        state.offsetRight = state.smoothRight
-        state.offsetUp = state.smoothUp
-    end
-
-    if ball and ball.Parent then
-        applyKnuckleGoalGuard(state, ball.Position, dt)
-        state.smoothRight = state.offsetRight
-        state.smoothUp = state.offsetUp
-    end
-end
-
-local function getKnuckleFlutterScalars(state, elapsed, fadeScale)
-    local fade = math.clamp(1 - (elapsed / math.max(mods.powerKnuckleTime, 0.1)), 0.35, 1) * (fadeScale or 1)
-    local flutterMult = mods.knuckleFlutter
-    local vortexHz = CONST.KNUCKLE_VORTEX_HZ
-    local flutterR = (
-        math.sin(elapsed * math.pi * 2 * vortexHz * 1.02 + state.breakSeed) * 0.42
-        + math.sin(elapsed * math.pi * 2 * 1.55 + state.breakSeed * 0.7) * 0.18
-    ) * mods.powerKnuckleIntensity * 0.00075 * fade * flutterMult
-    local flutterU = (
-        math.cos(elapsed * math.pi * 2 * vortexHz * 0.9 + state.breakSeed * 1.1) * 0.45
-        + math.sin(elapsed * math.pi * 2 * 1.35 + state.breakSeed * 0.42) * 0.2
-    ) * mods.powerKnuckleIntensity * 0.00065 * fade * flutterMult
-    return flutterR, flutterU, fade
-end
-
-local function initAutoGoalKnuckleState(agState, ball, velocity, target)
-    local flatDir, right = buildKnuckleAxes(velocity)
-    local goalDist = (target - ball.Position).Magnitude
-    local intensity = mods.autoGoalKnuckleIntensity
-    agState.knuckle = {
-        targetRight = 0,
-        targetUp = 0,
-        smoothRight = 0,
-        smoothUp = 0,
-        offsetRight = 0,
-        offsetUp = 0,
-        breakIndex = 0,
-        nextBreakAt = 0.2 + knuckleRand(velocity.Magnitude) * 0.16,
-        breakSeed = velocity.Magnitude * 0.37 + velocity.Y,
-        lastElapsed = nil,
-        heading = flatDir,
-        smoothYVel = velocity.Y,
-        smoothVel = velocity,
-        flatDir = flatDir,
-        right = right,
-        launchPos = ball.Position,
-        corridor = {
-            aimPoint = target,
-            goalDist = math.max(goalDist, 20),
-            lateralMax = 2.4 + intensity * 0.04,
-            verticalMax = 2 + intensity * 0.035,
-            offsetRightMax = math.clamp(intensity * 0.0042, 0.05, 0.14),
-            offsetUpMax = math.clamp(intensity * 0.0036, 0.04, 0.12),
-        },
-    }
-end
-
-local function stepAutoGoalKnuckleForces(kState, elapsed, dt, ball)
-    local intensity = mods.autoGoalKnuckleIntensity
-    local corridor = kState.corridor
-
-    while elapsed >= kState.nextBreakAt and kState.breakIndex < 12 do
-        local seed = kState.breakSeed + kState.breakIndex * 1.73
-        local flipL = knuckleRand(seed) > 0.5 and 1 or -1
-        local flipV = knuckleRand(seed + 6.4) > 0.5 and 1 or -1
-
-        if kState.breakIndex > 0 and knuckleRand(seed + 4.1) > 0.62 then
-            flipL = -flipL
-        end
-
-        local breakL = intensity * 0.007 * (0.45 + knuckleRand(seed + 1.9) * 0.75)
-        local breakV = intensity * 0.0058 * (0.4 + knuckleRand(seed + 3.3) * 0.8)
-
-        kState.targetRight = kState.targetRight + flipL * breakL
-        kState.targetUp = kState.targetUp + flipV * breakV
-
-        if knuckleRand(seed + 5.5) > 0.7 then
-            kState.targetUp = kState.targetUp + flipV * breakV * 0.75
-        end
-
-        kState.breakIndex = kState.breakIndex + 1
-        kState.nextBreakAt = elapsed + 0.16 + knuckleRand(seed + 2.7) * 0.26
-    end
-
-    kState.targetRight = kState.targetRight * math.exp(-0.75 * dt)
-    kState.targetUp = kState.targetUp * math.exp(-0.68 * dt)
-
-    local vortexHz = CONST.KNUCKLE_VORTEX_HZ
-    local vortexL = math.sin(elapsed * math.pi * 2 * vortexHz + kState.breakSeed)
-    local vortexU = math.cos(elapsed * math.pi * 2 * (vortexHz * 0.9) + kState.breakSeed * 1.25)
-    local harmonic = math.sin(elapsed * math.pi * 2 * 2.15 + kState.breakSeed * 0.55) * 0.22
-
-    local desiredRight = kState.targetRight * (0.62 + vortexL * 0.34 + harmonic)
-    local desiredUp = kState.targetUp * (0.58 + vortexU * 0.36)
-
-    local smoothRate = 1 - math.exp(-mods.autoGoalKnuckleSmooth * dt)
-    kState.smoothRight = kState.smoothRight + (desiredRight - kState.smoothRight) * smoothRate
-    kState.smoothUp = kState.smoothUp + (desiredUp - kState.smoothUp) * smoothRate
-
-    kState.offsetRight = kState.smoothRight
-    kState.offsetUp = kState.smoothUp
-
-    if corridor then
-        kState.smoothRight = math.clamp(kState.smoothRight, -corridor.offsetRightMax, corridor.offsetRightMax)
-        kState.smoothUp = math.clamp(kState.smoothUp, -corridor.offsetUpMax, corridor.offsetUpMax)
-        kState.offsetRight = kState.smoothRight
-        kState.offsetUp = kState.smoothUp
-    end
-
-    if ball and ball.Parent then
-        applyKnuckleGoalGuard(kState, ball.Position, dt)
-        kState.smoothRight = kState.offsetRight
-        kState.smoothUp = kState.offsetUp
-    end
-end
-
-local function layerKnuckleOnAutoGoal(homingVel, kState, ball, elapsed, dt)
-    local stepDt = math.max(
-        kState.lastElapsed and (elapsed - kState.lastElapsed) or CONST.AUTO_GOAL_TICK,
-        0.02
-    )
-    kState.lastElapsed = elapsed
-
-    stepAutoGoalKnuckleForces(kState, elapsed, stepDt, ball)
-
-    local speed = math.max(homingVel.Magnitude, 1)
-    local flatDir, right = buildKnuckleAxes(homingVel)
-    kState.flatDir = flatDir
-    kState.right = right
-
-    local intensity = mods.autoGoalKnuckleIntensity
-    local flutter = mods.autoGoalKnuckleFlutter
-    local mix = math.clamp(mods.autoGoalKnuckleMix, 0.12, 0.65)
-    local vortexHz = CONST.KNUCKLE_VORTEX_HZ
-
-    local microR = (
-        math.sin(elapsed * math.pi * 2 * vortexHz * 1.08 + kState.breakSeed) * 0.55
-        + math.sin(elapsed * math.pi * 2 * 2.05 + kState.breakSeed * 0.65) * 0.28
-    ) * intensity * 0.00016 * flutter
-    local microU = (
-        math.cos(elapsed * math.pi * 2 * vortexHz * 0.86 + kState.breakSeed * 1.15) * 0.58
-        + math.sin(elapsed * math.pi * 2 * 1.75 + kState.breakSeed * 0.42) * 0.3
-    ) * intensity * 0.00014 * flutter
-
-    local lateralScale = intensity * 0.001
-    local verticalScale = intensity * 0.0009
-
-    local desiredDir = flatDir + right * (kState.smoothRight * lateralScale + microR)
-    if desiredDir.Magnitude > 0.01 then
-        desiredDir = desiredDir.Unit
-    else
-        desiredDir = flatDir
-    end
-
-    local maxTurnRad = math.rad(38) * stepDt * (0.75 + mix)
-    if kState.heading and kState.heading.Magnitude > 0.01 then
-        local heading = kState.heading.Unit
-        local dot = math.clamp(heading:Dot(desiredDir), -1, 1)
-        local angle = math.acos(dot)
-        if angle > maxTurnRad and angle > 0.0005 then
-            local blend = maxTurnRad / angle
-            desiredDir = (heading * (1 - blend) + desiredDir * blend).Unit
-        end
-    end
-    kState.heading = desiredDir
-
-    local desiredY = homingVel.Y + kState.smoothUp * speed * verticalScale + microU * speed
-    kState.smoothYVel = kState.smoothYVel or homingVel.Y
-    local yRate = 1 - math.exp(-mods.autoGoalKnuckleSmooth * 0.8 * stepDt)
-    kState.smoothYVel = kState.smoothYVel + (desiredY - kState.smoothYVel) * yRate
-
-    local horizMag = Vector3.new(homingVel.X, 0, homingVel.Z).Magnitude
-    if horizMag < 1 then
-        horizMag = speed * 0.9
-    end
-
-    local flutterVel = Vector3.new(desiredDir.X * horizMag, kState.smoothYVel, desiredDir.Z * horizMag)
-    local targetOut = homingVel:Lerp(flutterVel, mix)
-
-    kState.smoothVel = kState.smoothVel or homingVel
-    local outRate = 1 - math.exp(-(5.5 + mods.autoGoalKnuckleSmooth * 0.45) * stepDt)
-    kState.smoothVel = kState.smoothVel + (targetOut - kState.smoothVel) * outRate
-
-    return kState.smoothVel
-end
-
-local function computeCustomKnuckleVelocity(state, elapsed, ball)
-    local dt = math.max(
-        state.lastElapsed and (elapsed - state.lastElapsed) or CONST.KNUCKLE_TICK,
-        0.02
-    )
-    state.lastElapsed = elapsed
-
-    stepKnuckleOffsets(state, elapsed, dt, ball)
-
-    local fade = math.clamp(1 - (elapsed / math.max(mods.powerKnuckleTime, 0.1)), 0.25, 1)
-    local flutterR, flutterU = getKnuckleFlutterScalars(state, elapsed, fade)
-    local mix = math.clamp(mods.knuckleMix * 0.7, 0.18, 0.68)
-
-    local flatDir = state.flatDir
-    local right = state.right
-    local bendStrength = mods.powerKnuckleIntensity * 0.0026 * fade * mods.knuckleFlutter
-    local lateral = state.smoothRight * bendStrength + flutterR * 3.2
-
-    local desiredDir = flatDir + right * lateral
-    if desiredDir.Magnitude > 0.01 then
-        desiredDir = desiredDir.Unit
-    else
-        desiredDir = flatDir
-    end
-
-    local maxTurnRad = math.rad(26) * dt * (0.55 + mix * 0.45)
-    if state.heading and state.heading.Magnitude > 0.01 then
-        local heading = state.heading.Unit
-        local dot = math.clamp(heading:Dot(desiredDir), -1, 1)
-        local angle = math.acos(dot)
-        if angle > maxTurnRad and angle > 0.0005 then
-            local blend = maxTurnRad / angle
-            desiredDir = (heading * (1 - blend) + desiredDir * blend).Unit
-        end
-    end
-    state.heading = desiredDir
-
-    local baseY = state.launchY - elapsed * 0.9
-    local vertAmp = mods.powerKnuckleIntensity * 0.0014 * fade * mods.knuckleFlutter
-    local vertical = state.smoothUp * vertAmp * state.horizSpeed + flutterU * state.horizSpeed * 2.8
-    local desiredY = baseY + vertical
-
-    local horizMag = state.horizSpeed * math.clamp(fade + 0.12, 0.45, 1)
-    local baseVel = Vector3.new(flatDir.X * horizMag, baseY, flatDir.Z * horizMag)
-    local knuckleVel = Vector3.new(desiredDir.X * horizMag, desiredY, desiredDir.Z * horizMag)
-    local targetVel = baseVel:Lerp(knuckleVel, mix)
-
-    state.smoothVel = state.smoothVel or targetVel
-    local outRate = 1 - math.exp(-(3.8 + mods.knuckleSmooth * 0.5) * dt)
-    state.smoothVel = state.smoothVel + (targetVel - state.smoothVel) * math.clamp(outRate, 0.08, 0.42)
-
-    return state.smoothVel
 end
 
 local function setBallVelocity(ball, constraint, velocity)
@@ -2283,101 +2223,9 @@ local function setBallVelocity(ball, constraint, velocity)
     end
 end
 
-local function bindKnuckleForceStripper(ball, state)
-    if state.forceConn then
-        return
-    end
-
-    state.forceConn = ball.ChildAdded:Connect(function(child)
-        if not knuckleState.active[ball] then
-            return
-        end
-        if shouldStripForceChild(child) then
-            safeRemoveBallForce(child)
-        end
-    end)
-    trackConnection(state.forceConn)
-end
-
-local function beginKnuckleShot(ball, constraint, velocity)
-    if not ball or typeof(ball) ~= "Instance" or not ball:IsA("BasePart") then
-        return velocity
-    end
-
-    local now = tick()
-    local existing = knuckleState.active[ball]
-    if existing and now < existing.deadline and (now - existing.startedAt) < 0.35 then
-        if constraint and constraint.Parent then
-            existing.constraint = constraint
-        end
-        return computeCustomKnuckleVelocity(existing, os.clock() - existing.start, ball)
-    end
-
-    stripShotCurve(ball)
-
-    local scaled = applyKnuckleShotScale(velocity, mods.knucklePower, mods.knuckleHeight)
-    if scaled.Magnitude < config.shotSpeedThreshold then
-        scaled = scaled.Magnitude > 0.1
-            and scaled.Unit * config.shotSpeedThreshold
-            or velocity.Unit * config.shotSpeedThreshold
-    end
-
-    local flight = initKnuckleFlight(scaled)
-    local targetNet = getNetFromShotDirection(ball.Position, scaled)
-    local corridor = buildKnuckleGoalCorridor(ball.Position, flight.flatDir, flight.right, targetNet)
-
-    local state = {
-        ball = ball,
-        launchPos = ball.Position,
-        corridor = corridor,
-        speed = flight.speed,
-        launchY = flight.launchY,
-        horizSpeed = flight.horizSpeed,
-        flatDir = flight.flatDir,
-        right = flight.right,
-        targetRight = 0,
-        targetUp = 0,
-        smoothRight = 0,
-        smoothUp = 0,
-        offsetRight = 0,
-        offsetUp = 0,
-        breakIndex = flight.breakIndex,
-        nextBreakAt = flight.nextBreakAt,
-        breakSeed = flight.breakSeed,
-        heading = flight.flatDir,
-        smoothYVel = flight.launchY,
-        smoothVel = scaled,
-        start = os.clock(),
-        startedAt = now,
-        deadline = now + mods.powerKnuckleTime,
-        constraint = constraint,
-        lastVel = nil,
-        lastElapsed = nil,
-    }
-
-    knuckleState.active[ball] = state
-    bindKnuckleForceStripper(ball, state)
-
-    if constraint and constraint.Parent then
-        state.constraint = constraint
-    elseif ball.Parent then
-        state.constraint = ball:FindFirstChild("ShootVelocity")
-    end
-
-    local vel = computeCustomKnuckleVelocity(state, 0, ball)
-    state.lastVel = vel
-    setBallVelocity(ball, state.constraint, vel)
-    return vel
-end
-
 local function quadraticBezier(t, p0, p1, p2)
     local inv = 1 - t
     return inv * inv * p0 + 2 * inv * t * p1 + t * t * p2
-end
-
-local function smoothstep(t)
-    t = math.clamp(t, 0, 1)
-    return t * t * (3 - 2 * t)
 end
 
 local function buildAutoGoalPath(ballPos, targetPos)
@@ -2386,120 +2234,53 @@ local function buildAutoGoalPath(ballPos, targetPos)
         return ballPos, ballPos, targetPos, {
             outside = false,
             flatDist = 0,
-            loft = 3,
-            pathTime = 0.5,
-            loftBias = 0.05,
+            curve = 0,
+            curveSide = 1,
+            pathTime = mods.autoGoalPathTime,
         }
     end
 
-    local direction = delta.Unit
-    local flatDist = Vector3.new(delta.X, 0, delta.Z).Magnitude
-    local heightDelta = math.max(targetPos.Y - ballPos.Y, 0)
-    local outside = not isInsidePitchBoxAt(ballPos)
     local foot = getCurrentFoot()
     local side = foot == "L" and -1 or 1
-    local curvePower = getAutoGoalCurvePower(flatDist, outside, side)
-    local loft = getAutoGoalArcHeight(flatDist, heightDelta, outside)
+    local curvePower = mods.autoGoalCurve * side
+    local flat = Vector3.new(delta.X, 0, delta.Z)
+    local flatDist = flat.Magnitude
 
-    local curveDir = direction:Cross(Vector3.yAxis)
-    if curveDir.Magnitude < 0.01 then
-        curveDir = Vector3.xAxis
+    local curveDir
+    if flatDist > 0.1 then
+        curveDir = delta.Unit:Cross(Vector3.yAxis).Unit
     else
-        curveDir = curveDir.Unit
+        curveDir = Vector3.xAxis * side
     end
 
-    local control = (ballPos + targetPos) * 0.5
+    local control = (targetPos + ballPos) * 0.5
         + curveDir * curvePower
-        + Vector3.new(0, loft * 0.5, 0)
-
-    local pathTime = outside
-        and math.clamp(0.5 + flatDist / 185, 0.5, 0.92)
-        or math.clamp(0.4 + flatDist / 230, 0.38, 0.68)
+        + Vector3.new(0, math.abs(curvePower), 0)
 
     return ballPos, control, targetPos, {
-        outside = outside,
+        outside = not isInsidePitchBoxAt(ballPos),
         flatDist = flatDist,
-        loft = loft,
         curve = curvePower,
-        pathTime = pathTime,
-        loftBias = loft / math.max(flatDist, 1),
+        curveSide = side,
+        pathTime = mods.autoGoalPathTime,
     }
 end
 
-local function resolveAutoGoalSpeed(baseSpeed, ballPos, targetPos)
-    local naturalSpeed = math.max(baseSpeed, config.shotSpeedThreshold)
-
-    if isInsidePitchBoxAt(ballPos) then
-        return math.clamp(naturalSpeed, config.shotSpeedThreshold, 300)
-    end
-
-    local flatDist = (Vector3.new(targetPos.X, 0, targetPos.Z) - Vector3.new(ballPos.X, 0, ballPos.Z)).Magnitude
-    local heightDelta = math.max(targetPos.Y - ballPos.Y + 2, 0)
-    local arcLength = flatDist + heightDelta * 0.45
-    local travelTime = math.clamp(0.5 + arcLength / 168, 0.52, 0.9)
-    local neededSpeed = arcLength / travelTime
-    local maxBoost = math.clamp(1.04 + math.max(0, flatDist - 50) / 220, 1.04, 1.22)
-
+local function resolveBiggieAutoGoalSpeed(p0, p1, p2, pathTime, fallbackSpeed)
+    local steps = math.max(math.ceil(pathTime / 0.01), 1)
+    local stepTime = pathTime / steps
+    local pos0 = quadraticBezier(0, p0, p1, p2)
+    local pos1 = quadraticBezier(1 / steps, p0, p1, p2)
+    local segmentSpeed = (pos1 - pos0).Magnitude / math.max(stepTime, 0.001)
     return math.clamp(
-        math.max(neededSpeed, naturalSpeed * maxBoost),
+        math.max(segmentSpeed, fallbackSpeed * 0.9),
         config.shotSpeedThreshold,
-        naturalSpeed * 1.28
+        700
     )
 end
 
-local function blendGameLikeAutoGoalVelocity(state, ball, current, launchVel, launchDir, launchSpeed, pathDir, targetSpeed, steerBlend, speedBlend, elapsed, dt)
-    if current.Magnitude < 1 then
-        current = launchVel or Vector3.zero
-    end
-
-    local outside = state.outsideBox == true
-    local horizPath = Vector3.new(pathDir.X, 0, pathDir.Z)
-    if horizPath.Magnitude < 0.01 then
-        horizPath = Vector3.new(launchDir.X, 0, launchDir.Z)
-    end
-    horizPath = horizPath.Unit
-
-    local horizCurrent = Vector3.new(current.X, 0, current.Z)
-    local currentHorizMag = math.max(horizCurrent.Magnitude, 1)
-
-    local adoptSpeed = outside and speedBlend or speedBlend * 0.3
-    local desiredMag = launchSpeed + (targetSpeed - launchSpeed) * adoptSpeed
-    if outside then
-        desiredMag = currentHorizMag * (1 - adoptSpeed * 0.28) + desiredMag * (adoptSpeed * 0.28)
-    else
-        desiredMag = launchSpeed
-    end
-
-    local steerAmount = outside
-        and math.clamp(0.04 + steerBlend * 0.14, 0.04, 0.18)
-        or math.clamp(0.025 + steerBlend * 0.08, 0.025, 0.1)
-
-    local horizDir = horizCurrent.Magnitude > 2 and horizCurrent.Unit or Vector3.new(launchDir.X, 0, launchDir.Z).Unit
-    horizDir = horizDir:Lerp(horizPath, steerAmount).Unit
-    local horizTarget = horizDir * math.max(desiredMag, currentHorizMag * 0.985)
-
-    local yTarget = current.Y
-    if outside and speedBlend > 0.18 then
-        local naturalDrop = (launchVel and launchVel.Y or 0) - elapsed * 0.72
-        local loftNudge = (state.loftBias or 0.05) * desiredMag * 0.06 * speedBlend
-        local desiredY = naturalDrop * 0.75 + loftNudge
-        yTarget = current.Y + (desiredY - current.Y) * steerAmount * 0.45
-    else
-        local naturalY = (launchVel and launchVel.Y or 0) - elapsed * 0.8
-        yTarget = current.Y + (naturalY - current.Y) * steerAmount * 0.35
-    end
-
-    local targetVel = Vector3.new(horizTarget.X, yTarget, horizTarget.Z)
-    local maxStep = math.max(current.Magnitude * 0.045 * (dt / CONST.AUTO_GOAL_TICK), 1.4)
-    maxStep = maxStep * math.clamp(0.22 + steerBlend, 0.22, 0.55)
-
-    local delta = targetVel - current
-    if delta.Magnitude > maxStep then
-        targetVel = current + delta.Unit * maxStep
-    end
-
-    local alpha = math.clamp(0.04 + steerBlend * (outside and 0.12 or 0.06), 0.04, outside and 0.18 or 0.1)
-    return current:Lerp(targetVel, alpha)
+local function resolveAutoGoalSpeed(baseSpeed, p0, p1, p2, pathTime)
+    return resolveBiggieAutoGoalSpeed(p0, p1, p2, pathTime, math.max(baseSpeed, config.shotSpeedThreshold))
 end
 
 local function bindAutoGoalForceStripper(ball, state)
@@ -2511,7 +2292,20 @@ local function bindAutoGoalForceStripper(ball, state)
         if not autoGoalState.paths[ball] then
             return
         end
-        if not shouldStripForceChild(child) then
+        if child.Name == "SpinForce" and child:IsA("BodyAngularVelocity") then
+            if mods.knuckleShotsEnabled then
+                child.AngularVelocity = getKnuckleSpinVector()
+            else
+                local curveSide = state.curveSide or 1
+                child.AngularVelocity = Vector3.new(0, CONST.FINESSE_SPIN.Y * 0.5, CONST.FINESSE_SPIN.Z * 0.5 * curveSide)
+            end
+            return
+        end
+        if child.Name == "CurveForce" then
+            safeRemoveBallForce(child)
+            return
+        end
+        if not shouldStripAutoGoalForceChild(child) then
             return
         end
 
@@ -2519,7 +2313,18 @@ local function bindAutoGoalForceStripper(ball, state)
         if elapsed < 0.08 then
             task.delay(0.08 - elapsed, function()
                 if autoGoalState.paths[ball] == state and child.Parent then
-                    safeRemoveBallForce(child)
+                    if child.Name == "SpinForce" and child:IsA("BodyAngularVelocity") then
+                        if mods.knuckleShotsEnabled then
+                            child.AngularVelocity = getKnuckleSpinVector()
+                        else
+                            local curveSide = state.curveSide or 1
+                            child.AngularVelocity = Vector3.new(0, CONST.FINESSE_SPIN.Y * 0.5, CONST.FINESSE_SPIN.Z * 0.5 * curveSide)
+                        end
+                    elseif child.Name == "CurveForce" then
+                        safeRemoveBallForce(child)
+                    else
+                        safeRemoveBallForce(child)
+                    end
                 end
             end)
             return
@@ -2531,79 +2336,64 @@ local function bindAutoGoalForceStripper(ball, state)
 end
 
 local function getSmoothAutoGoalVelocity(ball, state, elapsed, dt)
-    local duration = math.max(state.duration, 0.1)
-    local launchVel = state.launchVel
-    local launchSpeed = state.launchSpeed or state.speed
-    local launchDir = launchVel and launchVel.Magnitude > 1 and launchVel.Unit or state.flatDir
+    local duration = math.max(state.duration, 0.01)
+    local step = dt or CONST.AUTO_GOAL_TICK
+    local t = math.clamp(elapsed / duration, 0, 1)
+    local tNext = math.clamp((elapsed + step) / duration, 0, 1)
 
-    local steerBlend = smoothstep(math.clamp(elapsed / (state.launchBlend or 0.38), 0, 1))
-    local speedBlend = smoothstep(math.clamp(elapsed / (state.speedBlend or 0.5), 0, 1))
+    local pathPos = quadraticBezier(t, state.p0, state.p1, state.p2)
+    local pathNext = quadraticBezier(tNext, state.p0, state.p1, state.p2)
+    local tangent = pathNext - pathPos
 
-    local launchHold = state.outsideBox and 0.25 or 0.18
-    local aimPoint
-    if elapsed < launchHold and launchDir then
-        local lead = math.max(launchSpeed, 24) * (0.28 + elapsed * 1.5)
-        aimPoint = ball.Position + launchDir * lead
-    else
-        local rawT = math.clamp(elapsed / duration, 0, 1)
-        local t = smoothstep(rawT)
-        local lookT = math.clamp(t + 0.08 * steerBlend, 0.05, 1)
-        aimPoint = quadraticBezier(lookT, state.p0, state.p1, state.p2)
-        if rawT > 0.5 then
-            local homeBlend = ((rawT - 0.5) / 0.5) ^ 1.4
-            aimPoint = aimPoint:Lerp(state.p2, homeBlend)
+    if tangent.Magnitude < 0.01 then
+        tangent = state.target - pathPos
+    end
+    if tangent.Magnitude < 0.01 then
+        return state.smoothVel or state.launchVel or Vector3.zero
+    end
+
+    local stepTime = math.max((tNext - t) * duration, 0.001)
+    local pathSpeed = tangent.Magnitude / stepTime
+    local speed = math.clamp(pathSpeed, state.speed * 0.92, state.speed * 1.08)
+    local pathVel = tangent.Unit * speed
+
+    local current = state.smoothVel or state.launchVel or pathVel
+    local blended = current:Lerp(pathVel, 0.58)
+
+    if blended.Magnitude > 1 then
+        blended = blended.Unit * speed
+    end
+
+    state.smoothVel = blended
+    return blended
+end
+
+local function getAutoGoalLaunchVelocity(state)
+    local steps = math.max(math.ceil(state.duration / 0.01), 1)
+    local tStep = 1 / steps
+    local pos0 = quadraticBezier(0, state.p0, state.p1, state.p2)
+    local pos1 = quadraticBezier(tStep, state.p0, state.p1, state.p2)
+    local tangent = pos1 - pos0
+
+    if tangent.Magnitude < 0.05 then
+        local toTarget = state.target - state.p0
+        if toTarget.Magnitude < 0.5 then
+            return state.launchVel or Vector3.zero
         end
+        tangent = toTarget
     end
 
-    local toTarget = aimPoint - ball.Position
-    if toTarget.Magnitude < 0.75 then
-        toTarget = state.p2 - ball.Position
-    end
-    if toTarget.Magnitude < 0.25 then
-        return state.smoothVel or launchVel or Vector3.zero
-    end
-
-    local pathDir = toTarget.Unit
-    local sv = ball:FindFirstChild("ShootVelocity")
-    local current = (sv and sv:IsA("BodyVelocity") and sv.Velocity.Magnitude > 1 and sv.Velocity)
-        or (ball.AssemblyLinearVelocity.Magnitude > 1 and ball.AssemblyLinearVelocity)
-        or launchVel
-        or Vector3.zero
-
-    local vel = blendGameLikeAutoGoalVelocity(
-        state,
-        ball,
-        current,
-        launchVel,
-        launchDir,
-        launchSpeed,
-        pathDir,
-        state.speed,
-        steerBlend,
-        speedBlend,
-        elapsed,
-        dt
-    )
-    state.smoothVel = vel
-
-    if mods.autoGoalKnuckle and state.knuckle and elapsed >= 0.22 then
-        vel = layerKnuckleOnAutoGoal(vel, state.knuckle, ball, elapsed, dt)
-        state.smoothVel = vel
-    end
-
-    return vel
+    return tangent.Unit * state.speed
 end
 
 local function beginAutoGoalPath(ball, velocity, target)
+    claimAutoGoalBall(ball)
+    lockAutoGoalShotTarget(ball, target, velocity)
+
     local p0, p1, p2, profile = buildAutoGoalPath(ball.Position, target)
     local now = tick()
-    local speed = resolveAutoGoalSpeed(velocity.Magnitude, ball.Position, target)
-    local distance = (target - ball.Position).Magnitude
-    local duration = math.clamp(
-        math.max(profile.pathTime, distance / math.max(speed, 1) * 0.82),
-        0.5,
-        1.8
-    )
+    local duration = profile.pathTime
+    local speed = resolveAutoGoalSpeed(velocity.Magnitude, p0, p1, p2, duration)
     local state = {
         p0 = p0,
         p1 = p1,
@@ -2616,27 +2406,19 @@ local function beginAutoGoalPath(ball, velocity, target)
         launchVel = velocity,
         launchSpeed = velocity.Magnitude,
         outsideBox = profile.outside,
-        loftBias = profile.loftBias,
-        launchBlend = profile.outside and 0.42 or 0.32,
-        speedBlend = profile.outside and 0.58 or 0.38,
-        flatDir = velocity.Magnitude > 1 and Vector3.new(velocity.X, 0, velocity.Z).Magnitude > 0.1
-            and Vector3.new(velocity.X, 0, velocity.Z).Unit
-            or velocity.Unit,
+        curveSide = profile.curveSide,
         smoothVel = velocity,
-        deadline = now + duration + 0.35,
+        deadline = now + duration + 0.25,
     }
 
     autoGoalState.paths[ball] = state
     bindAutoGoalForceStripper(ball, state)
     showAutoGoalMarker(target, false)
-    stripShotCurveForAutoGoal(ball)
-
-    if mods.autoGoalKnuckle then
-        initAutoGoalKnuckleState(state, ball, velocity, target)
-    end
+    applyAutoGoalShotPhysics(ball, state)
+    applyKnuckleShotMods(ball, true)
 end
 
-local function clearAutoGoalPath(ball)
+clearAutoGoalPath = function(ball)
     local state = autoGoalState.paths[ball]
     if state and state.forceConn then
         pcall(function()
@@ -2644,9 +2426,34 @@ local function clearAutoGoalPath(ball)
         end)
     end
     autoGoalState.paths[ball] = nil
+    releaseAutoGoalBall(ball)
+    autoGoalState.lockedTarget = nil
+    autoGoalState.lockedNet = nil
 end
 
-local function manipulateReactVector(rConfig)
+local function applyAutoGoalReactVector(rConfig, ball, vector)
+    local target = getAutoGoalShotTarget(ball, vector)
+    if not target then
+        return false
+    end
+
+    beginAutoGoalPath(ball, vector, target)
+    local state = autoGoalState.paths[ball]
+    if not state then
+        return false
+    end
+
+    local guided = getAutoGoalLaunchVelocity(state)
+    rConfig.vector = guided
+    state.launchVel = guided
+    state.launchSpeed = guided.Magnitude
+    state.smoothVel = guided
+    applyAutoGoalShotPhysics(ball, state)
+
+    return true
+end
+
+manipulateReactVector = function(rConfig)
     local ball = rConfig.ball
     local vector = rConfig.vector
     if not ball or not vector or vector.Magnitude < 1 then
@@ -2657,28 +2464,21 @@ local function manipulateReactVector(rConfig)
         task.spawn(acquireNetworkOwnership, ball, { timeout = 0.6, pivot = true })
     end
 
-    if mods.autoGoalEnabled then
-        local target = getAutoGoalShotTarget(ball, vector)
-        if target then
-            beginAutoGoalPath(ball, vector, target)
-            return
-        end
+    if mods.autoGoalEnabled and applyAutoGoalReactVector(rConfig, ball, vector) then
+        return
     end
 
-    if mods.powerKnuckleEnabled then
-        rConfig.vector = beginKnuckleShot(ball, nil, vector)
+    if mods.autoGoalEnabled then
         return
     end
 
     if mods.insanePowerEnabled then
-        stripRisingForce(ball)
-        local boosted = applyShotPowerScale(vector, mods.insanePower, mods.insaneHeight)
-        rConfig.vector = boosted
-        beginInsanePowerMaintain(ball, boosted)
+        rConfig.vector = applyShotPowerScale(vector, mods.insanePower, mods.insaneHeight)
+        powerState.reactBoosted[ball] = tick()
     end
 end
 
-local function runVelocityTamperLoop()
+runVelocityTamperLoop = function()
     if shotTamperState.connection then
         return
     end
@@ -2699,10 +2499,12 @@ local function runVelocityTamperLoop()
                         continue
                     end
 
+                    applyAutoGoalShotPhysics(ball, state)
+
                     local elapsed = now - state.startTime
-                    local dt = math.max(now - (state.lastUpdate or now), CONST.AUTO_GOAL_TICK)
                     state.lastUpdate = now
-                    local vel = getSmoothAutoGoalVelocity(ball, state, elapsed, dt)
+                    local vel = getSmoothAutoGoalVelocity(ball, state, elapsed, CONST.AUTO_GOAL_TICK)
+                    state.smoothVel = vel
 
                     local sv = ball:FindFirstChild("ShootVelocity")
                     if sv and sv.Parent then
@@ -2712,55 +2514,11 @@ local function runVelocityTamperLoop()
                 end
             end
         elseif next(autoGoalState.paths) then
+            for ball, _ in autoGoalState.paths do
+                clearAutoGoalPath(ball)
+            end
             table.clear(autoGoalState.paths)
-        end
-
-        if mods.powerKnuckleEnabled and next(knuckleState.active) then
-            local now = tick()
-            if now - shotTamperState.lastKnuckle >= CONST.KNUCKLE_TICK then
-                shotTamperState.lastKnuckle = now
-
-                for ball, state in knuckleState.active do
-                    if not ball.Parent or now > (state.deadline or 0) then
-                        stopKnuckle(ball)
-                        continue
-                    end
-
-                    local elapsed = os.clock() - state.start
-                    local vel = computeCustomKnuckleVelocity(state, elapsed, ball)
-                    state.lastVel = vel
-
-                    local sv = state.constraint
-                    if not sv or not sv.Parent then
-                        sv = ball:FindFirstChild("ShootVelocity")
-                        state.constraint = sv
-                    end
-
-                    if sv and sv.Parent then
-                        setConstraintVelocity(sv, vel)
-                    end
-                    ball.AssemblyLinearVelocity = vel
-                end
-            end
-        elseif next(knuckleState.active) then
-            for ball, _ in knuckleState.active do
-                stopKnuckle(ball)
-            end
-        end
-
-        if mods.insanePowerEnabled and not mods.autoGoalEnabled and not mods.powerKnuckleEnabled then
-            for ball, state in powerState.maintain do
-                if not ball.Parent or tick() > (state.deadline or 0) then
-                    powerState.maintain[ball] = nil
-                    continue
-                end
-
-                stripRisingForce(ball)
-                local sv = ball:FindFirstChild("ShootVelocity")
-                setBallVelocity(ball, sv, state.vel)
-            end
-        elseif next(powerState.maintain) then
-            table.clear(powerState.maintain)
+            table.clear(autoGoalState.claimed)
         end
     end)
 
@@ -2772,8 +2530,11 @@ local function applyAutoGoal(ball, constraint, velocity)
         return velocity
     end
 
+    claimAutoGoalBall(ball)
+
     local target = getAutoGoalShotTarget(ball, velocity)
     if not target then
+        releaseAutoGoalBall(ball)
         return velocity
     end
 
@@ -2787,11 +2548,7 @@ local function applyAutoGoal(ball, constraint, velocity)
     end
 
     local elapsed = tick() - state.startTime
-    if elapsed < 0.08 then
-        state.launchVel = velocity
-        state.launchSpeed = velocity.Magnitude
-        state.smoothVel = velocity
-    end
+    applyAutoGoalShotPhysics(ball, state)
 
     local pathVel = getSmoothAutoGoalVelocity(ball, state, elapsed, CONST.AUTO_GOAL_TICK)
     if pathVel.Magnitude < 1 then
@@ -2799,25 +2556,8 @@ local function applyAutoGoal(ball, constraint, velocity)
     end
 
     setBallVelocity(ball, constraint, pathVel)
+    applyKnuckleShotMods(ball, true)
     return pathVel
-end
-
-local function enforceInsanePowerShot(ball, constraint, boostedVelocity)
-    if powerState.enforcers[constraint] then
-        return
-    end
-    powerState.enforcers[constraint] = true
-
-    task.spawn(function()
-        local deadline = tick() + 0.75
-        while constraint.Parent and ball.Parent and tick() < deadline and mods.insanePowerEnabled and isScriptAlive() do
-            stripRisingForce(ball)
-            setConstraintVelocity(constraint, boostedVelocity)
-            ball.AssemblyLinearVelocity = boostedVelocity
-            task.wait()
-        end
-        powerState.enforcers[constraint] = nil
-    end)
 end
 
 local function applyInsanePowerToShot(ball, constraint, velocity)
@@ -2828,22 +2568,9 @@ local function applyInsanePowerToShot(ball, constraint, velocity)
         return velocity
     end
 
-    stripRisingForce(ball)
-
     local boosted = applyShotPowerScale(velocity, mods.insanePower, mods.insaneHeight)
     setBallVelocity(ball, constraint, boosted)
-    beginInsanePowerMaintain(ball, boosted)
-    enforceInsanePowerShot(ball, constraint, boosted)
-
     return boosted
-end
-
-local function applyPowerKnuckle(ball, constraint, velocity)
-    if not mods.powerKnuckleEnabled or not canModifyShot(ball, constraint) then
-        return velocity
-    end
-
-    return beginKnuckleShot(ball, constraint, velocity)
 end
 
 local function applyShotMods(ball, constraint, velocity)
@@ -2859,15 +2586,36 @@ local function applyShotMods(ball, constraint, velocity)
         return applyAutoGoal(ball, constraint, velocity)
     end
 
-    if mods.powerKnuckleEnabled then
-        return applyPowerKnuckle(ball, constraint, velocity)
+    local result = velocity
+
+    if mods.insanePowerEnabled then
+        local reactBoosted = powerState.reactBoosted[ball]
+        local boostedFromReact = reactBoosted and tick() - reactBoosted < 0.2
+
+        if isShootVelocity then
+            if not boostedFromReact then
+                if velocity.Magnitude >= 1 then
+                    result = applyInsanePowerToShot(ball, constraint, velocity)
+                else
+                    task.defer(function()
+                        if not constraint.Parent or not mods.insanePowerEnabled then
+                            return
+                        end
+                        local vel = getConstraintVelocity(constraint)
+                        if vel and vel.Magnitude >= 1 then
+                            applyInsanePowerToShot(ball, constraint, vel)
+                        end
+                    end)
+                end
+            end
+            powerState.reactBoosted[ball] = nil
+        elseif velocity.Magnitude >= config.shotSpeedThreshold then
+            result = applyInsanePowerToShot(ball, constraint, velocity)
+        end
     end
 
-    if mods.insanePowerEnabled and (isShootVelocity or velocity.Magnitude >= config.shotSpeedThreshold) then
-        return applyInsanePowerToShot(ball, constraint, velocity)
-    end
-
-    return velocity
+    applyKnuckleShotMods(ball, isShootVelocity)
+    return result
 end
 
 local function onVelocityAdded(ball, constraint, tracked)
@@ -2895,7 +2643,7 @@ local function onVelocityAdded(ball, constraint, tracked)
     end
 end
 
-local function setupBallPrediction(ball)
+setupBallPrediction = function(ball)
     if not ball:IsA("BasePart") or trackedBalls[ball] then return end
 
     local tracked = { gk = {}, shot = {} }
@@ -2910,9 +2658,6 @@ local function setupBallPrediction(ball)
         onVelocity(child)
         if child.Name == "ShootVelocity" and child:IsA("BodyVelocity") then
             markShotPredict(ball, 2.5)
-            if config.predictorEnabled then
-                task.defer(runPredictionVisualize)
-            end
         end
     end))
     for _, child in ball:GetChildren() do
@@ -2920,7 +2665,11 @@ local function setupBallPrediction(ball)
     end
 end
 
+end
+
 --##REACH LOGIC##
+do
+
 local function addReachBall(ball)
     if ball:IsA("BasePart") and ball.Name == "Ball" and not table.find(reachState.balls, ball) then
         table.insert(reachState.balls, ball)
@@ -3036,7 +2785,7 @@ local function canReactToBall(ball, force)
     return true
 end
 
-local function getValidBalls()
+getValidBalls = function()
     local valid = {}
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 
@@ -3067,7 +2816,7 @@ local function getReachTarget(bounds, compMode)
     return bounds[1]
 end
 
-local function destroyReachVisual(folderKey, boxKey)
+destroyReachVisual = function(folderKey, boxKey)
     if reachState[folderKey] then
         pcall(function() reachState[folderKey]:Destroy() end)
         reachState[folderKey] = nil
@@ -3075,7 +2824,7 @@ local function destroyReachVisual(folderKey, boxKey)
     end
 end
 
-local function updateBoxVisual(root, boxKey, folderKey, size, offset, color, transparency, enabled, showVisual)
+updateBoxVisual = function(root, boxKey, folderKey, size, offset, color, transparency, enabled, showVisual)
     if not showVisual or not enabled then
         destroyReachVisual(folderKey, boxKey)
         return
@@ -3201,7 +2950,7 @@ local function getGKGloveScale()
     return math.max(1, uniform)
 end
 
-local function restoreGKGloveSizes()
+restoreGKGloveSizes = function()
     for part, original in reachState.gloveOriginals do
         if part and part.Parent and part:IsA("BasePart") then
             pcall(function()
@@ -3263,7 +3012,7 @@ local function ensureGKHandHitbox(hand, sideKey)
     return hitbox
 end
 
-local function applyGKGloveExpansion(character)
+applyGKGloveExpansion = function(character)
     if not character or not mods.gkReachEnabled or not mods.gkGloveExpand then
         restoreGKGloveSizes()
         return {}
@@ -3302,7 +3051,7 @@ local function applyGKGloveExpansion(character)
     return touchParts
 end
 
-local function syncGKRootLimbSizes()
+syncGKRootLimbSizes = function()
     if not mods.gkReachEnabled or not gameRoot.root then
         return
     end
@@ -3422,7 +3171,7 @@ local function fireTouchAllCharacterParts(character, target)
     end
 end
 
-local function tryBoundsReach(character, root, offset, size, limbs, compMode, extraTouchParts)
+tryBoundsReach = function(character, root, offset, size, limbs, compMode, extraTouchParts)
     local target, ballsInBox = getBallsInReachBox(root, offset, size, compMode)
     if not target then
         return nil, ballsInBox
@@ -3439,16 +3188,10 @@ end
 
 local lastReactTime = 0
 local REACT_INTERVAL = 0.1
+end
 
 --##NETWORK FORGER##
-local networkState = {
-    ready = false,
-    error = "Network forger not initialized",
-    Network = nil,
-    GetNetworkKey = nil,
-}
-
-local tryInitNetworkForger
+do
 
 do
 local FORGER_REQUIRED = { "getgc", "getfenv", "setfenv", "getupvalues", "getconstants", "newcclosure", "islclosure", "loadstring" }
@@ -3946,7 +3689,7 @@ local function tryVirtualGKCatch()
 end
 
 --##REACT##
-local function findGameRoot()
+findGameRoot = function()
     if gameRoot.root then
         return true
     end
@@ -3971,7 +3714,7 @@ local function findGameRoot()
     return false
 end
 
-local function installReactManipulator()
+installReactManipulator = function()
     if gameRoot.manipulatorInstalled or type(gameRoot.react) ~= "function" then
         return
     end
@@ -4051,7 +3794,7 @@ local function installReactManipulator()
     end
 end
 
-local function patchGameReact()
+patchGameReact = function()
     if gameRoot.patched or not gameRoot.root then
         return
     end
@@ -4119,24 +3862,34 @@ table.insert(connections, RunService.RenderStepped:Connect(function()
     end
 
     if mods.autoGoalEnabled and mods.autoGoalShowMarker then
-        if tick() - autoGoalState.lastNetRefresh > 2 then
-            autoGoalState.lastNetRefresh = tick()
-            refreshNetParts()
-        end
-        local target = getAutoGoalPreviewTarget()
-        if target then
-            autoGoalState.lockedTarget = target
-            autoGoalState.lockedNet = resolveAutoGoalNet(getAutoGoalPreviewFromPos(), Vector3.new(0, 0, -1))
-            showAutoGoalMarker(target, true)
+        local net = resolveAutoGoalNet(getAutoGoalPreviewFromPos(), Vector3.new(0, 0, -1))
+        if net then
+            updateGoalPostESP(net)
+            local previewTarget = getAutoGoalPreviewTarget()
+            if previewTarget then
+                showAutoGoalMarker(previewTarget, true)
+            else
+                clearAutoGoalPreview()
+            end
         else
-            autoGoalState.lockedTarget = nil
-            autoGoalState.lockedNet = nil
+            clearGoalPostESP()
             clearAutoGoalPreview()
         end
     else
+        clearGoalPostESP()
+        clearAutoGoalPreview()
+    end
+
+    if not mods.autoGoalEnabled then
+        if next(autoGoalState.paths) then
+            for ball, _ in autoGoalState.paths do
+                clearAutoGoalPath(ball)
+            end
+            table.clear(autoGoalState.paths)
+            table.clear(autoGoalState.claimed)
+        end
         autoGoalState.lockedTarget = nil
         autoGoalState.lockedNet = nil
-        clearAutoGoalPreview()
     end
 
     if isGameplayBlocked() then
@@ -4258,87 +4011,11 @@ table.insert(connections, RunService.RenderStepped:Connect(function()
         end
     end
 end))
-
---##PING SPOOFER##
-local pingState = {
-    hooked = false,
-    oldNamecall = nil,
-    lastSpoof = 0,
-    current = nil,
-    target = nil,
-    lastRetarget = 0,
-}
-
-local function getPingBounds()
-    local minPing = math.min(mods.pingMin, mods.pingMax)
-    local maxPing = math.max(mods.pingMin, mods.pingMax)
-    return minPing, maxPing
 end
-
-local function getRealisticSpoofedPing()
-    local minPing, maxPing = getPingBounds()
-    if minPing == maxPing then
-        return math.round(minPing)
-    end
-
-    local now = tick()
-    if not pingState.current then
-        pingState.current = minPing + math.random() * (maxPing - minPing)
-        pingState.target = pingState.current
-        pingState.lastRetarget = now
-    end
-
-    if now - pingState.lastRetarget >= math.random(1.8, 4.2) then
-        local center = (minPing + maxPing) * 0.5
-        local spread = (maxPing - minPing) * 0.45
-        pingState.target = math.clamp(
-            center + (math.random() - 0.5) * spread * 2,
-            minPing,
-            maxPing
-        )
-        pingState.lastRetarget = now
-    end
-
-    local drift = (pingState.target - pingState.current) * 0.22
-    local jitter = (math.random() - 0.5) * 2.4
-    if math.random() < 0.08 then
-        jitter += (math.random() - 0.5) * 6
-    end
-
-    pingState.current = math.clamp(pingState.current + drift + jitter, minPing, maxPing)
-    return math.round(pingState.current)
-end
-
-local function setupPingSpoof()
-    if pingState.hooked or not PingEvent then return end
-
-    if hookmetamethod and getnamecallmethod then
-        pingState.oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-            local method = getnamecallmethod()
-            if mods.pingSpoof and self == PingEvent and method == "FireServer" then
-                return pingState.oldNamecall(self, getRealisticSpoofedPing())
-            end
-            return pingState.oldNamecall(self, ...)
-        end)
-        pingState.hooked = true
-        return
-    end
-
-    table.insert(connections, RunService.Heartbeat:Connect(function()
-        if not isScriptAlive() then return end
-        if mods.pingSpoof and PingEvent and tick() - pingState.lastSpoof >= 0.5 then
-            pingState.lastSpoof = tick()
-            pcall(function()
-                PingEvent:FireServer(getRealisticSpoofedPing())
-            end)
-        end
-    end))
-    pingState.hooked = true
-end
-
-setupPingSpoof()
 
 --##INSANE POWER##
+do
+
 local function markProcessed(constraint)
     powerState.processed[constraint] = true
     constraint.AncestryChanged:Once(function()
@@ -4421,7 +4098,7 @@ table.insert(connections, Engine.ChildAdded:Connect(initInsanePowerOnBall))
 
 --##ANTI IDLE##
 local antiIdleConn = nil
-local function setAntiIdle(enabled)
+setAntiIdle = function(enabled)
     mods.antiIdle = enabled
     if antiIdleConn then
         antiIdleConn:Disconnect()
@@ -4436,7 +4113,11 @@ local function setAntiIdle(enabled)
     end
 end
 
+end
+
 --##INFINITE STAMINA##
+do
+
 local STAMINA_TARGET = 100
 
 local function findMovementStaminaValue()
@@ -4509,7 +4190,7 @@ local function maintainStamina()
     applyInfiniteStamina()
 end
 
-local function setInfiniteStamina(enabled)
+setInfiniteStamina = function(enabled)
     mods.infiniteStamina = enabled
 
     if enabled then
@@ -4547,6 +4228,93 @@ task.defer(function()
 end)
 
 task.defer(tryInitNetworkForger)
+end
+
+local setupPingSpoof
+local resetPingSpoofState
+
+--##PING SPOOFER##
+do
+
+local pingState = {
+    hooked = false,
+    oldNamecall = nil,
+    displayPing = nil,
+    nextUpdate = 0,
+    heartbeatConn = nil,
+}
+
+resetPingSpoofState = function()
+    pingState.displayPing = nil
+    pingState.nextUpdate = 0
+end
+
+local function getPingBounds()
+    local minPing = math.min(mods.pingMin, mods.pingMax)
+    local maxPing = math.max(mods.pingMin, mods.pingMax)
+    return minPing, maxPing
+end
+
+local function pickSpoofedPing()
+    local minPing, maxPing = getPingBounds()
+    if minPing == maxPing then
+        return math.round(minPing)
+    end
+
+    local center = (minPing + maxPing) * 0.5
+    local spread = (maxPing - minPing) * 0.45
+    return math.round(math.clamp(
+        center + (math.random() - 0.5) * spread * 2,
+        minPing,
+        maxPing
+    ))
+end
+
+local function getRealisticSpoofedPing()
+    local now = tick()
+    if pingState.displayPing == nil or now >= pingState.nextUpdate then
+        pingState.displayPing = pickSpoofedPing()
+        pingState.nextUpdate = now + math.random(4, 5)
+    end
+    return pingState.displayPing
+end
+
+setupPingSpoof = function()
+    if not PingEvent then
+        return
+    end
+
+    if pingState.hooked then
+        return
+    end
+
+    if hookmetamethod and getnamecallmethod then
+        pingState.oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+            local method = getnamecallmethod()
+            if mods.pingSpoof and self == PingEvent and method == "FireServer" then
+                return pingState.oldNamecall(self, getRealisticSpoofedPing())
+            end
+            return pingState.oldNamecall(self, ...)
+        end)
+        pingState.hooked = true
+        return
+    end
+
+    pingState.heartbeatConn = trackConnection(RunService.Heartbeat:Connect(function()
+        if not isScriptAlive() then
+            return
+        end
+        if mods.pingSpoof and PingEvent and tick() >= pingState.nextUpdate then
+            pcall(function()
+                PingEvent:FireServer(getRealisticSpoofedPing())
+            end)
+        end
+    end))
+    pingState.hooked = true
+end
+
+setupPingSpoof()
+end
 
 --##AUTO SETPIECE##
 local setpieceState = {
@@ -4762,8 +4530,11 @@ end
 --##UI##
 task.wait(0.5)
 
-local function buildFutUI()
-local function killScript()
+local GUI
+local killScript
+local confirmKillScript
+
+killScript = function(skipUiUnload)
     if scriptState.killed then
         return
     end
@@ -4773,8 +4544,8 @@ local function killScript()
     pcall(function()
         mods.infiniteStamina = false
         mods.insanePowerEnabled = false
+        mods.knuckleShotsEnabled = false
         mods.autoCatchEnabled = false
-        mods.powerKnuckleEnabled = false
         mods.autoGoalEnabled = false
         mods.autoSetpieceEnabled = false
         mods.autoFreekickEnabled = false
@@ -4798,18 +4569,17 @@ local function killScript()
         end
         setpieceState.button = nil
 
-        for ball, _ in knuckleState.active do
-            stopKnuckle(ball)
-        end
-        table.clear(knuckleState.active)
         table.clear(autoGoalState.paths)
+        table.clear(autoGoalState.claimed)
         autoGoalState.lockedTarget = nil
         autoGoalState.lockedNet = nil
-        table.clear(powerState.maintain)
-        table.clear(powerState.enforcers)
         table.clear(powerState.processed)
+        table.clear(powerState.reactBoosted)
+        table.clear(knuckleShotState.active)
+        table.clear(knuckleShotState.watched)
 
         clearAutoGoalPreview()
+        clearGoalPostESP()
         clearAutoGoalFolder()
         if autoGoalState.marker then
             autoGoalState.marker:Destroy()
@@ -4843,9 +4613,7 @@ local function killScript()
             pingState.hooked = false
             pingState.oldNamecall = nil
         end
-        pingState.current = nil
-        pingState.target = nil
-        pingState.lastRetarget = 0
+        resetPingSpoofState()
 
         if gameRoot.revertManipulator then
             pcall(gameRoot.revertManipulator)
@@ -4862,429 +4630,529 @@ local function killScript()
             conn:Disconnect()
         end
 
-        if GUI then
-            GUI:Destroy()
+        if GUI and not skipUiUnload then
+            local guiRef = GUI
+            GUI = nil
+            pcall(function()
+                guiRef:Unload()
+            end)
+        else
+            GUI = nil
         end
     end)
 
-    getgenv().futmod = nil
-    print("FUT MOD killed")
+    getgenv().OverseerFUT = nil
+    print("Overseer FUT killed")
 end
 
-local function loadVenturaLibrary()
-    local source = game:HttpGet("https://codeberg.org/VenomVent/Ventura-UI/raw/branch/main/VenturaLibrary.lua")
-
-    source = source:gsub('name="Tab", icon="🏠"', 'name="Tab", icon=""')
-    source = source:gsub('name = "Settings", icon = "⚙️"', 'name = "Settings", icon = ""')
-
-    source = source:gsub(
-        "local sh = winH%*(v/100%)\n tw%(Main, %{ Size",
-        "local sh = minimized and 34 or winH*(v/100)\n tw(MainWrap, { Size"
-    )
-    source = source:gsub(
-        "local sw=winW%*(v/100%); local sh=winH%*(v/100%)\n tw%(Main,",
-        "local sw=winW*(v/100); local sh=minimized and 34 or winH*(v/100)\n tw(MainWrap,"
-    )
-    source = source:gsub(
-        "local sw = winW%*(currentScale/100%); local sh = winH%*(currentScale/100%)\n Main%.Size",
-        "local sw = winW*(currentScale/100); local sh = minimized and 34 or winH*(currentScale/100)\n MainWrap.Size"
-    )
-    source = source:gsub(
-        "Main%.Size = UDim2%.new%(0, winW, 0, winH%)",
-        "MainWrap.Size = UDim2.new(0, winW, 0, winH)"
-    )
-    source = source:gsub(
-        "currentScale = 100 %-%- reset scale to 100 when manually resizing\n MainWrap%.Size",
-        "currentScale = 100\n if GUI._cfgSyncCallbacks and GUI._cfgSyncCallbacks.scale then pcall(GUI._cfgSyncCallbacks.scale, 100) end\n MainWrap.Size"
-    )
-
-    if not source:find('iconInfo%.kind=="none"') and not source:find('iconInfo%.kind == "none"') then
-        source = source:gsub(
-            "Tab%._navText=navText",
-            'Tab._navText=navText\n if iconInfo.kind=="none" then navIcon.Visible=false navText.Size=UDim2.new(1,-10,1,0) navText.Position=UDim2.new(0,8,0,0) end'
-        )
+confirmKillScript = function()
+    if not GUI then
+        killScript()
+        return
     end
 
-    return loadstring(source)()
+    GUI:Dialog({
+        Title = "Overseer FUT",
+        Description = "Kill script and unload all mods? This cannot be undone until you re-execute.",
+        Buttons = {
+            {
+                Name = "Confirm",
+                Callback = function()
+                    task.defer(killScript)
+                end,
+            },
+            {
+                Name = "Cancel",
+            },
+        },
+    })
 end
 
-local function getSliderStepDecimals(step)
-    local stepString = string.format("%.10f", step):gsub("0+$", "")
-    local decimalPart = stepString:match("%.(%d+)")
-    return decimalPart and #decimalPart or 0
-end
+local function loadMacLib()
+    local ok, result = pcall(function()
+        return loadstring(game:HttpGet("https://github.com/biggaboy212/Maclib/releases/latest/download/maclib.txt"))()
+    end)
 
-local function snapSliderValue(value, minVal, maxVal, step)
-    local clamped = math.clamp(tonumber(value) or minVal, minVal, maxVal)
-    if step >= 1 then
-        return math.clamp(math.floor(clamped / step + 0.5) * step, minVal, maxVal)
+    if not ok or type(result) ~= "table" or type(result.Window) ~= "function" then
+        warn("Overseer FUT: UI download failed", result)
+        return nil
     end
-    local steps = math.floor((clamped - minVal) / step + 0.5)
-    return math.clamp(minVal + steps * step, minVal, maxVal)
-end
 
-local function formatSliderValue(value, decimals, suffix)
-    suffix = suffix or ""
-    if decimals <= 0 then
-        return tostring(math.floor(value + 0.5)) .. suffix
-    end
-    local formatted = string.format("%." .. decimals .. "f", value)
-    formatted = formatted:gsub("(%..-)0+$", "%1"):gsub("%.$", "")
-    return formatted .. suffix
-end
-
-local function installSmoothSliders(gui, library)
-    local UIS = game:GetService("UserInputService")
-    local TweenService = game:GetService("TweenService")
-    local theme = library.Theme
-    local oldCreateTab = gui.CreateTab
-
-    function gui:CreateTab(opts)
-        opts = opts or {}
-        opts.icon = ""
-        local tab = oldCreateTab(self, opts)
-
-        if tab._navIcon then
-            tab._navIcon.Visible = false
-        end
-        if tab._navText then
-            tab._navText.Position = UDim2.new(0, 8, 0, 0)
-            tab._navText.Size = UDim2.new(1, -10, 1, 0)
-        end
-
-        function tab:Slider(sliderOpts)
-            sliderOpts = sliderOpts or {}
-            local minVal = sliderOpts.min or 0
-            local maxVal = sliderOpts.max or 100
-            local suffix = sliderOpts.suffix or ""
-            local callback = sliderOpts.callback or function() end
-            local step = sliderOpts.increment or sliderOpts.step or 1
-            if type(step) ~= "number" or step <= 0 then
-                step = 1
-            end
-
-            local decimals = sliderOpts.decimals
-            if decimals == nil then
-                decimals = getSliderStepDecimals(step)
-            end
-
-            local defaultVal = snapSliderValue(sliderOpts.default or minVal, minVal, maxVal, step)
-            local range = maxVal - minVal
-            local Slider = { Value = defaultVal, Dragging = false }
-
-            local frame = Instance.new("Frame")
-            frame.Name = (sliderOpts.name or "Slider") .. "_Slider"
-            frame.BackgroundColor3 = theme.Surface
-            frame.BorderSizePixel = 0
-            frame.Size = UDim2.new(1, 0, 0, 56)
-            frame.Parent = tab._scroll
-
-            local frameCorner = Instance.new("UICorner", frame)
-            frameCorner.CornerRadius = UDim.new(0, 5)
-            local frameStroke = Instance.new("UIStroke", frame)
-            frameStroke.Color = theme.Border
-            frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-            local pad = Instance.new("UIPadding", frame)
-            pad.PaddingTop = UDim.new(0, 8)
-            pad.PaddingRight = UDim.new(0, 10)
-            pad.PaddingBottom = UDim.new(0, 9)
-            pad.PaddingLeft = UDim.new(0, 10)
-
-            local nameLabel = Instance.new("TextLabel", frame)
-            nameLabel.BackgroundTransparency = 1
-            nameLabel.Size = UDim2.new(1, -58, 0, 18)
-            nameLabel.FontFace = Font.new("rbxasset://fonts/families/Ubuntu.json")
-            nameLabel.TextSize = 13
-            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-            nameLabel.TextColor3 = theme.TextPrimary
-            nameLabel.Text = sliderOpts.name or "Slider"
-
-            local valueContainer = Instance.new("Frame", frame)
-            valueContainer.BackgroundTransparency = 1
-            valueContainer.Size = UDim2.new(0, 52, 0, 18)
-            valueContainer.AnchorPoint = Vector2.new(1, 0)
-            valueContainer.Position = UDim2.new(1, 0, 0, 0)
-
-            local valueLabel = Instance.new("TextLabel", valueContainer)
-            valueLabel.BackgroundTransparency = 1
-            valueLabel.Size = UDim2.new(1, 0, 1, 0)
-            valueLabel.FontFace = Font.new("rbxasset://fonts/families/Ubuntu.json")
-            valueLabel.TextSize = 12
-            valueLabel.TextXAlignment = Enum.TextXAlignment.Right
-            valueLabel.TextColor3 = theme.TextSecondary
-            valueLabel.Text = formatSliderValue(defaultVal, decimals, suffix)
-
-            local valueInput = Instance.new("TextBox", valueContainer)
-            valueInput.BackgroundTransparency = 1
-            valueInput.Size = UDim2.new(1, 0, 1, 0)
-            valueInput.FontFace = Font.new("rbxasset://fonts/families/Ubuntu.json")
-            valueInput.TextSize = 12
-            valueInput.TextXAlignment = Enum.TextXAlignment.Right
-            valueInput.TextColor3 = theme.Accent
-            valueInput.ClearTextOnFocus = false
-            valueInput.Visible = false
-
-            local valueClick = Instance.new("TextButton", valueContainer)
-            valueClick.BackgroundTransparency = 1
-            valueClick.Size = UDim2.new(1, 0, 1, 0)
-            valueClick.Text = ""
-            valueClick.ZIndex = 2
-
-            local track = Instance.new("Frame", frame)
-            track.BackgroundColor3 = Color3.fromRGB(13, 13, 13)
-            track.BorderSizePixel = 0
-            track.AnchorPoint = Vector2.new(0, 1)
-            track.Size = UDim2.new(1, 0, 0, 5)
-            track.Position = UDim2.new(0, 0, 1, 0)
-
-            local trackCorner = Instance.new("UICorner", track)
-            trackCorner.CornerRadius = UDim.new(0, 3)
-            local trackStroke = Instance.new("UIStroke", track)
-            trackStroke.Color = Color3.fromRGB(42, 42, 42)
-            trackStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-
-            local fill = Instance.new("Frame", track)
-            fill.BackgroundColor3 = theme.Accent
-            fill.BorderSizePixel = 0
-
-            local fillCorner = Instance.new("UICorner", fill)
-            fillCorner.CornerRadius = UDim.new(0, 3)
-
-            local thumb = Instance.new("Frame", track)
-            thumb.BackgroundColor3 = Color3.fromRGB(225, 225, 225)
-            thumb.BorderSizePixel = 0
-            thumb.AnchorPoint = Vector2.new(0.5, 0.5)
-            thumb.Size = UDim2.new(0, 10, 0, 10)
-            thumb.Position = UDim2.new(range == 0 and 0 or (defaultVal - minVal) / range, 0, 0.5, 0)
-
-            local thumbCorner = Instance.new("UICorner", thumb)
-            thumbCorner.CornerRadius = UDim.new(0, 5)
-
-            local fillTween
-
-            local function setVisuals(rel, animate)
-                rel = math.clamp(rel, 0, 1)
-                local targetSize = UDim2.new(rel, 0, 1, 0)
-                local targetPos = UDim2.new(rel, 0, 0.5, 0)
-
-                if animate and fillTween then
-                    fillTween:Cancel()
-                end
-
-                if animate then
-                    fillTween = TweenService:Create(fill, TweenInfo.new(0.04, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                        Size = targetSize,
-                    })
-                    fillTween:Play()
-                    TweenService:Create(thumb, TweenInfo.new(0.04, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                        Position = targetPos,
-                    }):Play()
-                else
-                    fill.Size = targetSize
-                    thumb.Position = targetPos
-                end
-            end
-
-            local function applyValue(value, rel, animate, silent)
-                local newVal = snapSliderValue(value, minVal, maxVal, step)
-                Slider.Value = newVal
-                if rel == nil then
-                    rel = range == 0 and 0 or (newVal - minVal) / range
-                end
-                setVisuals(rel, animate)
-                valueLabel.Text = formatSliderValue(newVal, decimals, suffix)
-                if not silent then
-                    callback(newVal)
-                end
-            end
-
-            local function updateFromPosition(x, animate)
-                if range == 0 then
-                    return
-                end
-                local rel = math.clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
-                local raw = minVal + range * rel
-                applyValue(raw, rel, animate)
-            end
-
-            track.InputBegan:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                    Slider.Dragging = true
-                    updateFromPosition(input.Position.X, true)
-                end
-            end)
-
-            local moveConn = UIS.InputChanged:Connect(function(input)
-                if Slider.Dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-                    updateFromPosition(input.Position.X, true)
-                end
-            end)
-
-            local endConn = UIS.InputEnded:Connect(function(input)
-                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                    Slider.Dragging = false
-                end
-            end)
-
-            frame.AncestryChanged:Connect(function()
-                if not frame:IsDescendantOf(game) then
-                    moveConn:Disconnect()
-                    endConn:Disconnect()
-                end
-            end)
-
-            local previousValue = defaultVal
-            valueClick.MouseButton1Click:Connect(function()
-                previousValue = Slider.Value
-                valueInput.Text = formatSliderValue(Slider.Value, decimals, "")
-                valueLabel.Visible = false
-                valueInput.Visible = true
-                valueInput:CaptureFocus()
-            end)
-
-            local function finishInput()
-                local typed = tonumber(valueInput.Text)
-                if typed then
-                    applyValue(typed, nil, false)
-                else
-                    applyValue(previousValue, nil, false)
-                end
-                valueInput.Visible = false
-                valueLabel.Visible = true
-            end
-
-            valueInput.FocusLost:Connect(function()
-                finishInput()
-            end)
-
-            function Slider:Set(v, silent)
-                applyValue(v, nil, false, silent == true)
-            end
-
-            Slider.frame = frame
-            setVisuals(range == 0 and 0 or (defaultVal - minVal) / range, false)
-            return Slider
-        end
-
-        return tab
-    end
+    return result
 end
 
 local SLIDER = {
-    stud = { increment = 0.1, decimals = 1 },
-    studHalf = { increment = 0.5, decimals = 1 },
-    mult = { increment = 0.05, decimals = 2, suffix = "x" },
-    time = { increment = 0.05, decimals = 2 },
-    int = { increment = 1, decimals = 0 },
+    stud = { display = "Tenths" },
+    studHalf = { display = "Tenths" },
+    mult = { display = "Hundredths" },
+    time = { display = "Hundredths" },
+    int = { display = "Round" },
 }
 
-local function sliderOpts(opts, preset)
-    opts.increment = opts.increment or preset.increment
-    opts.decimals = opts.decimals or preset.decimals
-    if opts.suffix == nil and preset.suffix ~= nil then
-        opts.suffix = preset.suffix
-    end
-    return opts
+local function macSlider(section, opts, preset)
+    section:Slider({
+        Name = opts.name or opts.Name,
+        Default = opts.default or opts.Default,
+        Minimum = opts.min or opts.Minimum,
+        Maximum = opts.max or opts.Maximum,
+        DisplayMethod = preset.display,
+        Callback = opts.callback or opts.Callback,
+    }, opts.flag)
 end
 
-local Library = loadVenturaLibrary()
+local function macDropdown(section, opts)
+    local items = opts.items or opts.Options
+    local defaultValue = opts.default or opts.Default
+    local defaultIndex = 1
+    for index, item in items do
+        if item == defaultValue then
+            defaultIndex = index
+            break
+        end
+    end
 
-GUI = Library:new({
-    name = "FUT MOD",
-    subtitle = { "v5.0", "Bugfix pass" },
-    accent = Color3.fromRGB(0, 200, 255),
-    minimizeKey = Enum.KeyCode.RightShift,
-    onClose = killScript,
+    section:Dropdown({
+        Name = opts.name or opts.Name,
+        Options = items,
+        Default = defaultIndex,
+        Callback = opts.callback or opts.Callback,
+    }, opts.flag)
+end
+
+local function macSection(tab, side)
+    return tab:Section({ Side = side or "Left" })
+end
+
+local function macToggle(section, opts)
+    section:Toggle({
+        Name = opts.name or opts.Name,
+        Default = opts.default ~= nil and opts.default or opts.Default,
+        Callback = opts.callback or opts.Callback,
+    }, opts.flag)
+end
+
+local uiState = {
+    scale = 1,
+    showNotifications = true,
+    acrylicBlur = true,
+    showUserInfo = false,
+    dragStyle = 2,
+}
+
+local configState = {
+    pendingName = "default",
+    macLibConfig = false,
+    root = "OverseerFUT",
+    dir = "OverseerFUT/configs",
+    autoloadFile = "OverseerFUT/autoload.txt",
+}
+
+local function hasConfigFileIO()
+    return typeof(writefile) == "function"
+        and typeof(readfile) == "function"
+        and typeof(isfile) == "function"
+        and typeof(isfolder) == "function"
+        and typeof(makefolder) == "function"
+end
+
+local function ensureConfigDir()
+    if not hasConfigFileIO() then
+        return false
+    end
+
+    local ok = pcall(function()
+        if not isfolder(configState.root) then
+            makefolder(configState.root)
+        end
+        if not isfolder(configState.dir) then
+            makefolder(configState.dir)
+        end
+    end)
+
+    return ok and isfolder(configState.dir)
+end
+
+local function sanitizeConfigName(name)
+    local cleaned = tostring(name or "default"):gsub("[^%w%-_]", "")
+    if cleaned == "" then
+        return "default"
+    end
+    return cleaned
+end
+
+local function serializeConfigValue(value)
+    local valueType = typeof(value)
+    if valueType == "Color3" then
+        return { _t = "Color3", R = value.R, G = value.G, B = value.B }
+    end
+    if valueType == "table" then
+        local out = {}
+        for key, child in value do
+            local serialized = serializeConfigValue(child)
+            if serialized ~= nil then
+                out[key] = serialized
+            end
+        end
+        return out
+    end
+    if valueType == "boolean" or valueType == "number" or valueType == "string" then
+        return value
+    end
+    return nil
+end
+
+local function deserializeConfigValue(value)
+    if type(value) ~= "table" then
+        return value
+    end
+    if value._t == "Color3" then
+        return Color3.new(value.R, value.G, value.B)
+    end
+    return value
+end
+
+local function mergeConfigTable(source, dest)
+    if type(source) ~= "table" or type(dest) ~= "table" then
+        return
+    end
+
+    for key, value in source do
+        if type(value) == "table" and value._t ~= "Color3" then
+            if type(dest[key]) ~= "table" then
+                dest[key] = {}
+            end
+            mergeConfigTable(value, dest[key])
+        else
+            dest[key] = deserializeConfigValue(value)
+        end
+    end
+end
+
+local function applyOverseerConfig(data)
+    if type(data) ~= "table" then
+        return false
+    end
+
+    if type(data.mods) == "table" then
+        mergeConfigTable(data.mods, mods)
+    end
+    if type(data.config) == "table" then
+        mergeConfigTable(data.config, config)
+    end
+    if type(data.uiState) == "table" then
+        mergeConfigTable(data.uiState, uiState)
+    end
+
+    setPredictionEnabled(config.predictorEnabled)
+    setInfiniteStamina(mods.infiniteStamina)
+    setAntiIdle(mods.antiIdle)
+    resetPingSpoofState()
+    if mods.pingSpoof then
+        setupPingSpoof()
+    end
+
+    return true
+end
+
+local function saveOverseerConfig(name)
+    local configName = sanitizeConfigName(name or configState.pendingName)
+    if not ensureConfigDir() then
+        warn("Overseer FUT: config save unavailable (no writefile)")
+        return false
+    end
+
+    local payload = {
+        mods = serializeConfigValue(mods),
+        config = serializeConfigValue(config),
+        uiState = serializeConfigValue(uiState),
+    }
+
+    local ok, encoded = pcall(function()
+        return HttpService:JSONEncode(payload)
+    end)
+    if not ok or not encoded then
+        return false
+    end
+
+    writefile(configState.dir .. "/" .. configName .. ".json", encoded)
+    return true
+end
+
+local function loadOverseerConfig(name)
+    local configName = sanitizeConfigName(name or configState.pendingName)
+    local path = configState.dir .. "/" .. configName .. ".json"
+    if not hasConfigFileIO() or not isfile(path) then
+        return false
+    end
+
+    local ok, decoded = pcall(function()
+        return HttpService:JSONDecode(readfile(path))
+    end)
+    if not ok or type(decoded) ~= "table" then
+        return false
+    end
+
+    return applyOverseerConfig(decoded)
+end
+
+local function setAutoloadConfig(name)
+    local configName = sanitizeConfigName(name)
+    if not hasConfigFileIO() then
+        return false
+    end
+    ensureConfigDir()
+    writefile(configState.autoloadFile, configName)
+    return true
+end
+
+local function tryLoadAutoloadConfig()
+    if not hasConfigFileIO() or not isfile(configState.autoloadFile) then
+        return false
+    end
+
+    local ok, name = pcall(function()
+        return readfile(configState.autoloadFile)
+    end)
+    if not ok or not name or name == "" then
+        return false
+    end
+
+    return loadOverseerConfig(name)
+end
+
+local function notifyConfig(message)
+    if GUI and uiState.showNotifications then
+        pcall(function()
+            GUI:Notify({
+                Title = "Overseer FUT",
+                Description = message,
+                Lifetime = 3,
+            })
+        end)
+    end
+end
+
+local function buildSettingsConfigSection(settingsTab)
+    if configState.macLibConfig and type(settingsTab.InsertConfigSection) == "function" then
+        settingsTab:InsertConfigSection("Left")
+        return
+    end
+
+    local settingsConfig = macSection(settingsTab, "Left")
+    settingsConfig:Header({ Text = "Configs" })
+    settingsConfig:Paragraph({
+        Header = "Overseer Configs",
+        Body = "MacLib config API not found in this build. Using Overseer file configs instead.",
+    })
+    settingsConfig:Input({
+        Name = "Config Name",
+        Placeholder = "default",
+        AcceptedCharacters = function(text)
+            return text:gsub("[^%w%-_]", "")
+        end,
+        Callback = function(text)
+            configState.pendingName = sanitizeConfigName(text)
+        end,
+        onChanged = function(text)
+            configState.pendingName = sanitizeConfigName(text)
+        end,
+    })
+    settingsConfig:Button({
+        Name = "Save Config",
+        Callback = function()
+            if saveOverseerConfig(configState.pendingName) then
+                notifyConfig("Saved config: " .. sanitizeConfigName(configState.pendingName))
+            else
+                notifyConfig("Failed to save config")
+            end
+        end,
+    })
+    settingsConfig:Button({
+        Name = "Load Config",
+        Callback = function()
+            if loadOverseerConfig(configState.pendingName) then
+                notifyConfig("Loaded config: " .. sanitizeConfigName(configState.pendingName))
+            else
+                notifyConfig("Failed to load config")
+            end
+        end,
+    })
+    settingsConfig:Button({
+        Name = "Set Autoload",
+        Callback = function()
+            if setAutoloadConfig(configState.pendingName) then
+                notifyConfig("Autoload set: " .. sanitizeConfigName(configState.pendingName))
+            else
+                notifyConfig("Failed to set autoload")
+            end
+        end,
+    })
+end
+
+local function buildFutUI()
+local MacLib = loadMacLib()
+if not MacLib then
+    warn("Overseer FUT v5.6: UI failed to load. Gameplay mods are still active.")
+    getgenv().OverseerFUT = {
+        Network = networkState,
+        GameRoot = gameRoot,
+        RetryForge = tryInitNetworkForger,
+        RetryRoot = function()
+            if findGameRoot() then
+                patchGameReact()
+                if not gameRoot.manipulatorInstalled then
+                    installReactManipulator()
+                end
+                return true
+            end
+            return false
+        end,
+        Kill = killScript,
+    }
+    print("Overseer FUT v5.6 | UI offline | Balls:", #reachState.balls)
+    return
+end
+
+configState.macLibConfig = type(MacLib.SetFolder) == "function"
+if configState.macLibConfig then
+    pcall(function()
+        MacLib:SetFolder(configState.root)
+    end)
+else
+    warn("Overseer FUT: MacLib config API missing, using file-based configs")
+end
+
+GUI = MacLib:Window({
+    Title = "Overseer FUT",
+    Subtitle = "v5.6 | Overseer FUT",
+    Size = UDim2.fromOffset(868, 650),
+    DragStyle = uiState.dragStyle or 2,
+    DisabledWindowControls = {},
+    ShowUserInfo = false,
+    Keybind = Enum.KeyCode.RightShift,
+    AcrylicBlur = uiState.acrylicBlur,
 })
 
-installSmoothSliders(GUI, Library)
+GUI.onUnloaded(function()
+    killScript(true)
+end)
 
-local function polishTabNav(gui)
-    for _, tab in ipairs(gui._tabs or {}) do
-        if tab._navIcon then
-            tab._navIcon.Visible = false
-        end
-        if tab._navText then
-            tab._navText.Position = UDim2.new(0, 8, 0, 0)
-            tab._navText.Size = UDim2.new(1, -10, 1, 0)
-        end
-    end
-end
+GUI:GlobalSetting({
+    Name = "Acrylic Blur",
+    Default = uiState.acrylicBlur,
+    Callback = function(state)
+        uiState.acrylicBlur = state
+        pcall(function()
+            if GUI and GUI.SetAcrylicBlurState then
+                GUI:SetAcrylicBlurState(state)
+            end
+        end)
+    end,
+})
 
-GUI:NavSection("Visual")
-local VisualTab = GUI:CreateTab({ name = "Visual", icon = "" })
-VisualTab:Section({ name = "Ball Prediction" })
+GUI:GlobalSetting({
+    Name = "Notifications",
+    Default = uiState.showNotifications,
+    Callback = function(state)
+        uiState.showNotifications = state
+        pcall(function()
+            if GUI and GUI.SetNotificationsState then
+                GUI:SetNotificationsState(state)
+            end
+        end)
+    end,
+})
 
-VisualTab:Toggle({
-    name = "Ball Prediction",
-    default = true,
-    callback = function(v)
+GUI:GlobalSetting({
+    Name = "Show User Info",
+    Default = uiState.showUserInfo,
+    Callback = function(state)
+        uiState.showUserInfo = state
+        pcall(function()
+            if GUI and GUI.SetUserInfoState then
+                GUI:SetUserInfoState(state)
+            end
+        end)
+    end,
+})
+
+local VisualGroup = GUI:TabGroup()
+local VisualTab = VisualGroup:Tab({ Name = "Visual" })
+
+local visualPred = macSection(VisualTab, "Left")
+visualPred:Header({ Text = "Ball Prediction" })
+visualPred:Toggle({
+    Name = "Enable Prediction",
+    Default = true,
+    Callback = function(v)
         config.predictorEnabled = v
         setPredictionEnabled(v)
     end,
-})
+}, "Predictor")
+visualPred:SubLabel({ Text = "Shows ball trajectory and landing zone." })
 
-VisualTab:ColorPicker({
-    name = "Accent Color",
-    default = Color3.fromRGB(0, 255, 150),
-    callback = function(c)
+local visualStyle = macSection(VisualTab, "Right")
+visualStyle:Header({ Text = "Trajectory Style" })
+visualStyle:Colorpicker({
+    Name = "Accent Color",
+    Default = Color3.fromRGB(0, 255, 150),
+    Callback = function(c)
         config.predictorColor = c
     end,
-})
+}, "PredictorColor")
 
-GUI:NavSection("Gameplay")
-local ReachTab = GUI:CreateTab({ name = "Reach", icon = "" })
-ReachTab:Section({ name = "Player Reach" })
+local GameplayGroup = GUI:TabGroup()
+local ReachTab = GameplayGroup:Tab({ Name = "Reach" })
 
-ReachTab:Toggle({
-    name = "Reach",
-    default = false,
-    callback = function(v)
+local reachPlayer = macSection(ReachTab, "Left")
+reachPlayer:Header({ Text = "Player Reach" })
+reachPlayer:Toggle({
+    Name = "Reach",
+    Default = false,
+    Callback = function(v)
         mods.reachEnabled = v
         if not v then destroyReachVisual("visualFolder", "box") end
     end,
-})
-
-ReachTab:Toggle({
-    name = "Comp Reach",
-    default = false,
-    callback = function(v)
+}, "Reach")
+reachPlayer:Toggle({
+    Name = "Comp Reach",
+    Default = false,
+    Callback = function(v)
         mods.compReach = v
         if not v then mods.reachEnabled = false end
     end,
 })
-
-ReachTab:Toggle({
-    name = "Visualizer",
-    default = true,
-    callback = function(v)
+reachPlayer:Toggle({
+    Name = "Visualizer",
+    Default = true,
+    Callback = function(v)
         mods.reachVisual = v
         if not v then destroyReachVisual("visualFolder", "box") end
     end,
 })
-
-ReachTab:ColorPicker({
-    name = "Reach Color",
-    default = Color3.fromRGB(0, 200, 255),
-    callback = function(c)
+reachPlayer:Colorpicker({
+    Name = "Reach Color",
+    Default = Color3.fromRGB(0, 200, 255),
+    Callback = function(c)
         mods.reachColor = c
     end,
 })
+reachPlayer:Divider()
+reachPlayer:SubLabel({ Text = "Hitbox Size" })
+macSlider(reachPlayer, { name = "X", min = 0, max = 15, default = 5, callback = function(v) mods.reachX = v end }, SLIDER.stud)
+macSlider(reachPlayer, { name = "Y", min = 0, max = 15, default = 3, callback = function(v) mods.reachY = v end }, SLIDER.stud)
+macSlider(reachPlayer, { name = "Z", min = 0, max = 15, default = 5, callback = function(v) mods.reachZ = v end }, SLIDER.stud)
+reachPlayer:SubLabel({ Text = "Offset" })
+macSlider(reachPlayer, { name = "Offset X", min = -10, max = 10, default = 0, callback = function(v) mods.reachOx = v end }, SLIDER.stud)
+macSlider(reachPlayer, { name = "Offset Y", min = -10, max = 10, default = 0, callback = function(v) mods.reachOy = v end }, SLIDER.stud)
+macSlider(reachPlayer, { name = "Offset Z", min = -10, max = 10, default = 0, callback = function(v) mods.reachOz = v end }, SLIDER.stud)
 
-ReachTab:Slider(sliderOpts({ name = "X", min = 0, max = 15, default = 5, suffix = " studs", callback = function(v) mods.reachX = v end }, SLIDER.stud))
-ReachTab:Slider(sliderOpts({ name = "Y", min = 0, max = 15, default = 3, suffix = " studs", callback = function(v) mods.reachY = v end }, SLIDER.stud))
-ReachTab:Slider(sliderOpts({ name = "Z", min = 0, max = 15, default = 5, suffix = " studs", callback = function(v) mods.reachZ = v end }, SLIDER.stud))
-ReachTab:Slider(sliderOpts({ name = "Offset X", min = -10, max = 10, default = 0, suffix = " studs", callback = function(v) mods.reachOx = v end }, SLIDER.stud))
-ReachTab:Slider(sliderOpts({ name = "Offset Y", min = -10, max = 10, default = 0, suffix = " studs", callback = function(v) mods.reachOy = v end }, SLIDER.stud))
-ReachTab:Slider(sliderOpts({ name = "Offset Z", min = -10, max = 10, default = 0, suffix = " studs", callback = function(v) mods.reachOz = v end }, SLIDER.stud))
-
-ReachTab:Section({ name = "GK Reach" })
-
-ReachTab:Toggle({
-    name = "GK Reach",
-    default = false,
-    callback = function(v)
+local reachGK = macSection(ReachTab, "Right")
+reachGK:Header({ Text = "Goalkeeper Reach" })
+reachGK:Toggle({
+    Name = "GK Reach",
+    Default = false,
+    Callback = function(v)
         mods.gkReachEnabled = v
         if not v then
             destroyReachVisual("gkVisualFolder", "gkBox")
@@ -5292,105 +5160,95 @@ ReachTab:Toggle({
         end
     end,
 })
-
-ReachTab:Toggle({
-    name = "Expand Gloves",
-    default = true,
-    callback = function(v)
+reachGK:Toggle({
+    Name = "Expand Gloves",
+    Default = true,
+    Callback = function(v)
         mods.gkGloveExpand = v
         if not v then
             restoreGKGloveSizes()
         end
     end,
 })
-
-ReachTab:Toggle({
-    name = "GK Visualizer",
-    default = true,
-    callback = function(v)
+reachGK:Toggle({
+    Name = "GK Visualizer",
+    Default = true,
+    Callback = function(v)
         mods.gkReachVisual = v
         if not v then destroyReachVisual("gkVisualFolder", "gkBox") end
     end,
 })
-
-ReachTab:ColorPicker({
-    name = "GK Color",
-    default = Color3.fromRGB(255, 100, 100),
-    callback = function(c)
+reachGK:Colorpicker({
+    Name = "GK Color",
+    Default = Color3.fromRGB(255, 100, 100),
+    Callback = function(c)
         mods.gkReachColor = c
     end,
 })
+reachGK:Divider()
+reachGK:SubLabel({ Text = "GK Hitbox" })
+macSlider(reachGK, { name = "GK X", min = 0, max = 12, default = 5, callback = function(v) mods.gkReachX = v end }, SLIDER.stud)
+macSlider(reachGK, { name = "GK Y", min = 0, max = 12, default = 5, callback = function(v) mods.gkReachY = v end }, SLIDER.stud)
+macSlider(reachGK, { name = "GK Z", min = 0, max = 12, default = 5, callback = function(v) mods.gkReachZ = v end }, SLIDER.stud)
 
-ReachTab:Slider(sliderOpts({ name = "GK X", min = 0, max = 12, default = 5, suffix = " studs", callback = function(v) mods.gkReachX = v end }, SLIDER.stud))
-ReachTab:Slider(sliderOpts({ name = "GK Y", min = 0, max = 12, default = 5, suffix = " studs", callback = function(v) mods.gkReachY = v end }, SLIDER.stud))
-ReachTab:Slider(sliderOpts({ name = "GK Z", min = 0, max = 12, default = 5, suffix = " studs", callback = function(v) mods.gkReachZ = v end }, SLIDER.stud))
-
-ReachTab:Section({ name = "Ball React" })
-
-ReachTab:Toggle({
-    name = "Better React",
-    default = false,
-    callback = function(v) mods.betterReact = v end,
+local reachReact = macSection(ReachTab, "Left")
+reachReact:Header({ Text = "Ball React" })
+reachReact:Toggle({
+    Name = "Better React",
+    Default = false,
+    Callback = function(v) mods.betterReact = v end,
+})
+reachReact:Toggle({
+    Name = "Break React",
+    Default = false,
+    Callback = function(v) mods.breakReact = v end,
 })
 
-ReachTab:Toggle({
-    name = "Break React",
-    default = false,
-    callback = function(v) mods.breakReact = v end,
-})
-
-ReachTab:Section({ name = "GK Control" })
-
-ReachTab:Toggle({
-    name = "Auto Catch",
-    default = false,
-    callback = function(v)
+local reachControl = macSection(ReachTab, "Right")
+reachControl:Header({ Text = "GK Control" })
+reachControl:Toggle({
+    Name = "Auto Catch",
+    Default = false,
+    Callback = function(v)
         mods.autoCatchEnabled = v
     end,
 })
-
-ReachTab:Slider(sliderOpts({
+macSlider(reachControl, {
     name = "Catch Distance",
     min = 1,
     max = 30,
     default = 12,
-    suffix = " studs",
     callback = function(v)
         mods.autoCatchDistance = v
     end,
-}, SLIDER.studHalf))
-
-ReachTab:Slider(sliderOpts({
+}, SLIDER.studHalf)
+macSlider(reachControl, {
     name = "Catch Cooldown",
     min = 0.25,
     max = 3,
     default = 1,
-    suffix = "s",
     callback = function(v)
         mods.autoCatchCooldown = v
     end,
-}, SLIDER.time))
-
-ReachTab:Toggle({
-    name = "Pull Vector",
-    default = false,
-    callback = function(v)
+}, SLIDER.time)
+reachControl:Divider()
+reachControl:Toggle({
+    Name = "Pull Vector",
+    Default = false,
+    Callback = function(v)
         mods.pullVectorEnabled = v
     end,
 })
-
-ReachTab:Slider(sliderOpts({
+macSlider(reachControl, {
     name = "Pull Distance",
     min = 1,
     max = 50,
     default = 15,
-    suffix = " studs",
     callback = function(v)
         mods.pullDistance = v
     end,
-}, SLIDER.studHalf))
-
-ReachTab:Slider(sliderOpts({
+}, SLIDER.studHalf)
+macSlider(reachControl, {
     name = "Pull Strength",
     min = 0.1,
     max = 10,
@@ -5398,20 +5256,20 @@ ReachTab:Slider(sliderOpts({
     callback = function(v)
         mods.pullStrength = v
     end,
-}, SLIDER.mult))
+}, SLIDER.mult)
 
-local ShotsTab = GUI:CreateTab({ name = "Shots", icon = "" })
-ShotsTab:Section({ name = "Insane Power" })
+local ShotsTab = GameplayGroup:Tab({ Name = "Shots" })
 
-ShotsTab:Toggle({
-    name = "Insane Power",
-    default = false,
-    callback = function(v)
+local shotsPower = macSection(ShotsTab, "Left")
+shotsPower:Header({ Text = "Insane Power" })
+shotsPower:Toggle({
+    Name = "Insane Power",
+    Default = false,
+    Callback = function(v)
         mods.insanePowerEnabled = v
     end,
 })
-
-ShotsTab:Slider(sliderOpts({
+macSlider(shotsPower, {
     name = "Shot Power",
     min = 0,
     max = 10,
@@ -5419,206 +5277,115 @@ ShotsTab:Slider(sliderOpts({
     callback = function(v)
         mods.insanePower = v
     end,
-}, SLIDER.mult))
-
-ShotsTab:Slider(sliderOpts({
+}, SLIDER.mult)
+macSlider(shotsPower, {
     name = "Shot Height",
-    min = 0,
+    min = 0.1,
     max = 10,
     default = 1,
     callback = function(v)
         mods.insaneHeight = v
     end,
-}, SLIDER.mult))
-
-ShotsTab:Button({
-    name = "Reset Power",
-    callback = function()
+}, SLIDER.mult)
+shotsPower:Button({
+    Name = "Reset Power",
+    Callback = function()
         mods.insanePower = 1
         mods.insaneHeight = 1
     end,
 })
 
-ShotsTab:Section({ name = "Power Knuckle" })
-
-ShotsTab:Toggle({
-    name = "Power Knuckle",
-    default = false,
-    callback = function(v)
-        mods.powerKnuckleEnabled = v
+local shotsKnuckle = macSection(ShotsTab, "Right")
+shotsKnuckle:Header({ Text = "Knuckle Shots" })
+shotsKnuckle:Toggle({
+    Name = "Knuckle Shots",
+    Default = false,
+    Callback = function(v)
+        mods.knuckleShotsEnabled = v
         if not v then
-            for ball, _ in knuckleState.active do
-                stopKnuckle(ball)
-            end
-            table.clear(knuckleState.active)
+            table.clear(knuckleShotState.active)
         end
     end,
-})
-
-ShotsTab:Slider(sliderOpts({
+}, "KnuckleShots")
+macSlider(shotsKnuckle, {
     name = "Knuckle Power",
-    min = 0.5,
-    max = 2.5,
-    default = 1.08,
-    callback = function(v)
-        mods.knucklePower = v
-    end,
-}, SLIDER.mult))
-
-ShotsTab:Slider(sliderOpts({
-    name = "Knuckle Height",
-    min = 0,
-    max = 18,
-    default = 2,
-    suffix = " studs",
-    callback = function(v)
-        mods.knuckleHeight = v
-    end,
-}, SLIDER.studHalf))
-
-ShotsTab:Slider(sliderOpts({
-    name = "Break Strength",
-    min = 1,
-    max = 30,
-    default = 14,
-    callback = function(v)
-        mods.powerKnuckleIntensity = v
-    end,
-}, SLIDER.studHalf))
-
-ShotsTab:Slider(sliderOpts({
-    name = "Knuckle Flutter",
-    min = 0.2,
-    max = 2.5,
-    default = 0.85,
-    callback = function(v)
-        mods.knuckleFlutter = v
-    end,
-}, SLIDER.mult))
-
-ShotsTab:Slider(sliderOpts({
-    name = "Knuckle Smooth",
-    min = 2,
-    max = 12,
-    default = 7,
-    callback = function(v)
-        mods.knuckleSmooth = v
-    end,
-}, SLIDER.studHalf))
-
-ShotsTab:Slider(sliderOpts({
-    name = "Knuckle Mix",
-    min = 0.2,
-    max = 1,
-    default = 0.55,
-    callback = function(v)
-        mods.knuckleMix = v
-    end,
-}, SLIDER.mult))
-
-ShotsTab:Slider(sliderOpts({
-    name = "Knuckle Duration",
-    min = 0.8,
+    min = 0.3,
     max = 3,
-    default = 1.6,
-    suffix = "s",
+    default = 1,
     callback = function(v)
-        mods.powerKnuckleTime = v
+        mods.knucklePulsePower = v
     end,
-}, SLIDER.time))
-
-local GoalTab = GUI:CreateTab({ name = "Goal", icon = "" })
-GoalTab:Section({ name = "Auto Goal" })
-
-GoalTab:Toggle({
-    name = "Auto Goal",
-    default = false,
+}, SLIDER.mult)
+macSlider(shotsKnuckle, {
+    name = "Knuckle Spin",
+    min = 0.2,
+    max = 3,
+    default = 1,
     callback = function(v)
+        mods.knuckleSpinPower = v
+    end,
+}, SLIDER.mult)
+shotsKnuckle:SubLabel({ Text = "1.0 = default. 3.0 = 3x intensity." })
+shotsKnuckle:Divider()
+shotsKnuckle:SubLabel({ Text = "Pulse Timing" })
+macSlider(shotsKnuckle, {
+    name = "Knuckle Delay",
+    min = 0.15,
+    max = 0.8,
+    default = 0.4,
+    callback = function(v)
+        mods.knucklePulseDelay = v
+    end,
+}, SLIDER.time)
+macSlider(shotsKnuckle, {
+    name = "Knuckle Flutter",
+    min = 0.15,
+    max = 0.7,
+    default = 0.35,
+    callback = function(v)
+        mods.knucklePulseGap = v
+    end,
+}, SLIDER.time)
+
+local GoalTab = GameplayGroup:Tab({ Name = "Goal" })
+
+local goalTarget = macSection(GoalTab, "Left")
+goalTarget:Header({ Text = "Targeting" })
+goalTarget:Toggle({
+    Name = "Auto Goal",
+    Default = false,
+    Callback = function(v)
         mods.autoGoalEnabled = v
         if not v then
-            clearAutoGoalPreview()
-            clearAutoGoalFolder()
+            for ball, _ in autoGoalState.paths do
+                clearAutoGoalPath(ball)
+            end
             table.clear(autoGoalState.paths)
+            table.clear(autoGoalState.claimed)
             autoGoalState.lockedTarget = nil
             autoGoalState.lockedNet = nil
             if autoGoalState.marker then
                 pcall(function() autoGoalState.marker:Destroy() end)
                 autoGoalState.marker = nil
             end
+            clearAutoGoalPreview()
+            clearGoalPostESP()
+            clearAutoGoalFolder()
         else
             refreshNetParts()
         end
     end,
-})
-
-GoalTab:Dropdown({
+}, "AutoGoal")
+macDropdown(goalTarget, {
     name = "Goal Target",
     items = { "Opposite", "Closest", "Home", "Away", "Own" },
     default = "Opposite",
     callback = function(v)
         mods.autoGoalTarget = v
     end,
+    flag = "GoalTarget",
 })
-
-GoalTab:Toggle({
-    name = "Show Goal Marker",
-    default = true,
-    callback = function(v)
-        mods.autoGoalShowMarker = v
-    end,
-})
-
-GoalTab:Toggle({
-    name = "Knuckle Ball",
-    default = false,
-    callback = function(v)
-        mods.autoGoalKnuckle = v
-    end,
-})
-
-GoalTab:Section({ name = "Goal Knuckle" })
-
-GoalTab:Slider(sliderOpts({
-    name = "Knuckle Break",
-    min = 6,
-    max = 40,
-    default = 18,
-    callback = function(v)
-        mods.autoGoalKnuckleIntensity = v
-    end,
-}, SLIDER.int))
-
-GoalTab:Slider(sliderOpts({
-    name = "Knuckle Flutter",
-    min = 0.2,
-    max = 2.5,
-    default = 1,
-    callback = function(v)
-        mods.autoGoalKnuckleFlutter = v
-    end,
-}, SLIDER.mult))
-
-GoalTab:Slider(sliderOpts({
-    name = "Knuckle Smooth",
-    min = 2,
-    max = 12,
-    default = 5.5,
-    callback = function(v)
-        mods.autoGoalKnuckleSmooth = v
-    end,
-}, SLIDER.studHalf))
-
-GoalTab:Slider(sliderOpts({
-    name = "Knuckle Mix",
-    min = 0.1,
-    max = 0.65,
-    default = 0.35,
-    callback = function(v)
-        mods.autoGoalKnuckleMix = v
-    end,
-}, SLIDER.mult))
-
-GoalTab:Dropdown({
+macDropdown(goalTarget, {
     name = "Target Mode",
     items = { "Random Bin", "Top Left", "Top Right", "Center Crossbar", "Random Box" },
     default = "Random Bin",
@@ -5631,122 +5398,257 @@ GoalTab:Dropdown({
         end
         mods.autoGoalZone = "random_bins"
     end,
+    flag = "GoalZone",
+})
+macToggle(goalTarget, {
+    name = "Show Marker",
+    default = true,
+    callback = function(v)
+        mods.autoGoalShowMarker = v
+        if not v then
+            clearAutoGoalPreview()
+            clearGoalPostESP()
+        end
+    end,
+    flag = "AutoGoalShowMarker",
 })
 
-GoalTab:Slider(sliderOpts({
+local goalPath = macSection(GoalTab, "Right")
+goalPath:Header({ Text = "Flight Path" })
+macSlider(goalPath, {
     name = "Target Spread",
     min = 0,
     max = 6,
     default = 2,
-    suffix = " studs",
     callback = function(v)
         mods.autoGoalSpread = v
     end,
-}, SLIDER.stud))
-
-GUI:NavSection("Player")
-local PlayerTab = GUI:CreateTab({ name = "Player", icon = "" })
-PlayerTab:Section({ name = "Movement" })
-
-PlayerTab:Toggle({
-    name = "Infinite Stamina",
-    default = false,
+}, SLIDER.stud)
+macSlider(goalPath, {
+    name = "Goal Height",
+    min = 4,
+    max = 35,
+    default = 14,
     callback = function(v)
+        mods.autoGoalHeight = v
+    end,
+}, SLIDER.studHalf)
+macSlider(goalPath, {
+    name = "Path Curve",
+    min = 2,
+    max = 30,
+    default = 10,
+    callback = function(v)
+        mods.autoGoalCurve = v
+    end,
+}, SLIDER.studHalf)
+macSlider(goalPath, {
+    name = "Path Time",
+    min = 0.5,
+    max = 2,
+    default = 0.85,
+    callback = function(v)
+        mods.autoGoalPathTime = v
+    end,
+}, SLIDER.time)
+
+local PlayerGroup = GUI:TabGroup()
+local PlayerTab = PlayerGroup:Tab({ Name = "Player" })
+
+local playerMove = macSection(PlayerTab, "Left")
+playerMove:Header({ Text = "Movement" })
+playerMove:Toggle({
+    Name = "Infinite Stamina",
+    Default = false,
+    Callback = function(v)
         setInfiniteStamina(v)
     end,
 })
-
-PlayerTab:Toggle({
-    name = "Anti Idle",
-    default = false,
-    callback = function(v)
+playerMove:Toggle({
+    Name = "Anti Idle",
+    Default = false,
+    Callback = function(v)
         setAntiIdle(v)
     end,
 })
 
-PlayerTab:Section({ name = "Setpiece" })
-
-PlayerTab:Toggle({
-    name = "Auto Ready",
-    default = false,
-    callback = function(v)
+local playerSetpiece = macSection(PlayerTab, "Right")
+playerSetpiece:Header({ Text = "Setpieces" })
+playerSetpiece:Toggle({
+    Name = "Auto Ready",
+    Default = false,
+    Callback = function(v)
         mods.autoSetpieceEnabled = v
         if not v then
             setpieceState.fired = false
         end
     end,
 })
-
-PlayerTab:Toggle({
-    name = "Auto Freekick",
-    default = false,
-    callback = function(v)
+playerSetpiece:Toggle({
+    Name = "Auto Freekick",
+    Default = false,
+    Callback = function(v)
         mods.autoFreekickEnabled = v
     end,
 })
-
-PlayerTab:Toggle({
-    name = "Auto Penalty",
-    default = false,
-    callback = function(v)
+playerSetpiece:Toggle({
+    Name = "Auto Penalty",
+    Default = false,
+    Callback = function(v)
         mods.autoPenEnabled = v
     end,
 })
 
-GUI:NavSection("System")
-local NetworkTab = GUI:CreateTab({ name = "Network", icon = "" })
-NetworkTab:Section({ name = "Ping" })
+local SystemGroup = GUI:TabGroup()
+local NetworkTab = SystemGroup:Tab({ Name = "Network" })
 
-NetworkTab:Toggle({
-    name = "Ping Spoofer",
-    default = false,
-    callback = function(v)
+local networkPing = macSection(NetworkTab, "Left")
+networkPing:Header({ Text = "Ping Spoof" })
+networkPing:Toggle({
+    Name = "Ping Spoofer",
+    Default = false,
+    Callback = function(v)
         mods.pingSpoof = v
-        pingState.current = nil
-        pingState.target = nil
-        pingState.lastRetarget = 0
+        resetPingSpoofState()
         setupPingSpoof()
     end,
-})
-
-NetworkTab:Slider(sliderOpts({
+}, "PingSpoof")
+macSlider(networkPing, {
     name = "Ping Min",
     min = 1,
     max = 200,
     default = 28,
-    suffix = " ms",
     callback = function(v)
         mods.pingMin = v
-        pingState.current = nil
-        pingState.target = nil
+        resetPingSpoofState()
     end,
-}, SLIDER.int))
-
-NetworkTab:Slider(sliderOpts({
+}, SLIDER.int)
+macSlider(networkPing, {
     name = "Ping Max",
     min = 1,
     max = 200,
     default = 42,
-    suffix = " ms",
     callback = function(v)
         mods.pingMax = v
-        pingState.current = nil
-        pingState.target = nil
+        resetPingSpoofState()
     end,
-}, SLIDER.int))
+}, SLIDER.int)
 
-NetworkTab:Section({ name = "Script" })
+local SettingsTab = SystemGroup:Tab({ Name = "Settings" })
+buildSettingsConfigSection(SettingsTab)
 
-NetworkTab:Button({
-    name = "Kill Script",
-    callback = function()
-        task.defer(killScript)
+local settingsUi = macSection(SettingsTab, "Right")
+settingsUi:Header({ Text = "Interface" })
+macDropdown(settingsUi, {
+    name = "Drag Mode",
+    items = { "Full Window", "Move Icon" },
+    default = uiState.dragStyle == 1 and "Move Icon" or "Full Window",
+    callback = function(v)
+        uiState.dragStyle = v == "Move Icon" and 1 or 2
+        if uiState.showNotifications then
+            GUI:Notify({
+                Title = "Overseer FUT",
+                Description = "Drag mode updates on next script load",
+                Lifetime = 3,
+            })
+        end
+    end,
+})
+settingsUi:SubLabel({ Text = "Full Window = drag anywhere on the menu." })
+settingsUi:Keybind({
+    Name = "Toggle Menu",
+    Default = Enum.KeyCode.RightShift,
+    Callback = function()
+    end,
+    onBinded = function(bind)
+        pcall(function()
+            GUI:SetKeybind(bind)
+        end)
+        if uiState.showNotifications then
+            GUI:Notify({
+                Title = "Overseer FUT",
+                Description = "Menu keybind set to " .. bind.Name,
+                Lifetime = 3,
+            })
+        end
+    end,
+}, "MenuKeybind")
+settingsUi:Divider()
+settingsUi:Header({ Text = "Feature Keybinds" })
+settingsUi:Keybind({
+    Name = "Toggle Reach",
+    Callback = function()
+        mods.reachEnabled = not mods.reachEnabled
+        if not mods.reachEnabled then
+            destroyReachVisual("visualFolder", "box")
+        end
+        if uiState.showNotifications then
+            GUI:Notify({
+                Title = "Reach",
+                Description = mods.reachEnabled and "Enabled" or "Disabled",
+                Lifetime = 2,
+            })
+        end
+    end,
+}, "ReachKeybind")
+settingsUi:Keybind({
+    Name = "Toggle Auto Goal",
+    Callback = function()
+        mods.autoGoalEnabled = not mods.autoGoalEnabled
+        if not mods.autoGoalEnabled then
+            for ball, _ in autoGoalState.paths do
+                clearAutoGoalPath(ball)
+            end
+            table.clear(autoGoalState.paths)
+            table.clear(autoGoalState.claimed)
+        end
+        if uiState.showNotifications then
+            GUI:Notify({
+                Title = "Auto Goal",
+                Description = mods.autoGoalEnabled and "Enabled" or "Disabled",
+                Lifetime = 2,
+            })
+        end
+    end,
+}, "AutoGoalKeybind")
+settingsUi:Keybind({
+    Name = "Toggle Knuckle",
+    Callback = function()
+        mods.knuckleShotsEnabled = not mods.knuckleShotsEnabled
+        if not mods.knuckleShotsEnabled then
+            table.clear(knuckleShotState.active)
+        end
+        if uiState.showNotifications then
+            GUI:Notify({
+                Title = "Knuckle Shots",
+                Description = mods.knuckleShotsEnabled and "Enabled" or "Disabled",
+                Lifetime = 2,
+            })
+        end
+    end,
+}, "KnuckleKeybind")
+settingsUi:Divider()
+settingsUi:Button({
+    Name = "Kill Script",
+    Callback = function()
+        confirmKillScript()
     end,
 })
 
-NetworkTab:Badge({ text = "v5.0", color = Color3.fromRGB(40, 160, 70) })
+local networkChangelog = macSection(NetworkTab, "Right")
+networkChangelog:Header({ Text = "Changelog" })
+networkChangelog:Paragraph({
+    Header = "Overseer FUT v5.6",
+    Body = "v5.6 — Settings tab + configs.\n• Blue AUTO GOAL preview marker restored\n• Kill script fixed + confirm dialog\n• Config save/load + autoload\n• Global settings + feature keybinds",
+})
+networkChangelog:Button({
+    Name = "Kill Script",
+    Callback = function()
+        confirmKillScript()
+    end,
+})
 
-getgenv().futmod = {
+getgenv().OverseerFUT = {
     Network = networkState,
     GameRoot = gameRoot,
     RetryForge = tryInitNetworkForger,
@@ -5761,16 +5663,40 @@ getgenv().futmod = {
         return false
     end,
     Kill = killScript,
+    ConfirmKill = confirmKillScript,
+    SaveConfig = function(name)
+        if configState.macLibConfig and type(MacLib.SaveConfig) == "function" then
+            return MacLib:SaveConfig(name)
+        end
+        return saveOverseerConfig(name)
+    end,
+    LoadConfig = function(name)
+        if configState.macLibConfig and type(MacLib.LoadConfig) == "function" then
+            return MacLib:LoadConfig(name)
+        end
+        return loadOverseerConfig(name)
+    end,
 }
 
-polishTabNav(GUI)
+GUI:Notify({
+    Title = "Overseer FUT",
+    Description = "v5.6 loaded — configs ready",
+    Lifetime = 4,
+})
 
-GUI.notify("FUT MOD", "v5.0 loaded — autogoal/knuckle use velocity tamper", 4)
+if configState.macLibConfig and type(MacLib.LoadAutoLoadConfig) == "function" then
+    pcall(function()
+        MacLib:LoadAutoLoadConfig()
+    end)
+else
+    tryLoadAutoloadConfig()
+end
 
 setPredictionEnabled(config.predictorEnabled)
 
 local previewNet = resolveAutoGoalNet(getAutoGoalPreviewFromPos(), Vector3.new(0, 0, -1))
-print("FUT MOD v5.0 | Balls:", #reachState.balls, "| NetParts:", #netParts, "| Collide:", previewNet and getNetCollide(previewNet) ~= nil)
+local previewCenters = previewNet and #getNetCenterParts(previewNet) or 0
+print("Overseer FUT v5.6 | Balls:", #reachState.balls, "| NetParts:", #netParts, "| Centers:", previewCenters, "| Collide:", previewNet and getNetCollide(previewNet) ~= nil)
 end
 
 buildFutUI()
