@@ -113,7 +113,6 @@ local mods = {
     pingSpoof = false,
     pingMin = 28,
     pingMax = 42,
-    useForgedNetwork = true,
     antiIdle = false,
     autoCatchEnabled = false,
     autoCatchDistance = 12,
@@ -130,6 +129,9 @@ local mods = {
     knuckleHeight = 3,
     powerKnuckleIntensity = 22,
     powerKnuckleTime = 2,
+    knuckleFlutter = 1,
+    knuckleSmooth = 5.5,
+    knuckleMix = 1,
     autoGoalEnabled = false,
     autoGoalTarget = "Opposite",
     autoGoalZone = "top_center",
@@ -140,6 +142,10 @@ local mods = {
     autoGoalSpread = 2,
     autoGoalShowMarker = true,
     autoGoalKnuckle = false,
+    autoGoalKnuckleIntensity = 18,
+    autoGoalKnuckleFlutter = 1,
+    autoGoalKnuckleSmooth = 5.5,
+    autoGoalKnuckleMix = 0.35,
     autoSetpieceEnabled = false,
     autoFreekickEnabled = false,
     autoPenEnabled = false,
@@ -162,6 +168,7 @@ local shotTamperState = { connection = nil, lastKnuckle = 0, lastAutoGoal = 0 }
 local CONST = {
     KNUCKLE_TICK = 0.05,
     AUTO_GOAL_TICK = 0.033,
+    KNUCKLE_VORTEX_HZ = 3.5,
     NET_TEAM_MAP = { EfNeth = "Home", EfNeta = "Away" },
     FREEKICK_GATE = Vector3.new(0, 2, 0),
     REACT_DECLINE_TIME = 1.25,
@@ -395,6 +402,68 @@ local function getNetModelByTeam(teamSide)
     end
 
     return nil
+end
+
+local function getAutoGoalPreviewFromPos()
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if root then
+        return root.Position
+    end
+
+    local camera = workspace.CurrentCamera
+    if camera then
+        return camera.CFrame.Position
+    end
+
+    return Vector3.zero
+end
+
+local function getClosestNet(fromPos)
+    if next(netBounds) == nil then
+        refreshNetParts()
+    end
+
+    local pitch = workspace:FindFirstChild("Game") and workspace.Game:FindFirstChild("Pitch")
+    local netsFolder = pitch and pitch:FindFirstChild("Nets")
+    if not netsFolder then
+        return nil
+    end
+
+    local best, bestDist = nil, math.huge
+
+    for _, name in { "EfNeth", "EfNeta" } do
+        local net = netsFolder:FindFirstChild(name)
+        if net then
+            ensureNetBounds(net)
+            local bounds = netBounds[net]
+            if bounds then
+                local dist = (bounds.center - fromPos).Magnitude
+                if dist < bestDist then
+                    bestDist = dist
+                    best = net
+                end
+            end
+        end
+    end
+
+    return best
+end
+
+local function resolveAutoGoalNet(fromPos, velocity)
+    if mods.autoGoalTarget == "Closest" then
+        local closest = getClosestNet(fromPos)
+        if closest then
+            return closest
+        end
+    end
+
+    local preferred = getNetModelByTeam(resolveAutoGoalTeam())
+    if preferred then
+        return preferred
+    end
+
+    return getGoalNet(fromPos, velocity or Vector3.new(0, 0, -1))
 end
 
 local function showAutoGoalMarker(targetPos, persistent)
@@ -684,36 +753,59 @@ local function isGameplayBlocked()
     return false
 end
 
-local function isInsidePartBounds(part, root)
-    local rel = part.CFrame:PointToObjectSpace(root.Position)
+local function isInsidePartBounds(part, position)
+    if typeof(position) == "Instance" then
+        position = position.Position
+    end
+    local rel = part.CFrame:PointToObjectSpace(position)
     local half = part.Size / 2
     return math.abs(rel.X) <= half.X
         and math.abs(rel.Y) <= half.Y
         and math.abs(rel.Z) <= half.Z
 end
 
-local function isInsideGKBox(character)
+local pitchBoxCache = { part = nil }
+
+local function getPitchBoxPart()
+    if pitchBoxCache.part and pitchBoxCache.part.Parent then
+        return pitchBoxCache.part
+    end
+
+    local gameFolder = workspace:FindFirstChild("Game")
+    if not gameFolder then
+        return nil
+    end
+
+    for _, child in gameFolder:GetChildren() do
+        if child.Name == "box" and child:IsA("BasePart") then
+            pitchBoxCache.part = child
+            return child
+        end
+    end
+
+    return nil
+end
+
+local function isInsidePitchBoxAt(position)
     if workspace:FindFirstChild("futsal") then
         return true
     end
 
+    local boxPart = getPitchBoxPart()
+    if not boxPart then
+        return false
+    end
+
+    return isInsidePartBounds(boxPart, position)
+end
+
+local function isInsideGKBox(character)
     local root = character and character:FindFirstChild("HumanoidRootPart")
     if not root then
         return false
     end
 
-    local gameFolder = workspace:FindFirstChild("Game")
-    if not gameFolder then
-        return false
-    end
-
-    for _, child in gameFolder:GetChildren() do
-        if child.Name == "box" and child:IsA("BasePart") and isInsidePartBounds(child, root) then
-            return true
-        end
-    end
-
-    return false
+    return isInsidePitchBoxAt(root.Position)
 end
 
 local function getReactLimb(character, preferHead)
@@ -1390,7 +1482,7 @@ local function getAutoGoalPreviewTarget()
         refreshNetParts()
     end
 
-    local net = getNetModelByTeam(resolveAutoGoalTeam())
+    local net = resolveAutoGoalNet(getAutoGoalPreviewFromPos(), Vector3.new(0, 0, -1))
     if not net then
         return nil
     end
@@ -1486,10 +1578,7 @@ local function getGoalNet(fromPos, velocity)
 end
 
 local function getAutoGoalShotTarget(ball, velocity)
-    local net = getNetModelByTeam(resolveAutoGoalTeam())
-    if not net then
-        net = getGoalNet(ball.Position, velocity)
-    end
+    local net = resolveAutoGoalNet(ball.Position, velocity)
     if not net then
         return nil
     end
@@ -1744,6 +1833,14 @@ local function applyKnuckleGoalGuard(state, ballPos, dt)
 end
 
 local function stepKnuckleOffsets(state, elapsed, dt, ball)
+    local intensity = mods.powerKnuckleIntensity
+    local smoothRate = mods.knuckleSmooth
+
+    state.targetRight = state.targetRight or 0
+    state.targetUp = state.targetUp or 0
+    state.smoothRight = state.smoothRight or 0
+    state.smoothUp = state.smoothUp or 0
+
     while elapsed >= state.nextBreakAt and state.breakIndex < 14 do
         local seed = state.breakSeed + state.breakIndex * 1.73
         local flipL = knuckleRand(seed) > 0.5 and 1 or -1
@@ -1756,69 +1853,169 @@ local function stepKnuckleOffsets(state, elapsed, dt, ball)
             flipV = -flipV
         end
 
-        local breakL = mods.powerKnuckleIntensity * 0.009 * (0.55 + knuckleRand(seed + 1.9) * 0.95)
-        local breakV = mods.powerKnuckleIntensity * 0.0075 * (0.45 + knuckleRand(seed + 3.3) * 0.9)
+        local breakL = intensity * 0.007 * (0.45 + knuckleRand(seed + 1.9) * 0.75)
+        local breakV = intensity * 0.0058 * (0.4 + knuckleRand(seed + 3.3) * 0.8)
 
-        state.offsetRight = state.offsetRight + flipL * breakL
-        state.offsetUp = state.offsetUp + flipV * breakV
+        state.targetRight = state.targetRight + flipL * breakL
+        state.targetUp = state.targetUp + flipV * breakV
 
         if knuckleRand(seed + 5.5) > 0.68 then
-            state.offsetUp = state.offsetUp + flipV * breakV * (0.8 + knuckleRand(seed + 9.1) * 0.6)
+            state.targetUp = state.targetUp + flipV * breakV * 0.75
         end
         if knuckleRand(seed + 2.2) > 0.72 then
-            state.offsetRight = state.offsetRight + flipL * breakL * 0.65
+            state.targetRight = state.targetRight + flipL * breakL * 0.55
         end
 
         state.breakIndex = state.breakIndex + 1
-        state.nextBreakAt = elapsed + 0.11 + knuckleRand(seed + 2.7) * 0.22
+        state.nextBreakAt = elapsed + 0.14 + knuckleRand(seed + 2.7) * 0.24
     end
 
-    local decay = math.exp(-2.6 * dt)
-    state.offsetRight = state.offsetRight * decay
-    state.offsetUp = state.offsetUp * decay
+    state.targetRight = state.targetRight * math.exp(-0.75 * dt)
+    state.targetUp = state.targetUp * math.exp(-0.68 * dt)
+
+    local vortexHz = CONST.KNUCKLE_VORTEX_HZ
+    local vortexL = math.sin(elapsed * math.pi * 2 * vortexHz + state.breakSeed)
+    local vortexU = math.cos(elapsed * math.pi * 2 * (vortexHz * 0.9) + state.breakSeed * 1.25)
+    local harmonic = math.sin(elapsed * math.pi * 2 * 2.15 + state.breakSeed * 0.55) * 0.22
+
+    local desiredRight = state.targetRight * (0.62 + vortexL * 0.34 + harmonic)
+    local desiredUp = state.targetUp * (0.58 + vortexU * 0.36)
+
+    local blend = 1 - math.exp(-smoothRate * dt)
+    state.smoothRight = state.smoothRight + (desiredRight - state.smoothRight) * blend
+    state.smoothUp = state.smoothUp + (desiredUp - state.smoothUp) * blend
+
+    state.offsetRight = state.smoothRight
+    state.offsetUp = state.smoothUp
+
+    if state.corridor then
+        state.smoothRight = math.clamp(
+            state.smoothRight,
+            -state.corridor.offsetRightMax,
+            state.corridor.offsetRightMax
+        )
+        state.smoothUp = math.clamp(
+            state.smoothUp,
+            -state.corridor.offsetUpMax,
+            state.corridor.offsetUpMax
+        )
+        state.offsetRight = state.smoothRight
+        state.offsetUp = state.smoothUp
+    end
 
     if ball and ball.Parent then
         applyKnuckleGoalGuard(state, ball.Position, dt)
+        state.smoothRight = state.offsetRight
+        state.smoothUp = state.offsetUp
     end
 end
 
 local function getKnuckleFlutterScalars(state, elapsed, fadeScale)
     local fade = math.clamp(1 - (elapsed / math.max(mods.powerKnuckleTime, 0.1)), 0.35, 1) * (fadeScale or 1)
+    local flutterMult = mods.knuckleFlutter
+    local vortexHz = CONST.KNUCKLE_VORTEX_HZ
     local flutterR = (
-        math.sin(elapsed * 6.4 + state.breakSeed) * 0.55
-        + math.sin(elapsed * 11.2 + state.breakSeed * 0.7) * 0.3
-    ) * mods.powerKnuckleIntensity * 0.00042 * fade
+        math.sin(elapsed * math.pi * 2 * vortexHz * 1.05 + state.breakSeed) * 0.55
+        + math.sin(elapsed * math.pi * 2 * 2.1 + state.breakSeed * 0.7) * 0.28
+    ) * mods.powerKnuckleIntensity * 0.0004 * fade * flutterMult
     local flutterU = (
-        math.cos(elapsed * 5.3 + state.breakSeed * 1.2) * 0.6
-        + math.sin(elapsed * 9.7 + state.breakSeed * 0.5) * 0.35
-    ) * mods.powerKnuckleIntensity * 0.00038 * fade
-    local lateralScale = mods.powerKnuckleIntensity * 0.00115
-    local verticalScale = mods.powerKnuckleIntensity * 0.00105
+        math.cos(elapsed * math.pi * 2 * vortexHz * 0.88 + state.breakSeed * 1.15) * 0.58
+        + math.sin(elapsed * math.pi * 2 * 1.8 + state.breakSeed * 0.45) * 0.3
+    ) * mods.powerKnuckleIntensity * 0.00036 * fade * flutterMult
+    local lateralScale = mods.powerKnuckleIntensity * 0.0011
+    local verticalScale = mods.powerKnuckleIntensity * 0.001
     return flutterR, flutterU, lateralScale, verticalScale, fade
 end
 
 local function initAutoGoalKnuckleState(agState, ball, velocity, target)
     local flatDir, right = buildKnuckleAxes(velocity)
     local goalDist = (target - ball.Position).Magnitude
+    local intensity = mods.autoGoalKnuckleIntensity
     agState.knuckle = {
+        targetRight = 0,
+        targetUp = 0,
+        smoothRight = 0,
+        smoothUp = 0,
         offsetRight = 0,
         offsetUp = 0,
         breakIndex = 0,
-        nextBreakAt = 0.16 + knuckleRand(velocity.Magnitude) * 0.14,
+        nextBreakAt = 0.2 + knuckleRand(velocity.Magnitude) * 0.16,
         breakSeed = velocity.Magnitude * 0.37 + velocity.Y,
         lastElapsed = nil,
+        heading = flatDir,
+        smoothYVel = velocity.Y,
+        smoothVel = velocity,
         flatDir = flatDir,
         right = right,
         launchPos = ball.Position,
         corridor = {
             aimPoint = target,
             goalDist = math.max(goalDist, 20),
-            lateralMax = 2.6,
-            verticalMax = 2.1,
-            offsetRightMax = 0.072,
-            offsetUpMax = 0.062,
+            lateralMax = 2.4 + intensity * 0.04,
+            verticalMax = 2 + intensity * 0.035,
+            offsetRightMax = math.clamp(intensity * 0.0042, 0.05, 0.14),
+            offsetUpMax = math.clamp(intensity * 0.0036, 0.04, 0.12),
         },
     }
+end
+
+local function stepAutoGoalKnuckleForces(kState, elapsed, dt, ball)
+    local intensity = mods.autoGoalKnuckleIntensity
+    local corridor = kState.corridor
+
+    while elapsed >= kState.nextBreakAt and kState.breakIndex < 12 do
+        local seed = kState.breakSeed + kState.breakIndex * 1.73
+        local flipL = knuckleRand(seed) > 0.5 and 1 or -1
+        local flipV = knuckleRand(seed + 6.4) > 0.5 and 1 or -1
+
+        if kState.breakIndex > 0 and knuckleRand(seed + 4.1) > 0.62 then
+            flipL = -flipL
+        end
+
+        local breakL = intensity * 0.007 * (0.45 + knuckleRand(seed + 1.9) * 0.75)
+        local breakV = intensity * 0.0058 * (0.4 + knuckleRand(seed + 3.3) * 0.8)
+
+        kState.targetRight = kState.targetRight + flipL * breakL
+        kState.targetUp = kState.targetUp + flipV * breakV
+
+        if knuckleRand(seed + 5.5) > 0.7 then
+            kState.targetUp = kState.targetUp + flipV * breakV * 0.75
+        end
+
+        kState.breakIndex = kState.breakIndex + 1
+        kState.nextBreakAt = elapsed + 0.16 + knuckleRand(seed + 2.7) * 0.26
+    end
+
+    kState.targetRight = kState.targetRight * math.exp(-0.75 * dt)
+    kState.targetUp = kState.targetUp * math.exp(-0.68 * dt)
+
+    local vortexHz = CONST.KNUCKLE_VORTEX_HZ
+    local vortexL = math.sin(elapsed * math.pi * 2 * vortexHz + kState.breakSeed)
+    local vortexU = math.cos(elapsed * math.pi * 2 * (vortexHz * 0.9) + kState.breakSeed * 1.25)
+    local harmonic = math.sin(elapsed * math.pi * 2 * 2.15 + kState.breakSeed * 0.55) * 0.22
+
+    local desiredRight = kState.targetRight * (0.62 + vortexL * 0.34 + harmonic)
+    local desiredUp = kState.targetUp * (0.58 + vortexU * 0.36)
+
+    local smoothRate = 1 - math.exp(-mods.autoGoalKnuckleSmooth * dt)
+    kState.smoothRight = kState.smoothRight + (desiredRight - kState.smoothRight) * smoothRate
+    kState.smoothUp = kState.smoothUp + (desiredUp - kState.smoothUp) * smoothRate
+
+    kState.offsetRight = kState.smoothRight
+    kState.offsetUp = kState.smoothUp
+
+    if corridor then
+        kState.smoothRight = math.clamp(kState.smoothRight, -corridor.offsetRightMax, corridor.offsetRightMax)
+        kState.smoothUp = math.clamp(kState.smoothUp, -corridor.offsetUpMax, corridor.offsetUpMax)
+        kState.offsetRight = kState.smoothRight
+        kState.offsetUp = kState.smoothUp
+    end
+
+    if ball and ball.Parent then
+        applyKnuckleGoalGuard(kState, ball.Position, dt)
+        kState.smoothRight = kState.offsetRight
+        kState.smoothUp = kState.offsetUp
+    end
 end
 
 local function layerKnuckleOnAutoGoal(homingVel, kState, ball, elapsed, dt)
@@ -1828,31 +2025,67 @@ local function layerKnuckleOnAutoGoal(homingVel, kState, ball, elapsed, dt)
     )
     kState.lastElapsed = elapsed
 
-    stepKnuckleOffsets(kState, elapsed, stepDt, ball)
+    stepAutoGoalKnuckleForces(kState, elapsed, stepDt, ball)
 
+    local speed = math.max(homingVel.Magnitude, 1)
     local flatDir, right = buildKnuckleAxes(homingVel)
     kState.flatDir = flatDir
     kState.right = right
 
-    local speed = math.max(homingVel.Magnitude, 1)
-    local flutterR, flutterU, lateralScale, verticalScale, fade = getKnuckleFlutterScalars(kState, elapsed, 0.9)
+    local intensity = mods.autoGoalKnuckleIntensity
+    local flutter = mods.autoGoalKnuckleFlutter
+    local mix = math.clamp(mods.autoGoalKnuckleMix, 0.12, 0.65)
+    local vortexHz = CONST.KNUCKLE_VORTEX_HZ
 
-    local bentDir = flatDir + right * (kState.offsetRight * lateralScale + flutterR)
-    if bentDir.Magnitude > 0.01 then
-        bentDir = bentDir.Unit
+    local microR = (
+        math.sin(elapsed * math.pi * 2 * vortexHz * 1.08 + kState.breakSeed) * 0.55
+        + math.sin(elapsed * math.pi * 2 * 2.05 + kState.breakSeed * 0.65) * 0.28
+    ) * intensity * 0.00016 * flutter
+    local microU = (
+        math.cos(elapsed * math.pi * 2 * vortexHz * 0.86 + kState.breakSeed * 1.15) * 0.58
+        + math.sin(elapsed * math.pi * 2 * 1.75 + kState.breakSeed * 0.42) * 0.3
+    ) * intensity * 0.00014 * flutter
+
+    local lateralScale = intensity * 0.001
+    local verticalScale = intensity * 0.0009
+
+    local desiredDir = flatDir + right * (kState.smoothRight * lateralScale + microR)
+    if desiredDir.Magnitude > 0.01 then
+        desiredDir = desiredDir.Unit
     else
-        bentDir = flatDir
+        desiredDir = flatDir
     end
 
-    local yVel = homingVel.Y + kState.offsetUp * speed * verticalScale + flutterU * speed
+    local maxTurnRad = math.rad(38) * stepDt * (0.75 + mix)
+    if kState.heading and kState.heading.Magnitude > 0.01 then
+        local heading = kState.heading.Unit
+        local dot = math.clamp(heading:Dot(desiredDir), -1, 1)
+        local angle = math.acos(dot)
+        if angle > maxTurnRad and angle > 0.0005 then
+            local blend = maxTurnRad / angle
+            desiredDir = (heading * (1 - blend) + desiredDir * blend).Unit
+        end
+    end
+    kState.heading = desiredDir
+
+    local desiredY = homingVel.Y + kState.smoothUp * speed * verticalScale + microU * speed
+    kState.smoothYVel = kState.smoothYVel or homingVel.Y
+    local yRate = 1 - math.exp(-mods.autoGoalKnuckleSmooth * 0.8 * stepDt)
+    kState.smoothYVel = kState.smoothYVel + (desiredY - kState.smoothYVel) * yRate
+
     local horizMag = Vector3.new(homingVel.X, 0, homingVel.Z).Magnitude
     if horizMag < 1 then
-        horizMag = speed * 0.85
+        horizMag = speed * 0.9
     end
 
-    local flutterVel = Vector3.new(bentDir.X * horizMag, yVel, bentDir.Z * horizMag)
-    local mix = math.clamp(0.2 + fade * 0.38, 0.22, 0.52)
-    return homingVel:Lerp(flutterVel, mix)
+    local flutterVel = Vector3.new(desiredDir.X * horizMag, kState.smoothYVel, desiredDir.Z * horizMag)
+    local targetOut = homingVel:Lerp(flutterVel, mix)
+
+    kState.smoothVel = kState.smoothVel or homingVel
+    local outRate = 1 - math.exp(-(5.5 + mods.autoGoalKnuckleSmooth * 0.45) * stepDt)
+    kState.smoothVel = kState.smoothVel + (targetOut - kState.smoothVel) * outRate
+
+    return kState.smoothVel
 end
 
 local function computeCustomKnuckleVelocity(state, elapsed, ball)
@@ -1866,23 +2099,49 @@ local function computeCustomKnuckleVelocity(state, elapsed, ball)
 
     local fade = math.clamp(1 - (elapsed / math.max(mods.powerKnuckleTime, 0.1)), 0.4, 1)
     local flutterR, flutterU, lateralScale, verticalScale = getKnuckleFlutterScalars(state, elapsed, 1)
+    local mix = math.clamp(mods.knuckleMix, 0.2, 1)
 
-    local bentDir = state.flatDir + state.right * (state.offsetRight * lateralScale + flutterR)
-    if bentDir.Magnitude > 0.01 then
-        bentDir = bentDir.Unit
+    local flatDir = state.flatDir
+    local right = state.right
+    local desiredDir = flatDir + right * (state.smoothRight * lateralScale + flutterR)
+    if desiredDir.Magnitude > 0.01 then
+        desiredDir = desiredDir.Unit
     else
-        bentDir = state.flatDir
+        desiredDir = flatDir
     end
 
-    local baseY = state.launchY - elapsed * 1.35
-    local yVel = baseY + state.offsetUp * state.speed * verticalScale + flutterU * state.speed
+    local maxTurnRad = math.rad(44) * dt * (0.7 + mix * 0.5)
+    if state.heading and state.heading.Magnitude > 0.01 then
+        local heading = state.heading.Unit
+        local dot = math.clamp(heading:Dot(desiredDir), -1, 1)
+        local angle = math.acos(dot)
+        if angle > maxTurnRad and angle > 0.0005 then
+            local blend = maxTurnRad / angle
+            desiredDir = (heading * (1 - blend) + desiredDir * blend).Unit
+        end
+    end
+    state.heading = desiredDir
 
-    local horizMag = math.sqrt(math.max(state.speed * state.speed - yVel * yVel, 0))
+    local baseY = state.launchY - elapsed * 1.35
+    local desiredY = baseY + state.smoothUp * state.speed * verticalScale + flutterU * state.speed
+    state.smoothYVel = state.smoothYVel or baseY
+    local yRate = 1 - math.exp(-mods.knuckleSmooth * 0.8 * dt)
+    state.smoothYVel = state.smoothYVel + (desiredY - state.smoothYVel) * yRate
+
+    local horizMag = math.sqrt(math.max(state.speed * state.speed - state.smoothYVel * state.smoothYVel, 0))
     if horizMag < 1 then
         horizMag = state.horizSpeed * fade
     end
 
-    return Vector3.new(bentDir.X * horizMag, yVel, bentDir.Z * horizMag)
+    local baseVel = Vector3.new(flatDir.X * horizMag, baseY, flatDir.Z * horizMag)
+    local knuckleVel = Vector3.new(desiredDir.X * horizMag, state.smoothYVel, desiredDir.Z * horizMag)
+    local targetOut = baseVel:Lerp(knuckleVel, mix)
+
+    state.smoothVel = state.smoothVel or targetOut
+    local outRate = 1 - math.exp(-(5.5 + mods.knuckleSmooth * 0.45) * dt)
+    state.smoothVel = state.smoothVel + (targetOut - state.smoothVel) * outRate
+
+    return state.smoothVel
 end
 
 local function setBallVelocity(ball, constraint, velocity)
@@ -1946,11 +2205,18 @@ local function beginKnuckleShot(ball, constraint, velocity)
         horizSpeed = flight.horizSpeed,
         flatDir = flight.flatDir,
         right = flight.right,
-        offsetRight = flight.offsetRight,
-        offsetUp = flight.offsetUp,
+        targetRight = 0,
+        targetUp = 0,
+        smoothRight = 0,
+        smoothUp = 0,
+        offsetRight = 0,
+        offsetUp = 0,
         breakIndex = flight.breakIndex,
         nextBreakAt = flight.nextBreakAt,
         breakSeed = flight.breakSeed,
+        heading = flight.flatDir,
+        smoothYVel = flight.launchY,
+        smoothVel = scaled,
         start = os.clock(),
         startedAt = now,
         deadline = now + mods.powerKnuckleTime,
@@ -2008,9 +2274,20 @@ local function buildAutoGoalCurve(startPos, targetPos)
     return startPos, control, targetPos
 end
 
-local function resolveAutoGoalSpeed(baseSpeed)
+local function getAutoGoalSpeedMultiplier(ballPos, targetPos)
+    if isInsidePitchBoxAt(ballPos) then
+        return 1
+    end
+
+    local flatDist = (Vector3.new(targetPos.X, 0, targetPos.Z) - Vector3.new(ballPos.X, 0, ballPos.Z)).Magnitude
+    local distBoost = math.clamp(1 + math.max(0, flatDist - 45) / 95, 1, 1.55)
+    return mods.autoGoalSpeed * distBoost
+end
+
+local function resolveAutoGoalSpeed(baseSpeed, ballPos, targetPos)
+    local multiplier = getAutoGoalSpeedMultiplier(ballPos, targetPos)
     return math.clamp(
-        math.max(baseSpeed, config.shotSpeedThreshold) * mods.autoGoalSpeed,
+        math.max(baseSpeed, config.shotSpeedThreshold) * multiplier,
         config.shotSpeedThreshold,
         300
     )
@@ -2096,7 +2373,7 @@ end
 local function beginAutoGoalPath(ball, velocity, target)
     local p0, p1, p2 = buildAutoGoalCurve(ball.Position, target)
     local now = tick()
-    local speed = resolveAutoGoalSpeed(velocity.Magnitude)
+    local speed = resolveAutoGoalSpeed(velocity.Magnitude, ball.Position, target)
     local distance = (target - ball.Position).Magnitude
     local duration = math.clamp(math.max(mods.autoGoalPathTime, distance / math.max(speed, 1) * 0.95), 0.7, 2.4)
     local state = {
@@ -3266,9 +3543,6 @@ local function fetchNetworkOwner(ball, options)
     if not networkState.ready or not networkState.Network then
         return false
     end
-    if not mods.useForgedNetwork then
-        return false
-    end
 
     local character = player.Character
     options = options or {}
@@ -3620,7 +3894,7 @@ table.insert(connections, RunService.RenderStepped:Connect(function()
         local target = getAutoGoalPreviewTarget()
         if target then
             autoGoalState.lockedTarget = target
-            autoGoalState.lockedNet = getNetModelByTeam(resolveAutoGoalTeam())
+            autoGoalState.lockedNet = resolveAutoGoalNet(getAutoGoalPreviewFromPos(), Vector3.new(0, 0, -1))
             showAutoGoalMarker(target, true)
         else
             autoGoalState.lockedTarget = nil
@@ -4368,97 +4642,307 @@ end
 local function loadVenturaLibrary()
     local source = game:HttpGet("https://codeberg.org/VenomVent/Ventura-UI/raw/branch/main/VenturaLibrary.lua")
 
-    local smoothSlider = [[
- function Tab:Slider(opts)
- opts=validate({name="Slider",tooltip="",min=0,max=100,default=50,suffix="",increment=nil,decimals=nil,callback=function()end},opts)
- local inc = opts.increment
- if inc == nil then
-  inc = (opts.min % 1 ~= 0 or opts.max % 1 ~= 0 or opts.default % 1 ~= 0) and 0.01 or 1
- end
- local dec = opts.decimals
- if dec == nil then
-  dec = inc < 1 and 2 or 0
- end
- local function snapVal(raw)
-  raw = math.clamp(raw, opts.min, opts.max)
-  if inc < 1 then
-   return math.clamp(math.floor((raw - opts.min) / inc + 0.5) * inc + opts.min, opts.min, opts.max)
-  end
-  return math.clamp(math.floor(raw / inc + 0.5) * inc, opts.min, opts.max)
- end
- local function fmtVal(v)
-  if dec > 0 then
-   return string.format("%." .. dec .. "f", v) .. opts.suffix
-  end
-  return tostring(v) .. opts.suffix
- end
- local startVal = snapVal(opts.default)
- local Slider={Value=startVal,Dragging=false}
- Slider.frame=base("Slider",56); pad(Slider.frame,8,10,9,10)
- local nl=lbl(Slider.frame,opts.name,13,Library.Theme.TextPrimary); nl.Size=UDim2.new(1,-55,0,18)
- local vl=lbl(Slider.frame,fmtVal(startVal),12,Library.Theme.TextSecondary,nil,Enum.TextXAlignment.Right)
- vl.AnchorPoint=Vector2.new(1,0); vl.Size=UDim2.new(0,52,0,18); vl.Position=UDim2.new(1,0,0,0)
- local track=Instance.new("Frame",Slider.frame)
- track.BackgroundColor3=Color3.fromRGB(13,13,13); track.BorderSizePixel=0
- track.AnchorPoint=Vector2.new(0,1); track.Size=UDim2.new(1,0,0,5)
- track.Position=UDim2.new(0,0,1,0); corner(track,3); stroke(track,Color3.fromRGB(42,42,42))
- local fill=Instance.new("Frame",track)
- fill.BackgroundColor3=Library.Theme.Accent; fill.BorderSizePixel=0
- local range = opts.max - opts.min
- local initA = range == 0 and 0 or (startVal - opts.min) / range
- fill.Size=UDim2.new(initA,0,1,0); corner(fill,3)
- local thumb=Instance.new("Frame",track)
- thumb.BackgroundColor3=Color3.fromRGB(225,225,225); thumb.BorderSizePixel=0
- thumb.AnchorPoint=Vector2.new(0.5,0.5); thumb.Size=UDim2.new(0,10,0,10)
- thumb.Position=UDim2.new(initA,0,0.5,0); corner(thumb,5)
- addTooltip(Slider.frame,opts.tooltip)
- local function upd(x)
- local rng = opts.max - opts.min
- if rng == 0 then return end
- local a=math.clamp((x-track.AbsolutePosition.X)/track.AbsoluteSize.X,0,1)
- Slider.Value = snapVal(opts.min + rng * a)
- fill.Size=UDim2.new(a,0,1,0); thumb.Position=UDim2.new(a,0,0.5,0)
- vl.Text = fmtVal(Slider.Value); opts.callback(Slider.Value)
- end
- track.InputBegan:Connect(function(i)
- if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
- Slider.Dragging=true; upd(i.Position.X)
- end
- end)
- local c1=UIS.InputChanged:Connect(function(i)
- if Slider.Dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then upd(i.Position.X) end
- end)
- local c2=UIS.InputEnded:Connect(function(i)
- if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then Slider.Dragging=false end
- end)
- Slider.frame.AncestryChanged:Connect(function()
- if not Slider.frame:IsDescendantOf(game) then c1:Disconnect(); c2:Disconnect() end
- end)
- function Slider:Set(v, silent)
- v = snapVal(v)
- local rng = opts.max - opts.min
- local a = rng == 0 and 0 or math.clamp((v - opts.min) / rng, 0, 1)
- Slider.Value=v; fill.Size=UDim2.new(a,0,1,0)
- thumb.Position=UDim2.new(a,0,0.5,0); vl.Text=fmtVal(v)
- if not silent then opts.callback(v) end
- end
- return Slider
- end]]
+    source = source:gsub('name="Tab", icon="🏠"', 'name="Tab", icon=""')
+    source = source:gsub('name = "Settings", icon = "⚙️"', 'name = "Settings", icon = ""')
 
-    local sliderStart = source:find("function Tab:Slider%(opts%)")
-    local dropdownStart = source:find("\n\n function Tab:Dropdown%(opts%)", sliderStart)
-        or source:find("\n function Tab:Dropdown%(opts%)", sliderStart)
-    if sliderStart and dropdownStart then
-        source = source:sub(1, sliderStart - 1) .. smoothSlider .. source:sub(dropdownStart)
+    source = source:gsub(
+        "local sh = winH%*(v/100%)\n tw%(Main, %{ Size",
+        "local sh = minimized and 34 or winH*(v/100)\n tw(MainWrap, { Size"
+    )
+    source = source:gsub(
+        "local sw=winW%*(v/100%); local sh=winH%*(v/100%)\n tw%(Main,",
+        "local sw=winW*(v/100); local sh=minimized and 34 or winH*(v/100)\n tw(MainWrap,"
+    )
+    source = source:gsub(
+        "local sw = winW%*(currentScale/100%); local sh = winH%*(currentScale/100%)\n Main%.Size",
+        "local sw = winW*(currentScale/100); local sh = minimized and 34 or winH*(currentScale/100)\n MainWrap.Size"
+    )
+    source = source:gsub(
+        "Main%.Size = UDim2%.new%(0, winW, 0, winH%)",
+        "MainWrap.Size = UDim2.new(0, winW, 0, winH)"
+    )
+    source = source:gsub(
+        "currentScale = 100 %-%- reset scale to 100 when manually resizing\n MainWrap%.Size",
+        "currentScale = 100\n if GUI._cfgSyncCallbacks and GUI._cfgSyncCallbacks.scale then pcall(GUI._cfgSyncCallbacks.scale, 100) end\n MainWrap.Size"
+    )
+
+    if not source:find('iconInfo%.kind=="none"') and not source:find('iconInfo%.kind == "none"') then
+        source = source:gsub(
+            "Tab%._navText=navText",
+            'Tab._navText=navText\n if iconInfo.kind=="none" then navIcon.Visible=false navText.Size=UDim2.new(1,-10,1,0) navText.Position=UDim2.new(0,8,0,0) end'
+        )
     end
 
     return loadstring(source)()
 end
 
+local function getSliderStepDecimals(step)
+    local stepString = string.format("%.10f", step):gsub("0+$", "")
+    local decimalPart = stepString:match("%.(%d+)")
+    return decimalPart and #decimalPart or 0
+end
+
+local function snapSliderValue(value, minVal, maxVal, step)
+    local clamped = math.clamp(tonumber(value) or minVal, minVal, maxVal)
+    if step >= 1 then
+        return math.clamp(math.floor(clamped / step + 0.5) * step, minVal, maxVal)
+    end
+    local steps = math.floor((clamped - minVal) / step + 0.5)
+    return math.clamp(minVal + steps * step, minVal, maxVal)
+end
+
+local function formatSliderValue(value, decimals, suffix)
+    suffix = suffix or ""
+    if decimals <= 0 then
+        return tostring(math.floor(value + 0.5)) .. suffix
+    end
+    local formatted = string.format("%." .. decimals .. "f", value)
+    formatted = formatted:gsub("(%..-)0+$", "%1"):gsub("%.$", "")
+    return formatted .. suffix
+end
+
+local function installSmoothSliders(gui, library)
+    local UIS = game:GetService("UserInputService")
+    local TweenService = game:GetService("TweenService")
+    local theme = library.Theme
+    local oldCreateTab = gui.CreateTab
+
+    function gui:CreateTab(opts)
+        opts = opts or {}
+        opts.icon = ""
+        local tab = oldCreateTab(self, opts)
+
+        if tab._navIcon then
+            tab._navIcon.Visible = false
+        end
+        if tab._navText then
+            tab._navText.Position = UDim2.new(0, 8, 0, 0)
+            tab._navText.Size = UDim2.new(1, -10, 1, 0)
+        end
+
+        function tab:Slider(sliderOpts)
+            sliderOpts = sliderOpts or {}
+            local minVal = sliderOpts.min or 0
+            local maxVal = sliderOpts.max or 100
+            local suffix = sliderOpts.suffix or ""
+            local callback = sliderOpts.callback or function() end
+            local step = sliderOpts.increment or sliderOpts.step or 1
+            if type(step) ~= "number" or step <= 0 then
+                step = 1
+            end
+
+            local decimals = sliderOpts.decimals
+            if decimals == nil then
+                decimals = getSliderStepDecimals(step)
+            end
+
+            local defaultVal = snapSliderValue(sliderOpts.default or minVal, minVal, maxVal, step)
+            local range = maxVal - minVal
+            local Slider = { Value = defaultVal, Dragging = false }
+
+            local frame = Instance.new("Frame")
+            frame.Name = (sliderOpts.name or "Slider") .. "_Slider"
+            frame.BackgroundColor3 = theme.Surface
+            frame.BorderSizePixel = 0
+            frame.Size = UDim2.new(1, 0, 0, 56)
+            frame.Parent = tab._scroll
+
+            local frameCorner = Instance.new("UICorner", frame)
+            frameCorner.CornerRadius = UDim.new(0, 5)
+            local frameStroke = Instance.new("UIStroke", frame)
+            frameStroke.Color = theme.Border
+            frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+            local pad = Instance.new("UIPadding", frame)
+            pad.PaddingTop = UDim.new(0, 8)
+            pad.PaddingRight = UDim.new(0, 10)
+            pad.PaddingBottom = UDim.new(0, 9)
+            pad.PaddingLeft = UDim.new(0, 10)
+
+            local nameLabel = Instance.new("TextLabel", frame)
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Size = UDim2.new(1, -58, 0, 18)
+            nameLabel.FontFace = Font.new("rbxasset://fonts/families/Ubuntu.json")
+            nameLabel.TextSize = 13
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            nameLabel.TextColor3 = theme.TextPrimary
+            nameLabel.Text = sliderOpts.name or "Slider"
+
+            local valueContainer = Instance.new("Frame", frame)
+            valueContainer.BackgroundTransparency = 1
+            valueContainer.Size = UDim2.new(0, 52, 0, 18)
+            valueContainer.AnchorPoint = Vector2.new(1, 0)
+            valueContainer.Position = UDim2.new(1, 0, 0, 0)
+
+            local valueLabel = Instance.new("TextLabel", valueContainer)
+            valueLabel.BackgroundTransparency = 1
+            valueLabel.Size = UDim2.new(1, 0, 1, 0)
+            valueLabel.FontFace = Font.new("rbxasset://fonts/families/Ubuntu.json")
+            valueLabel.TextSize = 12
+            valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+            valueLabel.TextColor3 = theme.TextSecondary
+            valueLabel.Text = formatSliderValue(defaultVal, decimals, suffix)
+
+            local valueInput = Instance.new("TextBox", valueContainer)
+            valueInput.BackgroundTransparency = 1
+            valueInput.Size = UDim2.new(1, 0, 1, 0)
+            valueInput.FontFace = Font.new("rbxasset://fonts/families/Ubuntu.json")
+            valueInput.TextSize = 12
+            valueInput.TextXAlignment = Enum.TextXAlignment.Right
+            valueInput.TextColor3 = theme.Accent
+            valueInput.ClearTextOnFocus = false
+            valueInput.Visible = false
+
+            local valueClick = Instance.new("TextButton", valueContainer)
+            valueClick.BackgroundTransparency = 1
+            valueClick.Size = UDim2.new(1, 0, 1, 0)
+            valueClick.Text = ""
+            valueClick.ZIndex = 2
+
+            local track = Instance.new("Frame", frame)
+            track.BackgroundColor3 = Color3.fromRGB(13, 13, 13)
+            track.BorderSizePixel = 0
+            track.AnchorPoint = Vector2.new(0, 1)
+            track.Size = UDim2.new(1, 0, 0, 5)
+            track.Position = UDim2.new(0, 0, 1, 0)
+
+            local trackCorner = Instance.new("UICorner", track)
+            trackCorner.CornerRadius = UDim.new(0, 3)
+            local trackStroke = Instance.new("UIStroke", track)
+            trackStroke.Color = Color3.fromRGB(42, 42, 42)
+            trackStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+            local fill = Instance.new("Frame", track)
+            fill.BackgroundColor3 = theme.Accent
+            fill.BorderSizePixel = 0
+
+            local fillCorner = Instance.new("UICorner", fill)
+            fillCorner.CornerRadius = UDim.new(0, 3)
+
+            local thumb = Instance.new("Frame", track)
+            thumb.BackgroundColor3 = Color3.fromRGB(225, 225, 225)
+            thumb.BorderSizePixel = 0
+            thumb.AnchorPoint = Vector2.new(0.5, 0.5)
+            thumb.Size = UDim2.new(0, 10, 0, 10)
+            thumb.Position = UDim2.new(range == 0 and 0 or (defaultVal - minVal) / range, 0, 0.5, 0)
+
+            local thumbCorner = Instance.new("UICorner", thumb)
+            thumbCorner.CornerRadius = UDim.new(0, 5)
+
+            local fillTween
+
+            local function setVisuals(rel, animate)
+                rel = math.clamp(rel, 0, 1)
+                local targetSize = UDim2.new(rel, 0, 1, 0)
+                local targetPos = UDim2.new(rel, 0, 0.5, 0)
+
+                if animate and fillTween then
+                    fillTween:Cancel()
+                end
+
+                if animate then
+                    fillTween = TweenService:Create(fill, TweenInfo.new(0.04, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        Size = targetSize,
+                    })
+                    fillTween:Play()
+                    TweenService:Create(thumb, TweenInfo.new(0.04, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        Position = targetPos,
+                    }):Play()
+                else
+                    fill.Size = targetSize
+                    thumb.Position = targetPos
+                end
+            end
+
+            local function applyValue(value, rel, animate, silent)
+                local newVal = snapSliderValue(value, minVal, maxVal, step)
+                Slider.Value = newVal
+                if rel == nil then
+                    rel = range == 0 and 0 or (newVal - minVal) / range
+                end
+                setVisuals(rel, animate)
+                valueLabel.Text = formatSliderValue(newVal, decimals, suffix)
+                if not silent then
+                    callback(newVal)
+                end
+            end
+
+            local function updateFromPosition(x, animate)
+                if range == 0 then
+                    return
+                end
+                local rel = math.clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+                local raw = minVal + range * rel
+                applyValue(raw, rel, animate)
+            end
+
+            track.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                    Slider.Dragging = true
+                    updateFromPosition(input.Position.X, true)
+                end
+            end)
+
+            local moveConn = UIS.InputChanged:Connect(function(input)
+                if Slider.Dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                    updateFromPosition(input.Position.X, true)
+                end
+            end)
+
+            local endConn = UIS.InputEnded:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                    Slider.Dragging = false
+                end
+            end)
+
+            frame.AncestryChanged:Connect(function()
+                if not frame:IsDescendantOf(game) then
+                    moveConn:Disconnect()
+                    endConn:Disconnect()
+                end
+            end)
+
+            local previousValue = defaultVal
+            valueClick.MouseButton1Click:Connect(function()
+                previousValue = Slider.Value
+                valueInput.Text = formatSliderValue(Slider.Value, decimals, "")
+                valueLabel.Visible = false
+                valueInput.Visible = true
+                valueInput:CaptureFocus()
+            end)
+
+            local function finishInput()
+                local typed = tonumber(valueInput.Text)
+                if typed then
+                    applyValue(typed, nil, false)
+                else
+                    applyValue(previousValue, nil, false)
+                end
+                valueInput.Visible = false
+                valueLabel.Visible = true
+            end
+
+            valueInput.FocusLost:Connect(function()
+                finishInput()
+            end)
+
+            function Slider:Set(v, silent)
+                applyValue(v, nil, false, silent == true)
+            end
+
+            Slider.frame = frame
+            setVisuals(range == 0 and 0 or (defaultVal - minVal) / range, false)
+            return Slider
+        end
+
+        return tab
+    end
+end
+
 local SLIDER = {
     stud = { increment = 0.1, decimals = 1 },
     studHalf = { increment = 0.5, decimals = 1 },
-    mult = { increment = 0.05, decimals = 2 },
+    mult = { increment = 0.05, decimals = 2, suffix = "x" },
     time = { increment = 0.05, decimals = 2 },
     int = { increment = 1, decimals = 0 },
 }
@@ -4466,6 +4950,9 @@ local SLIDER = {
 local function sliderOpts(opts, preset)
     opts.increment = opts.increment or preset.increment
     opts.decimals = opts.decimals or preset.decimals
+    if opts.suffix == nil and preset.suffix ~= nil then
+        opts.suffix = preset.suffix
+    end
     return opts
 end
 
@@ -4479,10 +4966,25 @@ GUI = Library:new({
     onClose = killScript,
 })
 
-local PredictorTab = GUI:CreateTab({ name = "Predictor" })
-PredictorTab:Section({ name = "Ball Prediction" })
+installSmoothSliders(GUI, Library)
 
-PredictorTab:Toggle({
+local function polishTabNav(gui)
+    for _, tab in ipairs(gui._tabs or {}) do
+        if tab._navIcon then
+            tab._navIcon.Visible = false
+        end
+        if tab._navText then
+            tab._navText.Position = UDim2.new(0, 8, 0, 0)
+            tab._navText.Size = UDim2.new(1, -10, 1, 0)
+        end
+    end
+end
+
+GUI:NavSection("Visual")
+local VisualTab = GUI:CreateTab({ name = "Visual", icon = "" })
+VisualTab:Section({ name = "Ball Prediction" })
+
+VisualTab:Toggle({
     name = "Ball Prediction",
     default = true,
     callback = function(v)
@@ -4491,7 +4993,7 @@ PredictorTab:Toggle({
     end,
 })
 
-PredictorTab:ColorPicker({
+VisualTab:ColorPicker({
     name = "Accent Color",
     default = Color3.fromRGB(0, 255, 150),
     callback = function(c)
@@ -4499,16 +5001,12 @@ PredictorTab:ColorPicker({
     end,
 })
 
-PredictorTab:Paragraph({
-    title = "Biggie-style Physics",
-    text = "Live path with curve/spin, bounces, net hits, gradient beams (red→green→accent). Works on dribbles + shots.",
-})
-
-local ReachTab = GUI:CreateTab({ name = "Reach" })
-ReachTab:Section({ name = "Player Hitbox" })
+GUI:NavSection("Gameplay")
+local ReachTab = GUI:CreateTab({ name = "Reach", icon = "" })
+ReachTab:Section({ name = "Player Reach" })
 
 ReachTab:Toggle({
-    name = "Hitbox Extender",
+    name = "Reach",
     default = false,
     callback = function(v)
         mods.reachEnabled = v
@@ -4535,7 +5033,7 @@ ReachTab:Toggle({
 })
 
 ReachTab:ColorPicker({
-    name = "Hitbox Color",
+    name = "Reach Color",
     default = Color3.fromRGB(0, 200, 255),
     callback = function(c)
         mods.reachColor = c
@@ -4595,30 +5093,23 @@ ReachTab:Slider(sliderOpts({ name = "GK X", min = 0, max = 12, default = 5, suff
 ReachTab:Slider(sliderOpts({ name = "GK Y", min = 0, max = 12, default = 5, suffix = " studs", callback = function(v) mods.gkReachY = v end }, SLIDER.stud))
 ReachTab:Slider(sliderOpts({ name = "GK Z", min = 0, max = 12, default = 5, suffix = " studs", callback = function(v) mods.gkReachZ = v end }, SLIDER.stud))
 
-local ReactTab = GUI:CreateTab({ name = "React" })
-ReactTab:Section({ name = "Ball React" })
+ReachTab:Section({ name = "Ball React" })
 
-ReactTab:Toggle({
+ReachTab:Toggle({
     name = "Better React",
     default = false,
     callback = function(v) mods.betterReact = v end,
 })
 
-ReactTab:Toggle({
+ReachTab:Toggle({
     name = "Break React",
     default = false,
     callback = function(v) mods.breakReact = v end,
 })
 
-ReactTab:Paragraph({
-    title = "React Explained",
-    text = "Biggie/RFL style: networkOwner fetch loop (claim) + forceNetworkOwner shield (break). Hooks game react constants via GC root. No pb.",
-})
+ReachTab:Section({ name = "GK Control" })
 
-local GKTab = GUI:CreateTab({ name = "GK" })
-GKTab:Section({ name = "Auto Catch" })
-
-GKTab:Toggle({
+ReachTab:Toggle({
     name = "Auto Catch",
     default = false,
     callback = function(v)
@@ -4626,7 +5117,7 @@ GKTab:Toggle({
     end,
 })
 
-GKTab:Slider(sliderOpts({
+ReachTab:Slider(sliderOpts({
     name = "Catch Distance",
     min = 1,
     max = 30,
@@ -4637,7 +5128,7 @@ GKTab:Slider(sliderOpts({
     end,
 }, SLIDER.studHalf))
 
-GKTab:Slider(sliderOpts({
+ReachTab:Slider(sliderOpts({
     name = "Catch Cooldown",
     min = 0.25,
     max = 3,
@@ -4648,9 +5139,7 @@ GKTab:Slider(sliderOpts({
     end,
 }, SLIDER.time))
 
-GKTab:Section({ name = "Pull Vector" })
-
-GKTab:Toggle({
+ReachTab:Toggle({
     name = "Pull Vector",
     default = false,
     callback = function(v)
@@ -4658,7 +5147,7 @@ GKTab:Toggle({
     end,
 })
 
-GKTab:Slider(sliderOpts({
+ReachTab:Slider(sliderOpts({
     name = "Pull Distance",
     min = 1,
     max = 50,
@@ -4669,7 +5158,7 @@ GKTab:Slider(sliderOpts({
     end,
 }, SLIDER.studHalf))
 
-GKTab:Slider(sliderOpts({
+ReachTab:Slider(sliderOpts({
     name = "Pull Strength",
     min = 0.1,
     max = 10,
@@ -4679,12 +5168,7 @@ GKTab:Slider(sliderOpts({
     end,
 }, SLIDER.mult))
 
-GKTab:Paragraph({
-    title = "How It Works",
-    text = "GK Reach scales your glove meshes + invisible hand hitboxes to match the reach box. Auto Catch uses balls inside that box (or Catch Distance fallback). Pull Vector drags the ball toward you in the GK box.",
-})
-
-local ShotsTab = GUI:CreateTab({ name = "Shots" })
+local ShotsTab = GUI:CreateTab({ name = "Shots", icon = "" })
 ShotsTab:Section({ name = "Insane Power" })
 
 ShotsTab:Toggle({
@@ -4721,11 +5205,6 @@ ShotsTab:Button({
         mods.insanePower = 1
         mods.insaneHeight = 1
     end,
-})
-
-ShotsTab:Paragraph({
-    title = "Insane Power",
-    text = "Power = X/Z multiplier. Height = Y loft (0 = flat). RisingForce stripped.",
 })
 
 ShotsTab:Section({ name = "Power Knuckle" })
@@ -4776,6 +5255,36 @@ ShotsTab:Slider(sliderOpts({
 }, SLIDER.studHalf))
 
 ShotsTab:Slider(sliderOpts({
+    name = "Knuckle Flutter",
+    min = 0.2,
+    max = 2.5,
+    default = 1,
+    callback = function(v)
+        mods.knuckleFlutter = v
+    end,
+}, SLIDER.mult))
+
+ShotsTab:Slider(sliderOpts({
+    name = "Knuckle Smooth",
+    min = 2,
+    max = 12,
+    default = 5.5,
+    callback = function(v)
+        mods.knuckleSmooth = v
+    end,
+}, SLIDER.studHalf))
+
+ShotsTab:Slider(sliderOpts({
+    name = "Knuckle Mix",
+    min = 0.2,
+    max = 1,
+    default = 1,
+    callback = function(v)
+        mods.knuckleMix = v
+    end,
+}, SLIDER.mult))
+
+ShotsTab:Slider(sliderOpts({
     name = "Knuckle Duration",
     min = 0.8,
     max = 3,
@@ -4786,12 +5295,7 @@ ShotsTab:Slider(sliderOpts({
     end,
 }, SLIDER.time))
 
-ShotsTab:Paragraph({
-    title = "Knuckle",
-    text = "IRL knuckle flutter — side + vertical breaks. Stays in goal frame when aimed center.",
-})
-
-local GoalTab = GUI:CreateTab({ name = "Auto Goal" })
+local GoalTab = GUI:CreateTab({ name = "Goal", icon = "" })
 GoalTab:Section({ name = "Auto Goal" })
 
 GoalTab:Toggle({
@@ -4817,7 +5321,7 @@ GoalTab:Toggle({
 
 GoalTab:Dropdown({
     name = "Goal Target",
-    items = { "Opposite", "Home", "Away", "Own" },
+    items = { "Opposite", "Closest", "Home", "Away", "Own" },
     default = "Opposite",
     callback = function(v)
         mods.autoGoalTarget = v
@@ -4840,6 +5344,48 @@ GoalTab:Toggle({
     end,
 })
 
+GoalTab:Section({ name = "Goal Knuckle" })
+
+GoalTab:Slider(sliderOpts({
+    name = "Knuckle Break",
+    min = 6,
+    max = 40,
+    default = 18,
+    callback = function(v)
+        mods.autoGoalKnuckleIntensity = v
+    end,
+}, SLIDER.int))
+
+GoalTab:Slider(sliderOpts({
+    name = "Knuckle Flutter",
+    min = 0.2,
+    max = 2.5,
+    default = 1,
+    callback = function(v)
+        mods.autoGoalKnuckleFlutter = v
+    end,
+}, SLIDER.mult))
+
+GoalTab:Slider(sliderOpts({
+    name = "Knuckle Smooth",
+    min = 2,
+    max = 12,
+    default = 5.5,
+    callback = function(v)
+        mods.autoGoalKnuckleSmooth = v
+    end,
+}, SLIDER.studHalf))
+
+GoalTab:Slider(sliderOpts({
+    name = "Knuckle Mix",
+    min = 0.1,
+    max = 0.65,
+    default = 0.35,
+    callback = function(v)
+        mods.autoGoalKnuckleMix = v
+    end,
+}, SLIDER.mult))
+
 GoalTab:Dropdown({
     name = "Target Mode",
     items = { "Random Bin", "Top Left", "Top Right", "Center Crossbar", "Random Box" },
@@ -4856,7 +5402,7 @@ GoalTab:Dropdown({
 })
 
 GoalTab:Slider(sliderOpts({
-    name = "Goal Speed",
+    name = "Outside Speed",
     min = 0.8,
     max = 2,
     default = 1.15,
@@ -4909,12 +5455,8 @@ GoalTab:Slider(sliderOpts({
     end,
 }, SLIDER.time))
 
-GoalTab:Paragraph({
-    title = "Target Modes",
-    text = "Smooth glide to blue marker aim. Knuckle Ball adds flutter on the homing path — tune breaks in Shots tab. Right Shift minimizes UI.",
-})
-
-local PlayerTab = GUI:CreateTab({ name = "Player" })
+GUI:NavSection("Player")
+local PlayerTab = GUI:CreateTab({ name = "Player", icon = "" })
 PlayerTab:Section({ name = "Movement" })
 
 PlayerTab:Toggle({
@@ -4962,12 +5504,8 @@ PlayerTab:Toggle({
     end,
 })
 
-PlayerTab:Paragraph({
-    title = "Setpiece",
-    text = "Client-side from SaveInstance dump. Auto Ready fires setpiece_pressed on ScreenGui.Setpiece. Auto FK/Pen watch Composure UI and tap Space on green.",
-})
-
-local NetworkTab = GUI:CreateTab({ name = "Network" })
+GUI:NavSection("System")
+local NetworkTab = GUI:CreateTab({ name = "Network", icon = "" })
 NetworkTab:Section({ name = "Ping" })
 
 NetworkTab:Toggle({
@@ -5008,48 +5546,6 @@ NetworkTab:Slider(sliderOpts({
     end,
 }, SLIDER.int))
 
-NetworkTab:Paragraph({
-    title = "Ping Spoofer",
-    text = "Spoofs PingEvent with a drifting value between min/max. Small jitter + occasional spikes so it looks live.",
-})
-
-NetworkTab:Section({ name = "Credits" })
-
-NetworkTab:Paragraph({
-    title = "Credits",
-    text = "Ping Spoofer — Nedz",
-})
-
-NetworkTab:Section({ name = "Network Forger" })
-
-NetworkTab:Toggle({
-    name = "Use Forged Network",
-    default = true,
-    callback = function(v)
-        mods.useForgedNetwork = v
-    end,
-})
-
-NetworkTab:Button({
-    name = "Init / Retry Forger",
-    callback = function()
-        networkState.ready = false
-        local ok = tryInitNetworkForger()
-        if GUI and GUI.notify then
-            GUI.notify(
-                "Network Forger",
-                ok and "Forged network ready — fetch/send unlocked" or ("Failed: " .. tostring(networkState.error)),
-                4
-            )
-        end
-    end,
-})
-
-NetworkTab:Paragraph({
-    title = "Network Forger",
-    text = "Reverse-engineers encrypted network keys. Powers Better/Break React via networkOwner fetch.",
-})
-
 NetworkTab:Section({ name = "Script" })
 
 NetworkTab:Button({
@@ -5078,11 +5574,13 @@ getgenv().futmod = {
     Kill = killScript,
 }
 
+polishTabNav(GUI)
+
 GUI.notify("FUT MOD", "v5.0 loaded — autogoal/knuckle use velocity tamper", 4)
 
 setPredictionEnabled(config.predictorEnabled)
 
-local previewNet = getNetModelByTeam(resolveAutoGoalTeam())
+local previewNet = resolveAutoGoalNet(getAutoGoalPreviewFromPos(), Vector3.new(0, 0, -1))
 print("FUT MOD v5.0 | Balls:", #reachState.balls, "| NetParts:", #netParts, "| Collide:", previewNet and getNetCollide(previewNet) ~= nil)
 end
 
